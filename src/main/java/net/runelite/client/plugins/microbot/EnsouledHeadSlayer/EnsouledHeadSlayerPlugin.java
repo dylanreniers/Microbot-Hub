@@ -10,11 +10,6 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.pluginscheduler.api.SchedulablePlugin;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.AndCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LogicalCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.event.PluginScheduleEntryPostScheduleTaskEvent;
-import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.misc.TimeUtils;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -31,13 +26,13 @@ import java.util.concurrent.TimeUnit;
         description = "EnsouledHeadSlayer",
         tags = {"Ensould", "head", "slayer", "prayer", "taf", "microbot"},
         version = EnsouledHeadSlayerPlugin.version,
-        minClientVersion = "2.0.13",
+        minClientVersion = "2.1.0",
         cardUrl = "",
         iconUrl = "",
         enabledByDefault = PluginConstants.DEFAULT_ENABLED,
         isExternal = PluginConstants.IS_EXTERNAL
 )
-public class EnsouledHeadSlayerPlugin extends Plugin implements SchedulablePlugin {
+public class EnsouledHeadSlayerPlugin extends Plugin {
 
     public final static String version = "1.0.1";
 
@@ -50,7 +45,6 @@ public class EnsouledHeadSlayerPlugin extends Plugin implements SchedulablePlugi
     private EnsouledHeadSlayerOverlay ensouledHeadSlayerOverlay;
     @Inject
     private EnsouledHeadSlayerScript ensouledHeadSlayerScript;
-    private LogicalCondition stopCondition = new AndCondition();
     private ScheduledExecutorService scheduledExecutorService;
     private int startingXp = 0;
     private int startingLevel = 0;
@@ -107,21 +101,6 @@ public class EnsouledHeadSlayerPlugin extends Plugin implements SchedulablePlugi
         return configManager.getConfig(EnsouledHeadSlayerConfig.class);
     }
 
-    @Subscribe
-    public void onPluginScheduleEntryPostScheduleTaskEvent(PluginScheduleEntryPostScheduleTaskEvent event) {
-        if (event.getPlugin() == this) {
-            if (ensouledHeadSlayerScript != null) {
-                Rs2Bank.walkToBank();
-            }
-            Microbot.stopPlugin(this);
-        }
-    }
-
-    @Override
-    public LogicalCondition getStopCondition() {
-        // Create a new stop condition
-        return this.stopCondition;
-    }
 
     @Subscribe
     public void onChatMessage(ChatMessage event) {

@@ -4,17 +4,17 @@ import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.tileitem.Rs2TileItemCache;
+import net.runelite.client.plugins.microbot.api.tileitem.models.Rs2TileItemModel;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
-import net.runelite.client.plugins.microbot.util.cache.Rs2GroundItemCache;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.coords.Rs2WorldArea;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
-import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItemModel;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.keyboard.Rs2Keyboard;
@@ -31,6 +31,7 @@ import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
+import javax.inject.Inject;
 import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.List;
@@ -67,6 +68,9 @@ public class BarrowsScript extends Script {
     private Rs2PrayerEnum NeededPrayer;
     public static List<String> barrowsPieces = new ArrayList<>();
     private ScheduledFuture<?> WalkToTheChestFuture;
+
+    @Inject
+    Rs2TileItemCache rs2TileItemCache;
 
 
 
@@ -224,8 +228,6 @@ public class BarrowsScript extends Script {
                                 }
                             }
                         }
-
-                        plugin.getLockCondition().lock();
 
                         //Enter mound
                         if (Rs2Player.getWorldLocation().getPlane() != 3) {
@@ -452,7 +454,6 @@ public class BarrowsScript extends Script {
                         //walk to and open the bank
                         Rs2Bank.walkToBankAndUseBank(BankLocation.FEROX_ENCLAVE);
                         //unlock
-                        plugin.getLockCondition().unlock();
                     } else {
                         Rs2Food ourfood = config.food();
                         int ourFoodsID = ourfood.getId();
@@ -838,17 +839,14 @@ public class BarrowsScript extends Script {
     }
 
     public void lootChampionScroll(){
-        Rs2GroundItemModel championScroll = Rs2GroundItemCache.getClosestItemByGameId(ItemID.SKELETON_CHAMPION_SCROLL).stream().findFirst().orElse(null);
+        Rs2TileItemModel championScroll = rs2TileItemCache.query().where(x -> x.getId() == ItemID.SKELETON_CHAMPION_SCROLL).nearest();
         if(championScroll != null){
-            Tile scrollsTile = championScroll.getTile();
-            if(championScroll.isClickable() && Rs2GroundItem.hasLineOfSight(scrollsTile)){
-                while(Rs2GroundItemCache.getClosestItemByGameId(ItemID.SKELETON_CHAMPION_SCROLL).stream().findFirst().orElse(null) != null && !Rs2Inventory.contains(championScroll.getId())){
+                while(rs2TileItemCache.query().where(x -> x.getId() == ItemID.SKELETON_CHAMPION_SCROLL).nearest() != null && !Rs2Inventory.contains(championScroll.getId())){
                     if(!super.isRunning()) break;
 
                     Rs2GroundItem.interact(championScroll.getName(), "Take");
                     sleepUntil(()-> !Rs2Player.isMoving() && Rs2Inventory.contains(championScroll.getId()), Rs2Random.between(4000,12000));
                 }
-            }
         }
     }
 

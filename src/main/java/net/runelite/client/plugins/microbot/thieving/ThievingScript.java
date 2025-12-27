@@ -14,16 +14,16 @@ import net.runelite.api.GameState;
 import net.runelite.api.Skill;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.tileitem.Rs2TileItemCache;
+import net.runelite.client.plugins.microbot.api.tileitem.models.Rs2TileItemModel;
 import net.runelite.client.plugins.microbot.thieving.enums.ThievingNpc;
 import net.runelite.client.plugins.microbot.thieving.enums.ThievingFood;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
-import net.runelite.client.plugins.microbot.util.cache.Rs2GroundItemCache;
 import net.runelite.client.plugins.microbot.util.coords.Rs2WorldPoint;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
-import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItemModel;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
 import net.runelite.client.plugins.microbot.util.models.RS2Item;
@@ -85,6 +85,9 @@ public class ThievingScript extends Script {
     protected static int getCloseDoorTime() {
         return DOOR_TIMER.getRemainingTime();
     }
+
+    @Inject
+    Rs2TileItemCache rs2TileItemCache;
 
     /**
      * Get the total runtime of the script
@@ -214,9 +217,11 @@ public class ThievingScript extends Script {
     private int getMostExpensiveGroundItemId() {
         final int minPrice = config.keepItemsAboveValue();
         // takes long of client thread if there are a lot of dropped items
-        return Microbot.getClientThread().runOnClientThreadOptional(() -> Rs2GroundItemCache.getAllGroundItems()
-                .filter(Rs2GroundItemModel::isOwned)
-                .map(Rs2GroundItemModel::getId)
+        return Microbot.getClientThread().runOnClientThreadOptional(() -> rs2TileItemCache.query()
+                .toList()
+                .stream()
+                .filter(Rs2TileItemModel::isOwned)
+                .map(Rs2TileItemModel::getId)
                 .distinct()
                 .map(id -> {
                     final int price = Microbot.getItemManager().getItemPrice(id);

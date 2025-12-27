@@ -8,11 +8,6 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.pluginscheduler.api.SchedulablePlugin;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.AndCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LockCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LogicalCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.event.PluginScheduleEntrySoftStopEvent;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 import javax.inject.Inject;
@@ -23,15 +18,15 @@ import java.awt.*;
         description = "Kills SandCrab & resets",
         tags = {"Combat", "microbot", "sand", "crab", "sandcrab", "attack", "kill"},
         version = SandCrabPlugin.version,
-        minClientVersion = "2.0.14",
+        minClientVersion = "2.1.0",
         cardUrl = "",
         iconUrl = "",
         enabledByDefault = PluginConstants.DEFAULT_ENABLED,
         isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
-public class SandCrabPlugin extends Plugin implements SchedulablePlugin {
-    public final static String version = "1.4.3";
+public class SandCrabPlugin extends Plugin  {
+    public final static String version = "1.5.0";
     @Inject
     private SandCrabConfig config;
 
@@ -48,8 +43,6 @@ public class SandCrabPlugin extends Plugin implements SchedulablePlugin {
     @Inject
     public SandCrabScript sandCrabScript;
 
-    private LockCondition lockCondition;
-    private LogicalCondition stopCondition = null;
 
 
     @Override
@@ -62,31 +55,6 @@ public class SandCrabPlugin extends Plugin implements SchedulablePlugin {
 
     protected void shutDown() {
         sandCrabScript.shutdown();
-        if (lockCondition != null && lockCondition.isLocked()) {
-            lockCondition.unlock();
-        }
         overlayManager.remove(sandCrabOverlay);
-    }
-
-    @Subscribe
-    public void onPluginScheduleEntrySoftStopEvent(PluginScheduleEntrySoftStopEvent event) {
-        try {
-            if (event.getPlugin() == this) {
-                Microbot.stopPlugin(this);
-            }
-        } catch (Exception e) {
-            log.error("Error stopping plugin: ", e);
-        }
-    }
-
-    @Override
-    public LogicalCondition getStopCondition() {
-        if (this.stopCondition == null) {
-            this.lockCondition = new LockCondition(" SandCrabPlugin - We're in combat", false, true); //ensure unlock on shutdown of the plugin !
-            AndCondition andCondition = new AndCondition();
-            andCondition.addCondition(lockCondition);
-            this.stopCondition = andCondition;
-        }
-        return this.stopCondition;
     }
 }

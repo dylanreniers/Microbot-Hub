@@ -11,12 +11,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.pluginscheduler.api.SchedulablePlugin;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.AndCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LogicalCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.event.PluginScheduleEntrySoftStopEvent;
 import net.runelite.client.plugins.microbot.util.Global;
-import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 import javax.inject.Inject;
@@ -27,7 +22,7 @@ import java.awt.*;
         description = "Plays the nightmare zone minigame",
         authors = { "Mocrosoft" },
         version = NmzPlugin.version,
-        minClientVersion = "2.0.0",
+        minClientVersion = "2.1.0",
         cardUrl = "https://chsami.github.io/Microbot-Hub/NmzPlugin/assets/card.png",
         iconUrl = "https://chsami.github.io/Microbot-Hub/NmzPlugin/assets/icon.png",
         tags = {"nmz", "microbot"},
@@ -35,8 +30,8 @@ import java.awt.*;
         isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
-public class NmzPlugin extends Plugin implements SchedulablePlugin{
-    final static String version = "2.2.1";
+public class NmzPlugin extends Plugin {
+    final static String version = "2.3.0";
     @Inject
     private NmzConfig config;
 
@@ -54,7 +49,6 @@ public class NmzPlugin extends Plugin implements SchedulablePlugin{
     NmzScript nmzScript;
     @Inject
     PrayerPotionScript prayerPotionScript;
-    private final LogicalCondition stopCondition = new AndCondition();
 
     @Override
     protected void startUp() throws AWTException {
@@ -71,21 +65,6 @@ public class NmzPlugin extends Plugin implements SchedulablePlugin{
         nmzScript.shutdown();
         overlayManager.remove(nmzOverlay);
         NmzScript.setHasSurge(false);
-    }
-
-    @Subscribe
-    public void onPluginScheduleEntrySoftStopEvent(PluginScheduleEntrySoftStopEvent event) {
-        if (event.getPlugin() == this) {
-            nmzScript.shutdown();
-            Microbot.getClientThread().runOnSeperateThread(() -> {
-                if(!nmzScript.isOutside()) {
-                    Rs2GameObject.interact(26276, "Drink");
-                    Global.sleepUntil(nmzScript::isOutside, 10000);
-                }
-                Microbot.stopPlugin(this);
-                return true;
-            });
-        }
     }
 
     @Subscribe
@@ -109,10 +88,4 @@ public class NmzPlugin extends Plugin implements SchedulablePlugin{
             }
         }
     }
-    @Override
-    public LogicalCondition getStopCondition() {
-        // Create a new stop condition
-        return this.stopCondition;
-    }
-
 }

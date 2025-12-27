@@ -3,7 +3,6 @@ plugins {
     id 'java'
     id 'io.freefair.lombok' version '8.6'
     id 'com.github.johnrengelman.shadow' version '8.1.1'
-    id 'maven-publish'
     id 'idea'
     id 'org.jetbrains.gradle.plugin.idea-ext' version '1.3'
 }
@@ -13,6 +12,9 @@ import groovy.json.JsonOutput
 
 apply from: 'gradle/project-config.gradle'
 apply from: 'gradle/plugin-utils.gradle'
+
+def microbotClientVersion = project.ext.getMicrobotClientVersion()
+def microbotClientPath = project.findProperty("microbotClientPath")
 
 // Java toolchain configuration
 java {
@@ -61,11 +63,14 @@ configurations {
         exclude group: 'net.runelite', module: 'microbot'
     }
 
-    // Disable source downloads for all configurations
+    // Disable source downloads for all configurations and rewrite legacy coordinates
     configureEach {
         resolutionStrategy {
+            dependencySubstitution {
+                substitute module("com.microbot:client") using module("com.microbot:microbot:${microbotClientVersion}")
+            }
             eachDependency { details ->
-                if (details.target.group == 'com.microbot' && details.target.name == 'client') {
+                if (details.target.group == 'com.microbot' && details.target.name == 'microbot') {
                     details.artifactSelection {
                         selectArtifact(DependencyArtifact.DEFAULT_TYPE, null, null)
                     }
@@ -76,17 +81,32 @@ configurations {
 }
 
 repositories {
-    maven {
-        url = project.ext.getNexusNightlyUrl()
+    ivy {
+        name = "microbot-client-github-releases"
+        url = uri(project.ext.getGithubClientBaseUrl())
+        patternLayout {
+            artifact "[revision]/[module]-[revision].[ext]"
+            artifact "[revision]/microbot-[revision].[ext]"
+        }
+        metadataSources { artifact() }
     }
     mavenCentral()
 }
 
 dependencies {
-    compileOnly 'com.microbot:client:+'
-    microbotRuntime 'com.microbot:client:+'
-
-    testImplementation 'com.microbot:client:+'
+    if (microbotClientPath) {
+        def clientFile = file(microbotClientPath)
+        if (!clientFile.exists()) {
+            throw new GradleException("microbotClientPath does not exist: ${clientFile}")
+        }
+        compileOnly files(clientFile)
+        microbotRuntime files(clientFile)
+        testImplementation files(clientFile)
+    } else {
+        compileOnly "com.microbot:microbot:${microbotClientVersion}@jar"
+        microbotRuntime "com.microbot:microbot:${microbotClientVersion}@jar"
+        testImplementation "com.microbot:microbot:${microbotClientVersion}@jar"
+    }
 }
 
 application {
@@ -108,12 +128,16 @@ String pluginVersionFromPluginJson(File pluginDir) {
 afterEvaluate {
     def microbotConfig = configurations.microbotRuntime.resolvedConfiguration
     def microbotDependency = microbotConfig.firstLevelModuleDependencies
-            .find { it.moduleGroup == 'com.microbot' && it.moduleName == 'client' }
+            .find { it.moduleGroup == 'com.microbot' && it.moduleName == 'microbot' }
 
     if (microbotDependency) {
         logger.lifecycle("🤖 Microbot Client Version: ${microbotDependency.moduleVersion}")
     } else {
-        logger.warn("⚠️  Could not determine microbot client version")
+        if (microbotClientPath) {
+            logger.lifecycle("🤖 Microbot Client (local path): ${microbotClientPath}")
+        } else {
+            logger.warn("⚠️  Could not determine microbot client version")
+        }
     }
 
     def pluginsDir = file(project.ext.getPluginsSourcePath())
@@ -159,33 +183,6 @@ afterEvaluate {
             jarTask : jarTask,
             version : pluginVersionFromPluginJson(plugin.dir)
         ]
-    }
-
-    // Configure publishing
-    publishing {
-        publications {
-            pluginPublications.each { pub ->
-                create("${pub.name}Publication", MavenPublication) {
-                    groupId = project.ext.MAVEN_GROUP_ID
-                    artifactId = pub.name.toLowerCase()
-                    version = pub.version
-
-                    artifact(pub.jarTask.get().archiveFile) {
-                        extension "jar"
-                    }
-                }
-            }
-        }
-        repositories {
-            maven {
-                name = "microbot-plugins"
-                url = uri(project.ext.getNexusPluginsUrl())
-                credentials {
-                    username = project.findProperty("nexusUsername") ?: ""
-                    password = project.findProperty("nexusPassword") ?: ""
-                }
-            }
-        }
     }
 
     // Configure test source set to have access to all plugin source sets
@@ -272,11 +269,7 @@ tasks.register('validateJdkVersion') {
         def majorVersion = currentJdkVersion.split('\\.')[0] as Integer
 
         if (majorVersion != expectedVersion) {
-            throw new GradleException(
-                "❌ JDK version mismatch!\n" +
-                "Expected: JDK ${expectedVersion}\n" +
-                "Current:  JDK ${majorVersion} (${currentJdkVersion})\n"
-            )
+            logger.log(LogLevel.WARN, "❌ JDK version mismatch! Expected JDK ${expectedVersion}, but found JDK ${majorVersion} (${currentJdkVersion})")
         } else {
             logger.lifecycle("✅ JDK version validated: ${currentJdkVersion}")
         }

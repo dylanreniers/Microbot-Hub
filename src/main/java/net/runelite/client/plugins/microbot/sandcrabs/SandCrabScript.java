@@ -225,7 +225,6 @@ public class SandCrabScript extends Script {
      * Reset aggro will walk 40 tiles north
      */
     private void resetAggro(SandCrabPlugin plugin) {
-        unlockTheScript(plugin);
 
         boolean walkedFarEnough = false;
         if (Rs2Player.getWorldLocation().getX() > 1805) {
@@ -243,7 +242,6 @@ public class SandCrabScript extends Script {
      * Walks back to the initial player location when the script started
      */
     private void walkBack(SandCrabPlugin plugin) {
-        lockTheScript(plugin);
 
         boolean backToInitialLocation = Rs2Walker.walkTo(initialPlayerLocation, 0);
         if (!backToInitialLocation) return;
@@ -307,18 +305,6 @@ public class SandCrabScript extends Script {
     private void resetScanLocations() {
         for (ScanLocation scanLocation : sandCrabLocations) {
             scanLocation.reset();
-        }
-    }
-
-    private void lockTheScript(SandCrabPlugin plugin) {
-        if (plugin.getLockCondition(plugin.getStopCondition()) != null) {
-            plugin.getLockCondition(plugin.getStopCondition()).lock();
-        }
-    }
-
-    private void unlockTheScript(SandCrabPlugin plugin) {
-        if (plugin.getLockCondition(plugin.getStopCondition()) != null) {
-            plugin.getLockCondition(plugin.getStopCondition()).unlock();
         }
     }
 }

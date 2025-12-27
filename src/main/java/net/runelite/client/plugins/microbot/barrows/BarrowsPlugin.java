@@ -10,11 +10,6 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.Microbot;
-import net.runelite.client.plugins.microbot.pluginscheduler.api.SchedulablePlugin;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.AndCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LockCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LogicalCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.event.PluginScheduleEntrySoftStopEvent;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
 import net.runelite.client.plugins.microbot.util.antiban.enums.Activity;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -29,14 +24,14 @@ import java.awt.*;
         tags = {"combat", "mm", "barrows"}, // Tags to categorize the plugin (optional, default is '')
         authors = { "Gage" }, // Author(s) of the plugin (optional, default is "Unknown Author")
         version = BarrowsPlugin.version, // Version of the plugin (required)
-        minClientVersion = "1.9.8", // Minimum client version required to run the plugin (required)
+        minClientVersion = "2.1.0", // Minimum client version required to run the plugin (required)
         iconUrl = "https://chsami.github.io/Microbot-Hub/BarrowsPlugin/assets/icon.png", // URL to plugin icon shown in client (optional)
         cardUrl = "https://chsami.github.io/Microbot-Hub/BarrowsPlugin/assets/card.png", // URL to plugin card image for website (optional)
         enabledByDefault = PluginConstants.DEFAULT_ENABLED, // Whether the plugin is enabled by default
         isExternal = PluginConstants.IS_EXTERNAL // Whether the plugin is external
 )
 @Slf4j
-public class BarrowsPlugin extends Plugin implements SchedulablePlugin {
+public class BarrowsPlugin extends Plugin  {
     public static final String version = "2.0.2";
 
     @Inject
@@ -53,8 +48,6 @@ public class BarrowsPlugin extends Plugin implements SchedulablePlugin {
 
     @Inject
     BarrowsScript barrowsScript;
-    LogicalCondition stopCondition = new AndCondition();
-    LockCondition lockCondition = new LockCondition("Locked during the Barrows minigame");
 
 
     @Override
@@ -96,27 +89,6 @@ public class BarrowsPlugin extends Plugin implements SchedulablePlugin {
             BarrowsScript.outOfPoweredStaffCharges = true;
         }
 
-    }
-
-    @Subscribe
-    public void onPluginScheduleEntrySoftStopEvent(PluginScheduleEntrySoftStopEvent event) {
-        try{
-            if (event.getPlugin() == this) {
-                Microbot.stopPlugin(this);
-            }
-        } catch (Exception e) {
-            log.error("Error stopping plugin: ", e);
-        }
-    }
-
-    public LockCondition getLockCondition(){
-        return lockCondition;
-    }
-
-    @Override
-    public LogicalCondition getStopCondition() {
-        // Create a new stop condition
-        return this.stopCondition;
     }
 
     int ticks = 10;

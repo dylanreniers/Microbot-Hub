@@ -28,6 +28,9 @@ import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.player.Rs2PlayerCache;
+import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
+import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.motherloadmine.enums.MLMMiningSpot;
 import net.runelite.client.plugins.microbot.motherloadmine.enums.MLMStatus;
 import net.runelite.client.plugins.microbot.motherloadmine.enums.Pickaxe;
@@ -41,7 +44,6 @@ import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.depositbox.Rs2DepositBox;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
-import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Gembag;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
@@ -78,24 +80,29 @@ public class MotherloadMineScript extends Script
     private static final int SACK_SIZE = 108;
 
     public static MLMStatus status = MLMStatus.IDLE;
-    public static WallObject oreVein;
+    public static Rs2TileObjectModel oreVein;
     public static MLMMiningSpot miningSpot = MLMMiningSpot.IDLE;
     private int maxSackSize;
 	private List<String> itemsToKeep;
 
 	private final MotherloadMinePlugin plugin;
     private final MotherloadMineConfig config;
+    private final Rs2TileObjectCache rs2TileObjectCache;
+    private final Rs2PlayerCache rs2PlayerCache;
+
 
     private boolean shouldEmptySack = false;
 	private boolean shouldRepairWaterwheel = false;
 	private boolean pickedUpHammer = false;
 
 	@Inject
-	public MotherloadMineScript(MotherloadMinePlugin plugin, MotherloadMineConfig config)
+	public MotherloadMineScript(MotherloadMinePlugin plugin, MotherloadMineConfig config, Rs2TileObjectCache rs2TileObjectCache, Rs2PlayerCache rs2PlayerCache)
 	{
 		this.plugin = plugin;
 		this.config = config;
-	}
+        this.rs2TileObjectCache = rs2TileObjectCache;
+        this.rs2PlayerCache = rs2PlayerCache;
+    }
 
     public boolean run()
     {
@@ -237,7 +244,7 @@ public class MotherloadMineScript extends Script
             }
 			else
 			{
-				Rs2GameObject.interact(ObjectID.MOTHERLODE_SACK);
+                rs2TileObjectCache.query().interact(ObjectID.MOTHERLODE_SACK);
 				sleepUntil(this::hasOreInInventory);
 			}
 		}
@@ -275,7 +282,7 @@ public class MotherloadMineScript extends Script
 			if (!obtainHammer()) return;
 		}
 
-		if (Rs2GameObject.interact(ObjectID.MOTHERLODE_WHEEL_STRUT_BROKEN))
+		if (rs2TileObjectCache.query().interact(ObjectID.MOTHERLODE_WHEEL_STRUT_BROKEN))
 		{
 			// We use a modified version of waitForXpDrop to ensure we break out of the sleep if the strut is repaired
 			final int skillExp = Microbot.getClient().getSkillExperience(Skill.SMITHING);
@@ -301,7 +308,7 @@ public class MotherloadMineScript extends Script
         }
 
         WorldPoint hopperDeposit = (isUpperFloor() && config.upstairsHopperUnlocked()) ? HOPPER_DEPOSIT_UP : HOPPER_DEPOSIT_DOWN;
-        Optional<GameObject> hopper = Optional.ofNullable(Rs2GameObject.getGameObject(ObjectID.MOTHERLODE_HOPPER, hopperDeposit));
+        Rs2TileObjectModel hopper = rs2TileObjectCache.query().where(x -> x.getWorldLocation().equals(hopperDeposit)).withId(ObjectID.MOTHERLODE_HOPPER).first();
 
         if(isUpperFloor() && !config.upstairsHopperUnlocked())
         {
@@ -310,7 +317,7 @@ public class MotherloadMineScript extends Script
 
         final int paydirtToDeposit = payDirtCount();
 
-        if (hopper.isPresent() && Rs2GameObject.interact(hopper.get())) {
+        if (hopper != null && rs2TileObjectCache.query().interact(hopper.getId())) {
             sleepUntil(() -> payDirtCount() != paydirtToDeposit && !Rs2Player.isAnimating(), 10_000);
 
 			shouldRepairWaterwheel = true;
@@ -498,7 +505,7 @@ public class MotherloadMineScript extends Script
     }
 
 	private boolean attemptToMineVein() {
-		WallObject vein = findClosestVein();
+        Rs2TileObjectModel vein = findClosestVein();
 		if (vein == null) {
 			repositionCameraAndMove();
 			return false;
@@ -506,25 +513,22 @@ public class MotherloadMineScript extends Script
 
 		handlePickaxeSpec();
 
-		if (!Rs2GameObject.interact(vein)) return false;
+		if (!rs2TileObjectCache.query().interact(vein.getId())) return false;
 		oreVein = vein;
 
 		return sleepUntil(() -> {
-			WallObject _vein = Rs2GameObject.getWallObject(o -> Objects.equals(o.getWorldLocation(), vein.getWorldLocation()));
+			Rs2TileObjectModel _vein = rs2TileObjectCache.query().where(o -> Objects.equals(o.getWorldLocation(), vein.getWorldLocation())).nearestReachable();
 			if (_vein == null || !isValidVein(_vein)) return false;
 			return AntibanPlugin.isMining() && _vein.getWorldLocation().distanceTo(Microbot.getClient().getLocalPlayer().getWorldLocation()) <= 2;
 		}, 10_000);
 	}
 
-    private WallObject findClosestVein()
+    private Rs2TileObjectModel findClosestVein()
     {
-        return Rs2GameObject.getWallObjects().stream()
-                .filter(this::isValidVein)
-                .min(Comparator.comparing(this::distanceToPlayer))
-                .orElse(null);
+        return rs2TileObjectCache.query().where(this::isValidVein).nearestReachable();
     }
 
-    private boolean isValidVein(WallObject wallObject)
+    private boolean isValidVein(Rs2TileObjectModel wallObject)
     {
         int id = wallObject.getId();
         boolean isVein = (id == 26661 || id == 26662 || id == 26663 || id == 26664);
@@ -534,7 +538,7 @@ public class MotherloadMineScript extends Script
 
 		if (!config.mineUpstairs() && config.useAntiCrash())
 		{
-			boolean isPlayerNearBy = Rs2Player.getPlayers(p -> p != null && p.getWorldLocation().distanceTo(wallObject.getWorldLocation()) <= 2).findAny().isPresent();
+			boolean isPlayerNearBy = rs2PlayerCache.query().where(p -> p != null && p.getWorldLocation().distanceTo(wallObject.getWorldLocation()) <= 2).first() != null;
 			if (isPlayerNearBy) return false;
 		}
 
@@ -554,17 +558,9 @@ public class MotherloadMineScript extends Script
         }
     }
 
-    private boolean hasWalkableTilesAround(WallObject wallObject)
+    private boolean hasWalkableTilesAround(Rs2TileObjectModel wallObject)
     {
         return Rs2Tile.areSurroundingTilesWalkable(wallObject.getWorldLocation(), 1, 1);
-    }
-
-    private int distanceToPlayer(WallObject wallObject)
-    {
-        WorldPoint playerLoc = Microbot.getClient().getLocalPlayer().getWorldLocation();
-        WorldPoint walkableTile = Rs2Tile.getNearestWalkableTile(wallObject.getWorldLocation());
-        if (walkableTile == null) return Integer.MAX_VALUE;
-        return playerLoc.distanceTo2D(walkableTile);
     }
 
     private void repositionCameraAndMove()
@@ -578,14 +574,14 @@ public class MotherloadMineScript extends Script
     private void goUp()
     {
         if (isUpperFloor()) return;
-        Rs2GameObject.interact(ObjectID.MOTHERLODE_LADDER_BOTTOM);
+        rs2TileObjectCache.query().interact(ObjectID.MOTHERLODE_LADDER_BOTTOM);
         sleepUntil(this::isUpperFloor);
     }
 
     private void goDown()
     {
         if (!isUpperFloor()) return;
-        Rs2GameObject.interact(ObjectID.MOTHERLODE_LADDER_TOP);
+        rs2TileObjectCache.query().interact(ObjectID.MOTHERLODE_LADDER_TOP);
         sleepUntil(() -> !isUpperFloor());
     }
 
@@ -641,7 +637,7 @@ public class MotherloadMineScript extends Script
 
         while (!Rs2Inventory.hasItem("hammer") && isRunning()) {
             //The crate at this point ALWAYS gives the player a hammer
-            Rs2GameObject.interact(new WorldPoint(3752, 5674, 0), "Search");
+            rs2TileObjectCache.query().where(x -> x.getWorldLocation().equals(new WorldPoint(3752, 5674, 0))).interact("Search");
             Rs2Inventory.waitForInventoryChanges(5_000);
             if (Rs2Inventory.hasItem("hammer")) {
                 pickedUpHammer = true;
@@ -663,12 +659,12 @@ public class MotherloadMineScript extends Script
 	}
 
 	private Rectangle getMotherloadSackBounds() {
-		TileObject sack = Rs2GameObject.getAll(o -> o.getId() == ObjectID.MOTHERLODE_SACK).stream().findFirst().orElse(null);
+		TileObject sack = rs2TileObjectCache.query().where(o -> o.getId() == ObjectID.MOTHERLODE_SACK).first();
 		return Rs2UiHelper.getObjectClickbox(sack);
 	}
 
 	private int getBrokenStrutCount() {
-		List<GameObject> brokenStruts = Rs2GameObject.getGameObjects(o -> o.getId() == ObjectID.MOTHERLODE_WHEEL_STRUT_BROKEN);
+		List<Rs2TileObjectModel> brokenStruts = rs2TileObjectCache.query().where(o -> o.getId() == ObjectID.MOTHERLODE_WHEEL_STRUT_BROKEN).toList();
 		return brokenStruts.isEmpty() ? 0 : brokenStruts.size();
 	}
 

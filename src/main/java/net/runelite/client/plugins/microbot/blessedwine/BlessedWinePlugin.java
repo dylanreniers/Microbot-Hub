@@ -9,10 +9,6 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.pluginscheduler.api.SchedulablePlugin;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.AndCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LogicalCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.event.PluginScheduleEntrySoftStopEvent;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 import javax.inject.Inject;
@@ -25,15 +21,15 @@ import java.awt.*;
         tags = {"blessed", "wine", "ralos", "prayer", "libation"},
         authors = { "Hal" },
         version = BlessedWinePlugin.version,
-		minClientVersion = "1.9.6",
+		minClientVersion = "2.1.0",
         cardUrl = "https://chsami.github.io/Microbot-Hub/BlessedWinePlugin/assets/card.jpg",
         iconUrl = "https://chsami.github.io/Microbot-Hub/BlessedWinePlugin/assets/icon.jpg",
 		enabledByDefault = PluginConstants.DEFAULT_ENABLED,
         isExternal = PluginConstants.IS_EXTERNAL
 )
-public class BlessedWinePlugin extends Plugin implements SchedulablePlugin {
+public class BlessedWinePlugin extends Plugin {
 
-	static final String version = "1.0.2";
+	static final String version = "1.1.0";
 
     @Inject
     private BlessedWineConfig config;
@@ -56,19 +52,6 @@ public class BlessedWinePlugin extends Plugin implements SchedulablePlugin {
     static int totalWinesToBless = 0;
     static int totalLoops = 0;
     static int endingXp = 0;
-    private LogicalCondition stopCondition = new AndCondition();
-
-    @Override
-    public LogicalCondition getStartCondition() {
-        // Create conditions that determine when your plugin can start
-        // Return null if the plugin can start anytime
-        return null;
-    }
-
-    @Override
-    public LogicalCondition getStopCondition() {
-        return this.stopCondition;
-    }
 
     @Override
     protected void startUp() throws AWTException {
@@ -82,12 +65,5 @@ public class BlessedWinePlugin extends Plugin implements SchedulablePlugin {
     protected void shutDown() {
         blessedWineScript.shutdown();
         overlayManager.remove(blessedWineOverlay);
-    }
-
-    @Subscribe
-    public void onPluginScheduleEntrySoftStopEvent(PluginScheduleEntrySoftStopEvent event) {
-        if (event.getPlugin() == this) {
-            Microbot.stopPlugin(this);
-        }
     }
 }

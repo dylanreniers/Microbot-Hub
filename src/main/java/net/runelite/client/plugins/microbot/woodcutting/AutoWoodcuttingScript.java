@@ -8,14 +8,14 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
+import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2AntibanSettings;
-import net.runelite.client.plugins.microbot.pluginscheduler.tasks.requirements.requirement.location.ResourceLocationOption;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
-import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.grounditem.LootingParameters;
 import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
 import net.runelite.client.plugins.microbot.util.inventory.InteractOrder;
@@ -82,6 +82,8 @@ public class AutoWoodcuttingScript extends Script {
     public AutoWoodcuttingScript(AutoWoodcuttingPlugin plugin) {
         this.plugin = plugin;
     }
+    @Inject
+    Rs2TileObjectCache rs2TileObjectCache;
 
     private void handleFiremaking(AutoWoodcuttingConfig config) {
         WoodcuttingTree treeType = getActiveTree();
@@ -146,17 +148,18 @@ public class AutoWoodcuttingScript extends Script {
 
     private void handleWoodcutting(AutoWoodcuttingConfig config) {
         WoodcuttingTree treeType = getActiveTree();
-        GameObject tree = null;
+        Rs2TileObjectModel tree = null;
         if (config.HardwoodTreePatch()) {
             var patchIds = List.of(30480, 30481, 30482);
-            var trees = Rs2GameObject.getGameObjects(x -> patchIds.contains(x.getId()) && Rs2GameObject.hasAction(Rs2GameObject.convertToObjectComposition(x), treeType.getAction()));
-            tree = trees.stream().findFirst().orElse(null);
+            tree = rs2TileObjectCache.query()
+                    .where(x -> patchIds.contains(x.getId()))
+                    .nearest();
         } else {
-            tree = Rs2GameObject.findReachableObject(treeType.getName(), true, config.distanceToStray(), getInitialPlayerLocation(), treeType.equals(WoodcuttingTree.REDWOOD), treeType.getAction());
+            tree = rs2TileObjectCache.query().within(getInitialPlayerLocation(), config.distanceToStray()).withName(treeType.getName()).nearest();
         }
 
         if (tree != null) {
-            if (Rs2GameObject.interact(tree, treeType.getAction())) {
+            if (tree.click(treeType.getAction())) {
                 Rs2Player.waitForAnimation();
                 Rs2Antiban.actionCooldown();
 
@@ -400,9 +403,9 @@ public class AutoWoodcuttingScript extends Script {
         boolean useCampfire = false;
 
         // prioritize campfire if available
-        GameObject fire = Rs2GameObject.getGameObject(49927, 6); // Forester's campfire
+        Rs2TileObjectModel fire = rs2TileObjectCache.query().where(x -> x.getId() == 49927).nearest(6); // Forester's campfire
         if (fire == null) {
-            fire = Rs2GameObject.getGameObject(26185, 6); // Regular fire
+            rs2TileObjectCache.query().where(x -> x.getId() == 26185).nearest(6);
         }
         if (config.primaryAction() == WoodcuttingPrimaryAction.BURN_CAMPFIRE) {
             if (fire != null) {
@@ -446,7 +449,7 @@ public class AutoWoodcuttingScript extends Script {
         Map<Integer, WorldPoint> distanceMap = new HashMap<>();
 
         for (WorldPoint walkablePoint : worldPoints) {
-            if (Rs2GameObject.getGameObject(o -> o.getWorldLocation().equals(walkablePoint), distance) == null) {
+            if (rs2TileObjectCache.query().where(x -> x.getWorldLocation().equals(walkablePoint)).nearest(distance) == null) {
                 int tileDistance = playerLocation.distanceTo(walkablePoint);
                 distanceMap.putIfAbsent(tileDistance, walkablePoint);
             }
@@ -532,14 +535,12 @@ public class AutoWoodcuttingScript extends Script {
         WoodcuttingTree treeType = getActiveTree();
         int logCount = Rs2Inventory.count(treeType.getLogID());
         if (logCount > 0) {
+            //TODO: should we really stop script if fletching failed?
             boolean startFletchingSucces = Rs2Fletching.fletchItems(treeType.getLogID(), config.fletchingType().getContainsInventoryName(), "All");
             int fletchedItems = Rs2Inventory.getList(itemBounds -> itemBounds.getName().contains(config.fletchingType().getContainsInventoryName())).size();
             log.info("We fletched {} {} into {} of {} , success: {}", logCount, treeType, fletchedItems, config.fletchingType().getContainsInventoryName(), startFletchingSucces);
             if (!startFletchingSucces) {
-                log.error("Failed to start fletching, stopping script");
-                shutdown();
                 return false;
-
             }
             if (Rs2Inventory.count(treeType.getLogID())!=0){
                 return false;

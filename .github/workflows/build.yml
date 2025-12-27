@@ -11,8 +11,7 @@ jobs:
 
     env:
       CI: true
-      ORG_GRADLE_PROJECT_nexusUsername: ${{ secrets.NEXUS_USERNAME }}
-      ORG_GRADLE_PROJECT_nexusPassword: ${{ secrets.NEXUS_PASSWORD }}
+      PLUGINS_RELEASE_TAG: latest-release
 
     steps:
       - name: Checkout repository
@@ -30,22 +29,19 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build JARs
-        run: ./gradlew clean build
+        run: ./gradlew clean build -PpluginsReleaseTag=${{ env.PLUGINS_RELEASE_TAG }}
 
       - name: Generate plugin documentation
-        run: ./gradlew copyPluginDocs
+        run: ./gradlew copyPluginDocs -PpluginsReleaseTag=${{ env.PLUGINS_RELEASE_TAG }}
 
       - name: Generate plugins.json
-        run: ./gradlew generatePluginsJson
+        run: ./gradlew generatePluginsJson -PpluginsReleaseTag=${{ env.PLUGINS_RELEASE_TAG }}
 
-      - name: Publish to Nexus
-        run: ./gradlew publish
-
-      - name: Create/Update GitHub Release with JARs
+      - name: Create/Update GitHub Release with JARs (latest-release)
         uses: ncipollo/release-action@v1
         with:
-          tag: latest-release
-          name: Latest build
+          tag: ${{ env.PLUGINS_RELEASE_TAG }}
+          name: Latest build (${{ env.PLUGINS_RELEASE_TAG }})
           body: "Commit: ${{ github.sha }}"
           allowUpdates: true
           replacesArtifacts: true

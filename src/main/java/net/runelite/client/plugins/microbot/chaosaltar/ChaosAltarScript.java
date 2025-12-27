@@ -64,7 +64,6 @@ public class ChaosAltarScript extends Script {
                 // Execute state action
                 switch (currentState) {
                     case BANK:
-                        plugin.lockCondition.lock();
                         handleBanking();
                         break;
                     case TELEPORT_TO_WILDERNESS:
@@ -81,7 +80,6 @@ public class ChaosAltarScript extends Script {
                         break;
                     case DIE_TO_NPC:
                         dieToNpc();
-                        plugin.lockCondition.unlock();
                         handleBanking();
                         break;
                     default:

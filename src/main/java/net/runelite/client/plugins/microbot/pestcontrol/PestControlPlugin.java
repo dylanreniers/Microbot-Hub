@@ -8,15 +8,7 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.pluginscheduler.api.SchedulablePlugin;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.AndCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LockCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LogicalCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.OrCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.event.PluginScheduleEntrySoftStopEvent;
-import net.runelite.client.plugins.microbot.util.Global;
 import net.runelite.client.plugins.pestcontrol.Portal;
 import net.runelite.client.ui.overlay.OverlayManager;
 
@@ -33,16 +25,16 @@ import static net.runelite.client.plugins.microbot.pestcontrol.PestControlScript
         tags = {"pest control", "minigames"},
         authors = { "Mocrosoft" },
         version = PestControlPlugin.version,
-		minClientVersion = "1.9.6",
+        minClientVersion = "2.1.0",
 		iconUrl = "https://chsami.github.io/Microbot-Hub/PestControlPlugin/assets/icon.png",
         cardUrl = "https://chsami.github.io/Microbot-Hub/PestControlPlugin/assets/card.png",
 		enabledByDefault = PluginConstants.DEFAULT_ENABLED,
         isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
-public class PestControlPlugin extends Plugin implements SchedulablePlugin {
+public class PestControlPlugin extends Plugin {
 
-	static final String version = "2.2.7";
+	static final String version = "2.2.8";
 
     @Inject
     PestControlScript pestControlScript;
@@ -53,43 +45,6 @@ public class PestControlPlugin extends Plugin implements SchedulablePlugin {
     @Provides
     PestControlConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(PestControlConfig.class);
-    }
-
-
-
-    @Override
-    public LogicalCondition getStartCondition() {
-        // Create conditions that determine when your plugin can start
-        // Return null if the plugin can start anytime
-        return null;
-    }
-
-    public LockCondition lockCondition = new LockCondition("Void insists you finish this round");
-
-
-    @Override
-    public LogicalCondition getStopCondition() {
-        // Create a new stop condition
-        OrCondition orCondition = new OrCondition();
-        AndCondition andCondition = new AndCondition();
-        andCondition.addCondition(orCondition);   // Other stop conditions
-        andCondition.addCondition(lockCondition); // Add the lock condition
-        return andCondition;
-    }
-
-    @Subscribe
-    public void onPluginScheduleEntrySoftStopEvent(PluginScheduleEntrySoftStopEvent event) {
-        if (event.getPlugin() == this) {
-            Microbot.log("Scheduler about to turn off Pest Control");
-            if(pestControlScript.isInBoat()) {
-                Microbot.log("Getting off boat");
-                pestControlScript.exitBoat();
-                Global.sleepUntil(pestControlScript::isOutside, 5000);
-            }
-            Microbot.log("Reached outside");
-            pestControlScript.shutdown();
-            Microbot.stopPlugin(this);
-        }
     }
 
     @Inject

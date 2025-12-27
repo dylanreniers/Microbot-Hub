@@ -32,4 +32,4 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build JARs
-        run: ./gradlew clean build -x publish
+        run: ./gradlew clean build

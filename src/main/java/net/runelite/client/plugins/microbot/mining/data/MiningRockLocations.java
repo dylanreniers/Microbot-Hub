@@ -7,8 +7,6 @@ import net.runelite.api.QuestState;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ItemID;
-import net.runelite.client.plugins.microbot.pluginscheduler.tasks.requirements.requirement.location.LocationOption;
-import net.runelite.client.plugins.microbot.pluginscheduler.tasks.requirements.requirement.location.ResourceLocationOption;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 
 import java.util.ArrayList;
@@ -139,7 +137,7 @@ public class MiningRockLocations {
         }
 
         // Filter by minimum resource requirements
-        List<ResourceLocationOption> suitableLocations = accessibleLocations.stream()
+        List<net.runelite.client.plugins.microbot.mining.data.ResourceLocationOption> suitableLocations = accessibleLocations.stream()
                 .filter(location -> location.hasMinimumResources(minResources))
                 .collect(Collectors.toList());
 

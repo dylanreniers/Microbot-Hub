@@ -11,10 +11,6 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.pluginscheduler.api.SchedulablePlugin;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.AndCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LogicalCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.event.PluginScheduleEntrySoftStopEvent;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
 import net.runelite.client.plugins.microbot.util.antiban.enums.Activity;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -28,15 +24,15 @@ import java.awt.*;
         tags = {"mm", "ranging", "revenant killer"}, // Tags to categorize the plugin (optional, default is '')
         authors = { "Gage" }, // Author(s) of the plugin (optional, default is "Unknown Author")
         version = revKillerPlugin.version, // Version of the plugin (required)
-        minClientVersion = "1.9.8", // Minimum client version required to run the plugin (required)
+        minClientVersion = "2.1.0",
         iconUrl = "https://chsami.github.io/Microbot-Hub/revKillerPlugin/assets/icon.png", // URL to plugin icon shown in client (optional)
         cardUrl = "https://chsami.github.io/Microbot-Hub/revKillerPlugin/assets/card.png", // URL to plugin card image for website (optional)
         enabledByDefault = PluginConstants.DEFAULT_ENABLED, // Whether the plugin is enabled by default
         isExternal = PluginConstants.IS_EXTERNAL // Whether the plugin is external
 )
 @Slf4j
-public class revKillerPlugin extends Plugin implements SchedulablePlugin {
-    public static final String version = "2.0.6";
+public class revKillerPlugin extends Plugin {
+    public static final String version = "2.0.8";
     @Inject
     private net.runelite.client.plugins.microbot.revkiller.revKillerConfig config;
     @Provides
@@ -51,7 +47,6 @@ public class revKillerPlugin extends Plugin implements SchedulablePlugin {
 
     @Inject
     net.runelite.client.plugins.microbot.revkiller.revKillerScript revKillerScript;
-    LogicalCondition stopCondition = new AndCondition();
 
     @Inject
     private EventBus eventBus;
@@ -95,22 +90,6 @@ public class revKillerPlugin extends Plugin implements SchedulablePlugin {
         if (event.getActor().equals(Microbot.getClient().getLocalPlayer())) {
             revKillerScript.weDied = true;
         }
-    }
-
-    @Subscribe
-    public void onPluginScheduleEntrySoftStopEvent(PluginScheduleEntrySoftStopEvent event) {
-        try{
-            if (event.getPlugin() == this) {
-                Microbot.stopPlugin(this);
-            }
-        } catch (Exception e) {
-            log.error("Error stopping plugin: ", e);
-        }
-    }
-    @Override
-    public LogicalCondition getStopCondition() {
-        // Create a new stop condition
-        return this.stopCondition;
     }
 
     int ticks = 10;

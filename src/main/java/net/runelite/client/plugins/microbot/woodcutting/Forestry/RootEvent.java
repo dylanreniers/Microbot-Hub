@@ -11,7 +11,6 @@ import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
-import net.runelite.client.plugins.microbot.util.tileobject.Rs2TileObjectApi;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.woodcutting.AutoWoodcuttingPlugin;
 import net.runelite.client.plugins.microbot.woodcutting.enums.ForestryEvents;
@@ -30,8 +29,8 @@ public class RootEvent implements BlockingEvent {
         try{
             if (plugin == null || !Microbot.isPluginEnabled(plugin)) return false;
             if (Microbot.getClient() == null || !Microbot.isLoggedIn()) return false;
-            var root = Rs2TileObjectApi.getNearest(x -> x.getId() == ObjectID.GATHERING_EVENT_RISING_ROOTS);
-            var specialRoot = Rs2TileObjectApi.getNearest(x -> x.getId() == ObjectID.GATHERING_EVENT_RISING_ROOTS_SPECIAL);
+            var root = plugin.rs2TileObjectCache.query().where(x -> x.getId() == ObjectID.GATHERING_EVENT_RISING_ROOTS).nearest();
+            var specialRoot = plugin.rs2TileObjectCache.query().where(x -> x.getId() == ObjectID.GATHERING_EVENT_RISING_ROOTS_SPECIAL).nearest();
 
             // Is the hasAction Check needed?
             // If special root is present
@@ -55,8 +54,8 @@ public class RootEvent implements BlockingEvent {
         plugin.currentForestryEvent = ForestryEvents.TREE_ROOT;
         Rs2Walker.setTarget(null); // stop walking, stop moving to bank for example
         while (this.validate()) {
-            var root = Rs2TileObjectApi.getNearest(x -> x.getId() == ObjectID.GATHERING_EVENT_RISING_ROOTS);
-            var specialRoot = Rs2TileObjectApi.getNearest(x -> x.getId() == ObjectID.GATHERING_EVENT_RISING_ROOTS_SPECIAL);
+            var root = plugin.rs2TileObjectCache.query().where(x -> x.getId() == ObjectID.GATHERING_EVENT_RISING_ROOTS).nearest();
+            var specialRoot = plugin.rs2TileObjectCache.query().where(x -> x.getId() == ObjectID.GATHERING_EVENT_RISING_ROOTS_SPECIAL).nearest();
 
             // Use special attack if available
             if ( Rs2Equipment.isWearing(ItemID.DRAGON_AXE) || Rs2Equipment.isWearing(ItemID.DRAGON_AXE_2H) || Rs2Equipment.isWearing(ItemID.CRYSTAL_AXE) ||

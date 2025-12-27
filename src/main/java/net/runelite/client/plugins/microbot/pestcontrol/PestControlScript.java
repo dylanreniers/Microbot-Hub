@@ -106,7 +106,6 @@ public class PestControlScript extends Script {
                     }
                 }
                 if (isInPestControl) {
-                    plugin.lockCondition.lock();
                     initialise = false;
                     if (!isQuickPrayerEnabled() && Microbot.getClient().getBoostedSkillLevel(Skill.PRAYER) != 0 && config.quickPrayer()) {
                         final Widget prayerOrb = Rs2Widget.getWidget(ComponentID.MINIMAP_QUICK_PRAYER_ORB);
@@ -173,7 +172,6 @@ public class PestControlScript extends Script {
                     }
 
                 } else {
-                    plugin.lockCondition.unlock();
                     Rs2Walker.setTarget(null);
                     resetPortals();
                     walkToCenter = false;
@@ -218,7 +216,6 @@ public class PestControlScript extends Script {
         }
 
         if (!inventorySetup.loadEquipment() || !inventorySetup.loadInventory()) {
-            plugin.reportFinished("Failed to load inventory setup", false);
             return false;
         }
 

@@ -7,12 +7,7 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.pluginscheduler.api.SchedulablePlugin;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.AndCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LogicalCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.event.PluginScheduleEntryPostScheduleTaskEvent;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 import javax.inject.Inject;
@@ -27,45 +22,20 @@ import java.awt.*;
         tags = {"Farming", "Tree run"},
         authors = {"Acun"},
         version = FarmTreeRunPlugin.version,
-        minClientVersion = "2.0.7",
+        minClientVersion = "2.1.0",
         cardUrl = "https://chsami.github.io/Microbot-Hub/FarmTreeRunPlugin/assets/card.jpg",
         iconUrl = "https://chsami.github.io/Microbot-Hub/FarmTreeRunPlugin/assets/icon.jpg",
         enabledByDefault = PluginConstants.DEFAULT_ENABLED,
         isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
-public class FarmTreeRunPlugin extends Plugin implements SchedulablePlugin {
-    public static final String version = "1.0.1";
+public class FarmTreeRunPlugin extends Plugin {
+    public static final String version = "1.1.0";
     @Inject
     private FarmTreeRunConfig config;
     @Provides
     FarmTreeRunConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(FarmTreeRunConfig.class);
-    }
-    private LogicalCondition stopCondition = new AndCondition();
-
-    @Override
-    public LogicalCondition getStartCondition() {
-        // Create conditions that determine when your plugin can start
-        // Return null if the plugin can start anytime
-        return null;
-    }
-
-    @Override
-    public LogicalCondition getStopCondition() {
-        // Create a new stop condition
-
-        return this.stopCondition;
-    }
-
-    @Subscribe
-    public void onPluginScheduleEntryPostScheduleTaskEvent(PluginScheduleEntryPostScheduleTaskEvent event) {
-        if (event.getPlugin() == this) {
-            if (FarmTreeRunScript != null && FarmTreeRunScript.isRunning()) {
-                FarmTreeRunScript.shutdown();
-            }
-            Microbot.getClientThread().invokeLater( ()->  {Microbot.stopPlugin(this); return true;});
-        }
     }
 
     @Inject

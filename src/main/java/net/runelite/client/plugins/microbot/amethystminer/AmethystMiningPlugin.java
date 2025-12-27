@@ -21,14 +21,14 @@ import java.awt.*;
         description = "Automates mining amethyst in the mining guild",
         tags = {"mining", "amethyst", "mining guild"},
         version = AmethystMiningPlugin.version,
-        minClientVersion = "2.0.13",
+        minClientVersion = "2.1.0",
         cardUrl = "",
         iconUrl = "",
         enabledByDefault = PluginConstants.DEFAULT_ENABLED,
         isExternal = PluginConstants.IS_EXTERNAL
 )
 public class AmethystMiningPlugin extends Plugin {
-    public static final String version = "1.2.2";
+    public static final String version = "1.2.3";
     @Inject
     private OverlayManager overlayManager;
     @Inject

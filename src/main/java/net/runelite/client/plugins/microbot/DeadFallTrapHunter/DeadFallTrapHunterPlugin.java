@@ -15,13 +15,7 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.hunter.HunterTrap;
-import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.pluginscheduler.api.SchedulablePlugin;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.AndCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LogicalCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.event.PluginScheduleEntryPostScheduleTaskEvent;
-import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.misc.TimeUtils;
 import net.runelite.client.ui.overlay.OverlayManager;
 
@@ -37,13 +31,13 @@ import java.util.Map;
         description = "Automates hunting all creatures with Deadfall traps",
         tags = {"hunter", "deadfall", "skilling", "xp", "loot", "TaF"},
         version = DeadFallTrapHunterPlugin.version,
-        minClientVersion = "2.0.13",
+        minClientVersion = "2.1.0",
         cardUrl = "",
         iconUrl = "",
         enabledByDefault = PluginConstants.DEFAULT_ENABLED,
         isExternal = PluginConstants.IS_EXTERNAL
 )
-public class DeadFallTrapHunterPlugin extends Plugin implements SchedulablePlugin {
+public class DeadFallTrapHunterPlugin extends Plugin {
 
     public final static String version = "1.1.0";
 
@@ -61,7 +55,6 @@ public class DeadFallTrapHunterPlugin extends Plugin implements SchedulablePlugi
     private DeadFallTrapInventoryHandlerScript looter;
     private WorldPoint lastTickLocalPlayerLocation;
     private Instant scriptStartTime;
-    private LogicalCondition stopCondition = new AndCondition();
 
     @Provides
     DeadFallTrapHunterConfig provideConfig(ConfigManager configManager) {
@@ -223,21 +216,5 @@ public class DeadFallTrapHunterPlugin extends Plugin implements SchedulablePlugi
         }
 
         lastTickLocalPlayerLocation = client.getLocalPlayer().getWorldLocation();
-    }
-
-    @Subscribe
-    public void onPluginScheduleEntryPostScheduleTaskEvent(PluginScheduleEntryPostScheduleTaskEvent event) {
-        if (event.getPlugin() == this) {
-            if (script != null) {
-                Rs2Bank.walkToBank();
-            }
-            Microbot.stopPlugin(this);
-        }
-    }
-
-    @Override
-    public LogicalCondition getStopCondition() {
-        // Create a new stop condition
-        return this.stopCondition;
     }
 }

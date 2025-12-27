@@ -343,7 +343,6 @@ public class FarmTreeRunScript extends Script {
 							}
 						);
 						shutdown();
-						plugin.reportFinished("Scheduled with Wassuppzzz", true);
 						break;
 				}
 
@@ -362,7 +361,6 @@ public class FarmTreeRunScript extends Script {
         if (getSelectedTreePatches(config).isEmpty() && getSelectedFruitTreePatches(config).isEmpty() && getSelectedHardTreePatches(config).isEmpty()) {
             Microbot.showMessage("You must select at least one patch. Shut down.");
             shutdown();
-            plugin.reportFinished("Patch failure", false);
 
         }
     }
@@ -549,7 +547,6 @@ public class FarmTreeRunScript extends Script {
                 if (!toggled || !Rs2Bank.hasWithdrawAsItem()) {
                     Microbot.log("Failed to toggle bank to item mode");
                     shutdown();
-                    plugin.reportFinished("Failed to toggle bank withdraw mode", false);
                     return;
                 }
             }
@@ -570,7 +567,6 @@ public class FarmTreeRunScript extends Script {
                 if (!toggled || !Rs2Bank.hasWithdrawAsNote()) {
                     Microbot.log("Failed to toggle bank to noted mode");
                     shutdown();
-                    plugin.reportFinished("Failed to toggle bank withdraw mode", false);
                     return;
                 }
                 sleep(300, 900);
@@ -597,7 +593,6 @@ public class FarmTreeRunScript extends Script {
             Microbot.showMessage("Not enough items: " + Microbot.getClientThread().runOnClientThreadOptional(() -> Microbot.getClient().getItemDefinition(item.getItemId()).getName()) + ". " +
                     "Need " + item.getQuantity() + ". Shut down.");
             shutdown();
-            plugin.reportFinished("Inventory failed", false);
 
         }
     }
@@ -606,7 +601,6 @@ public class FarmTreeRunScript extends Script {
         if (!Rs2Bank.hasItem(new int[]{itemId}, quantity) && !optional) {
             Microbot.showMessage("Not enough items: " + Microbot.getClientThread().runOnClientThreadOptional(() -> Microbot.getClient().getItemDefinition(itemId).getName()) + ". Need " + quantity + ". Shut down.");
             shutdown();
-            plugin.reportFinished("Inventory failed", false);
         }
     }
 
@@ -746,7 +740,6 @@ public class FarmTreeRunScript extends Script {
                 return true;
             }
             shutdown();
-            plugin.reportFinished("Failed gardener money payment.", false);
 
             System.out.println("Failed gardener money payment.");
             return false;
@@ -1022,7 +1015,6 @@ public class FarmTreeRunScript extends Script {
         if (rosie == null && nikkie == null) {
             Microbot.log("Gardeners in farming guild not found. Report this bug.");
             shutdown();
-            plugin.reportFinished("Gardeners in farming guild not found", false);
 
         } else if (nikkie != null && Rs2Player.distanceTo(nikkie.getWorldLocation()) <= 10) {
             npcToInteract = nikkie;

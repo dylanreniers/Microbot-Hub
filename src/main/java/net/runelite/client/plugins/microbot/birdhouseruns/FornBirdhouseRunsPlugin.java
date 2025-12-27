@@ -3,15 +3,9 @@ package net.runelite.client.plugins.microbot.birdhouseruns;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.config.ConfigManager;
-import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.pluginscheduler.api.SchedulablePlugin;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.AndCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.condition.logical.LogicalCondition;
-import net.runelite.client.plugins.microbot.pluginscheduler.event.PluginScheduleEntryPostScheduleTaskEvent;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 import javax.inject.Inject;
@@ -24,15 +18,15 @@ import java.awt.*;
         tags = {"FornBirdhouseRuns", "forn"},
         authors = {"Forn"},
         version = FornBirdhouseRunsPlugin.version,
-        minClientVersion = "2.0.7",
+        minClientVersion = "2.1.0",
         enabledByDefault = PluginConstants.DEFAULT_ENABLED,
         isExternal = PluginConstants.IS_EXTERNAL,
         iconUrl = "https://chsami.github.io/Microbot-Hub/FornBirdhouseRunsPlugin/assets/icon.jpg",
         cardUrl = "https://chsami.github.io/Microbot-Hub/FornBirdhouseRunsPlugin/assets/card.jpg"
 )
 @Slf4j
-public class FornBirdhouseRunsPlugin extends Plugin implements SchedulablePlugin {
-    final static String version = "1.0.0";
+public class FornBirdhouseRunsPlugin extends Plugin {
+    final static String version = "1.1.0";
     @Provides
     FornBirdhouseRunsConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(FornBirdhouseRunsConfig.class);
@@ -44,7 +38,6 @@ public class FornBirdhouseRunsPlugin extends Plugin implements SchedulablePlugin
     private FornBirdhouseRunsOverlay fornBirdhouseRunsOverlay;
     @Inject
     FornBirdhouseRunsScript fornBirdhouseRunsScript;
-    LogicalCondition stopCondition = new AndCondition();
 
     @Override
     protected void startUp() throws AWTException {
@@ -57,22 +50,5 @@ public class FornBirdhouseRunsPlugin extends Plugin implements SchedulablePlugin
     protected void shutDown() {
         fornBirdhouseRunsScript.shutdown();
         overlayManager.remove(fornBirdhouseRunsOverlay);
-    }
-
-    @Subscribe
-    public void onPluginScheduleEntryPostScheduleTaskEvent(PluginScheduleEntryPostScheduleTaskEvent event) {
-        try {
-            if (event.getPlugin() == this) {
-                Microbot.stopPlugin(this);
-            }
-        } catch (Exception e) {
-            log.error("Error stopping plugin: ", e);
-        }
-    }
-
-    @Override
-    public LogicalCondition getStopCondition() {
-        // Create a new stop condition        
-        return this.stopCondition;
     }
 }

@@ -207,13 +207,17 @@ ext {
                 def jarFile = new File(jarOutputDir, "${plugin.name}-${descriptorInfo.version}.jar")
                 parsed.sha256 = computeSHA256(jarFile)
 
-                // Add Nexus URL using centralized config
-                def nexusBase = project.ext.getNexusPluginsUrl()
-                if (nexusBase.endsWith('/')) {
-                    nexusBase = nexusBase.substring(0, nexusBase.length() - 1)
+                // Add GitHub Releases URL using centralized config
+                def releaseBase = project.ext.getGithubPluginsBaseUrl()
+                if (releaseBase.endsWith('/')) {
+                    releaseBase = releaseBase.substring(0, releaseBase.length() - 1)
+                }
+                def releaseTag = project.ext.getGithubPluginsReleaseTag()
+                if (releaseTag.endsWith('/')) {
+                    releaseTag = releaseTag.substring(0, releaseTag.length() - 1)
                 }
                 def pluginId = plugin.name.toLowerCase()
-                parsed.url = "${nexusBase}/${project.ext.MAVEN_GROUP_ID.replace('.', '/')}/${pluginId}/${descriptorInfo.version}/${pluginId}-${descriptorInfo.version}.jar"
+                parsed.url = "${releaseBase}/${releaseTag}/${pluginId}-${descriptorInfo.version}.jar"
 
                 plugins << parsed
                 logger.info("✅ Plugin ${plugin.name} processed successfully")

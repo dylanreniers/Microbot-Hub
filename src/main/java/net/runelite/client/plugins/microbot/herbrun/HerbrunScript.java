@@ -65,7 +65,6 @@ public class HerbrunScript extends Script {
                 if (!sleepUntil(() -> !herbPatches.isEmpty(), 1000)) {
                     // If still empty after timeout, check once more to handle edge cases
                     if (herbPatches.isEmpty()) {                                        
-                        plugin.reportFinished("No herb patches ready to farm",true);
                         return;
                     }
                 }
@@ -75,7 +74,6 @@ public class HerbrunScript extends Script {
                     if (!inventorySetup.doesInventoryMatch() || !inventorySetup.doesEquipmentMatch()) {
                         Rs2Walker.walkTo(Rs2Bank.getNearestBank().getWorldPoint(), 20);
                         if (!inventorySetup.loadEquipment() || !inventorySetup.loadInventory()) {                        
-                            plugin.reportFinished("Failed to load inventory setup",false);
                             return;
                         }
                         Rs2Bank.closeBank();
@@ -83,7 +81,6 @@ public class HerbrunScript extends Script {
                 } else {
                     // Auto banking mode
                     if (!setupAutoInventory()) {
-                        plugin.reportFinished("Failed to setup inventory",false);
                         return;
                     }
                 }
@@ -104,7 +101,6 @@ public class HerbrunScript extends Script {
                     Rs2Bank.depositAll();
                 }
                 HerbrunPlugin.status = "Finished";
-                plugin.reportFinished("Herb run finished",true);
                 return;
             }
 

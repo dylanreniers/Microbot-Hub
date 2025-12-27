@@ -4,13 +4,11 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ItemID;
-import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.blastoisefurnace.enums.Bars;
 import net.runelite.client.plugins.microbot.blastoisefurnace.enums.State;
 import net.runelite.client.plugins.microbot.breakhandler.BreakHandlerScript;
-import net.runelite.client.plugins.microbot.pluginscheduler.SchedulerPlugin;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2AntibanSettings;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
@@ -30,7 +28,6 @@ import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
 import javax.inject.Inject;
 import java.awt.event.KeyEvent;
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -628,21 +625,6 @@ public class BlastoiseFurnaceScript extends Script {
     }
 
     public int evaluateCofferDeposit() {
-        Plugin plugin = Microbot.getPlugin(SchedulerPlugin.class.getName());
-        assert plugin instanceof SchedulerPlugin : "Invalid scheduler plugin";
-        SchedulerPlugin scheduler = (SchedulerPlugin) plugin;
-        Optional<Duration> estimatedTime = scheduler.getUpComingEstimatedScheduleTime();
-        if (estimatedTime.isPresent()) {
-            Duration untilNext = estimatedTime.get();
-            if (untilNext == null || untilNext.isZero() || untilNext.isNegative()) {
-                untilNext = scheduler.getTimeUntilNextBreak();
-            }
-            if (untilNext != null && !untilNext.isZero() && !untilNext.isNegative()) {
-                long millis = untilNext.toMillis();
-                assert millis >= 0 : "Negative duration";
-                return (int) Math.ceil(millis * 0.2); // 1 ms = 0.2 gold
-            }
-        }
         if (BreakHandlerScript.breakIn > 0) {
             return BreakHandlerScript.breakIn * 20;
         }

@@ -13,10 +13,11 @@ project.ext.DOCS_OUTPUT_PATH = 'public/docs'
 // Relative path for source set
 project.ext.PLUGINS_INCLUDE_PATH = 'net/runelite/client/plugins/microbot'
 
-// Nexus configuration
-project.ext.NEXUS_BASE_URL = 'https://nexus.microbot.cloud/repository'
-project.ext.NEXUS_NIGHTLY_REPO = 'microbot-nightly'
-project.ext.NEXUS_PLUGINS_REPO = 'microbot-plugins'
+// GitHub release configuration
+project.ext.GITHUB_CLIENT_RELEASE_BASE_URL = 'https://github.com/chsami/Microbot/releases/download'
+project.ext.GITHUB_PLUGINS_RELEASE_BASE_URL = 'https://github.com/chsami/Microbot-Hub/releases/download'
+project.ext.MICROBOT_CLIENT_VERSION_ENDPOINT = 'https://microbot.cloud/api/version/client'
+project.ext.GITHUB_PLUGINS_RELEASE_TAG = 'latest-release'
 
 // Plugin defaults
 project.ext.DEFAULT_VERSION = '1.0.0'
@@ -25,11 +26,55 @@ project.ext.DEFAULT_SUPPORT_URL = 'https://github.com/chsami/microbot'
 
 // Maven publication
 project.ext.MAVEN_GROUP_ID = 'net.runelite.client.plugins.microbot'
+project.ext.MICROBOT_CLIENT_VERSION = '2.0.61'
 
 // Helper functions for accessing config
 project.ext.getPluginsSourcePath = { -> project.ext.PLUGINS_SOURCE_PATH }
 project.ext.getPluginsResourcePath = { -> project.ext.PLUGINS_RESOURCE_PATH }
 project.ext.getPluginsIncludePath = { -> project.ext.PLUGINS_INCLUDE_PATH }
 project.ext.getDocsOutputPath = { -> project.ext.DOCS_OUTPUT_PATH }
-project.ext.getNexusNightlyUrl = { -> "${project.ext.NEXUS_BASE_URL}/${project.ext.NEXUS_NIGHTLY_REPO}/" }
-project.ext.getNexusPluginsUrl = { -> "${project.ext.NEXUS_BASE_URL}/${project.ext.NEXUS_PLUGINS_REPO}/" }
+project.ext.getGithubClientBaseUrl = { -> project.ext.GITHUB_CLIENT_RELEASE_BASE_URL }
+project.ext.getGithubPluginsBaseUrl = { -> project.ext.GITHUB_PLUGINS_RELEASE_BASE_URL }
+project.ext.getGithubPluginsReleaseTag = { -> project.findProperty("pluginsReleaseTag") ?: project.ext.GITHUB_PLUGINS_RELEASE_TAG }
+project.ext.fetchLatestMicrobotClientVersion = {
+    if (project.gradle.startParameter.offline) {
+        project.logger.warn("⚠️ Offline mode: cannot fetch latest microbot client version; falling back to default ${project.ext.MICROBOT_CLIENT_VERSION}")
+        return null
+    }
+    try {
+        def url = new URL(project.ext.MICROBOT_CLIENT_VERSION_ENDPOINT)
+        def connection = url.openConnection()
+        connection.setRequestProperty('Accept', 'text/plain')
+        connection.connectTimeout = 3000
+        connection.readTimeout = 3000
+        def latestVersion = connection.inputStream.getText('UTF-8')?.trim()
+        if (latestVersion) {
+            project.logger.lifecycle("🤖 Fetched latest microbot client version: ${latestVersion}")
+            return latestVersion
+        }
+    } catch (Exception e) {
+        project.logger.warn("⚠️ Unable to fetch latest microbot client version from ${project.ext.MICROBOT_CLIENT_VERSION_ENDPOINT}: ${e.message}")
+    }
+    return null
+}
+
+project.ext.getMicrobotClientVersion = {
+    def overrideVersion = project.findProperty("microbotClientVersion")
+    if (overrideVersion) {
+        if (overrideVersion.toString().equalsIgnoreCase("latest")) {
+            def resolved = project.ext.fetchLatestMicrobotClientVersion()
+            if (resolved) {
+                return resolved
+            }
+            project.logger.warn("⚠️ Falling back to default microbot client version ${project.ext.MICROBOT_CLIENT_VERSION}")
+        } else {
+            return overrideVersion
+        }
+    }
+    def latest = project.ext.fetchLatestMicrobotClientVersion()
+    if (latest) {
+        return latest
+    }
+    project.logger.warn("⚠️ Falling back to default microbot client version ${project.ext.MICROBOT_CLIENT_VERSION}")
+    return project.ext.MICROBOT_CLIENT_VERSION
+}

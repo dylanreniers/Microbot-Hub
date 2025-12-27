@@ -8,9 +8,9 @@ import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.mining.data.LocationOption;
 import net.runelite.client.plugins.microbot.mining.data.MiningRockLocations;
 import net.runelite.client.plugins.microbot.mining.data.Rocks;
-import net.runelite.client.plugins.microbot.pluginscheduler.tasks.requirements.requirement.location.LocationOption;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2AntibanSettings;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
@@ -158,11 +158,10 @@ public class AutoMiningScript extends Script {
                                     }
                                     Rs2DepositBox.closeDepositBox();
                                 }
-                            }
-                            else if (Rocks.BASALT == activeRock) {
-                                if (Rs2Walker.walkTo(2872,3935,0)){
+                            } else if (Rocks.BASALT == activeRock) {
+                                if (Rs2Walker.walkTo(2872, 3935, 0)) {
                                     Rs2Inventory.useItemOnNpc(ItemID.BASALT, NpcID.MY2ARM_SNOWFLAKE);
-                                    Rs2Walker.walkTo(2841,10339,0);
+                                    Rs2Walker.walkTo(2841, 10339, 0);
                                 }
                             } else {
                                 if (!Rs2Bank.bankItemsAndWalkBackToOriginalPosition(itemNames, initialPlayerLocation, 0, config.distanceToStray()))
@@ -184,7 +183,7 @@ public class AutoMiningScript extends Script {
     }
 
     @Override
-    public void shutdown(){
+    public void shutdown() {
         super.shutdown();
         Rs2Antiban.resetAntibanSettings();
     }
