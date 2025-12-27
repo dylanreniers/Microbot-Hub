@@ -1,4 +1,4 @@
-name: Build and Publish Plugins
+name: Build and Publish Plugins (main)
 
 on:
   push:
@@ -8,6 +8,8 @@ on:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # required for release creation and gh-pages push
 
     env:
       CI: true
