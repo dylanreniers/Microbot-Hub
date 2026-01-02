@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.fletching.enums;
+package net.runelite.client.plugins.microbot.custom.fletching.enums;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;

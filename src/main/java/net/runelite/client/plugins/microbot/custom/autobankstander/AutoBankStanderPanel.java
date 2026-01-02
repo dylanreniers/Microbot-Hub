@@ -1,23 +1,23 @@
-package net.runelite.client.plugins.microbot.autobankstander;
+package net.runelite.client.plugins.microbot.custom.autobankstander;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Skill;
 import net.runelite.client.game.SkillIconManager;
-import net.runelite.client.plugins.microbot.autobankstander.config.ConfigData;
-import net.runelite.client.plugins.microbot.autobankstander.processors.SkillType;
-import net.runelite.client.plugins.microbot.autobankstander.skills.herblore.enums.CleanHerbMode;
-import net.runelite.client.plugins.microbot.autobankstander.skills.herblore.enums.HerblorePotion;
-import net.runelite.client.plugins.microbot.autobankstander.skills.herblore.enums.Mode;
-import net.runelite.client.plugins.microbot.autobankstander.skills.herblore.enums.UnfinishedPotionMode;
-import net.runelite.client.plugins.microbot.autobankstander.skills.magic.MagicMethod;
-import net.runelite.client.plugins.microbot.autobankstander.skills.magic.enchanting.BoltType;
-import net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums.FletchingMode;
-import net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums.ArrowType;
-import net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums.BowType;
-import net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums.CrossbowType;
-import net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums.DartType;
-import net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums.JavelinType;
-import net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums.ShieldType;
+import net.runelite.client.plugins.microbot.custom.autobankstander.config.ConfigData;
+import net.runelite.client.plugins.microbot.custom.autobankstander.processors.SkillType;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums.ArrowType;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums.BowType;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums.CrossbowType;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums.DartType;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums.FletchingMode;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums.JavelinType;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums.ShieldType;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.herblore.enums.CleanHerbMode;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.herblore.enums.HerblorePotion;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.herblore.enums.Mode;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.herblore.enums.UnfinishedPotionMode;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.magic.MagicMethod;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.magic.enchanting.BoltType;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
@@ -39,13 +39,13 @@ public class AutoBankStanderPanel extends PluginPanel {
         FLETCHING(Skill.FLETCHING),
         HERBLORE(Skill.HERBLORE),
         COOKING(Skill.COOKING);
-        
+
         private final Skill skill;
-        
+
         BankStandingSkill(Skill skill) {
             this.skill = skill;
         }
-        
+
         public Skill getSkill() {
             return skill;
         }
@@ -53,7 +53,7 @@ public class AutoBankStanderPanel extends PluginPanel {
 
     private final AutoBankStanderPlugin plugin;
     private final SkillIconManager iconManager;
-    
+
     // ui components
     private JLabel titleLabel;
     private MaterialTabGroup skillTabGroup;
@@ -62,7 +62,7 @@ public class AutoBankStanderPanel extends PluginPanel {
     private JPanel configurationPanel;
     private JButton startStopButton;
     private JLabel statusLabel;
-    
+
     // current configuration state
     private ConfigData currentConfig = new ConfigData();
     private BankStandingSkill selectedBankSkill = BankStandingSkill.MAGIC;
@@ -73,23 +73,23 @@ public class AutoBankStanderPanel extends PluginPanel {
         super();
         this.plugin = plugin;
         this.iconManager = iconManager;
-        
+
         setBorder(new EmptyBorder(10, 10, 10, 10));
         setLayout(new GridBagLayout());
-        
+
         // load current configuration from plugin
         loadCurrentConfiguration();
-        
+
         initializeComponents();
         layoutComponents();
-        
+
         // select initial skill tab and update display
         if (currentTab != null) {
             skillTabGroup.select(currentTab);
         }
         selectSkillTab(selectedBankSkill);
     }
-    
+
     private void loadCurrentConfiguration() {
         // get current configuration from plugin (may be default if none set)
         ConfigData pluginConfig = plugin.getCurrentConfig();
@@ -114,11 +114,11 @@ public class AutoBankStanderPanel extends PluginPanel {
         titleLabel.setHorizontalAlignment(SwingConstants.CENTER);
         titleLabel.setFont(FontManager.getRunescapeBoldFont().deriveFont(FontManager.getRunescapeBoldFont().getSize() * 1.5f));
         titleLabel.setBorder(new EmptyBorder(0, 0, 10, 0));
-        
+
         // skill icon tabs (like skill calculator)
         skillTabGroup = new MaterialTabGroup();
         skillTabGroup.setLayout(new GridLayout(1, 5, 7, 7)); // 5 skills in 1 row
-        
+
         // add skill tabs for the 5 selected skills
         for (BankStandingSkill bankSkill : BankStandingSkill.values()) {
             ImageIcon icon = new ImageIcon(iconManager.getSkillImage(bankSkill.getSkill(), true));
@@ -128,23 +128,23 @@ public class AutoBankStanderPanel extends PluginPanel {
                 return true;
             });
             skillTabGroup.addTab(tab);
-            
+
             // select initial tab
             if (bankSkill == selectedBankSkill) {
                 currentTab = tab;
             }
         }
-        
+
         // method button panel for 2-column grid
         methodButtonPanel = new JPanel();
         methodButtonPanel.setBorder(new EmptyBorder(15, 0, 10, 0));
-        
+
         // configuration panel for method-specific options
         configurationPanel = new JPanel();
         configurationPanel.setLayout(new BoxLayout(configurationPanel, BoxLayout.Y_AXIS));
         configurationPanel.setBorder(new EmptyBorder(10, 0, 15, 0));
         configurationPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-        
+
         // start/stop button
         startStopButton = new JButton("Start");
         startStopButton.setFont(FontManager.getRunescapeBoldFont());
@@ -152,7 +152,7 @@ public class AutoBankStanderPanel extends PluginPanel {
         startStopButton.setForeground(Color.WHITE);
         startStopButton.setFocusPainted(false);
         startStopButton.addActionListener(e -> onStartStopClicked());
-        
+
         // status label
         statusLabel = new JLabel("");
         statusLabel.setFont(FontManager.getRunescapeSmallFont());
@@ -169,19 +169,19 @@ public class AutoBankStanderPanel extends PluginPanel {
         // title at top
         add(titleLabel, c);
         c.gridy++;
-        
+
         // skill tabs
         add(skillTabGroup, c);
         c.gridy++;
-        
+
         // method button panel
         add(methodButtonPanel, c);
         c.gridy++;
-        
+
         // configuration panel
         add(configurationPanel, c);
         c.gridy++;
-        
+
         // spacer to push status/button to bottom
         c.weighty = 1.0;
         c.fill = GridBagConstraints.BOTH;
@@ -189,18 +189,18 @@ public class AutoBankStanderPanel extends PluginPanel {
         c.gridy++;
         c.weighty = 0;
         c.fill = GridBagConstraints.HORIZONTAL;
-        
+
         // status label
         add(statusLabel, c);
         c.gridy++;
-        
+
         // start/stop button
         add(startStopButton, c);
     }
-    
+
     private void selectSkillTab(BankStandingSkill bankSkill) {
         selectedBankSkill = bankSkill;
-        
+
         // map to our SkillType enum for supported skills
         if (bankSkill == BankStandingSkill.MAGIC) {
             currentConfig.setSkill(SkillType.MAGIC);
@@ -215,15 +215,15 @@ public class AutoBankStanderPanel extends PluginPanel {
             // show coming soon for other skills
             showComingSoon(bankSkill.getSkill().getName());
         }
-        
+
         log.info("Selected skill: {}", bankSkill);
     }
-    
+
     private void updateMethodAndConfigArea() {
         methodButtonPanel.removeAll();
         configurationPanel.removeAll();
         selectedMethodButton = null;
-        
+
         if (selectedBankSkill == BankStandingSkill.MAGIC) {
             createMagicMethodButtons();
         } else if (selectedBankSkill == BankStandingSkill.HERBLORE) {
@@ -231,17 +231,17 @@ public class AutoBankStanderPanel extends PluginPanel {
         } else if (selectedBankSkill == BankStandingSkill.FLETCHING) {
             createFletchingMethodButtons();
         }
-        
+
         methodButtonPanel.revalidate();
         methodButtonPanel.repaint();
         configurationPanel.revalidate();
         configurationPanel.repaint();
     }
-    
+
     private void createMagicMethodButtons() {
         MagicMethod[] methods = MagicMethod.values();
         setupMethodButtonGrid(methodButtonPanel, methods.length);
-        
+
         for (MagicMethod method : methods) {
             JButton methodButton = createMethodButton(method.getDisplayName());
             methodButton.addActionListener(e -> {
@@ -252,7 +252,7 @@ public class AutoBankStanderPanel extends PluginPanel {
             });
             methodButtonPanel.add(methodButton);
         }
-        
+
         // auto-select first method if none selected
         if (currentConfig.getMagicMethod() != null) {
             // find and select the current method button
@@ -266,11 +266,11 @@ public class AutoBankStanderPanel extends PluginPanel {
             }
         }
     }
-    
+
     private void createHerbloreMethodButtons() {
         Mode[] methods = Mode.values();
         setupMethodButtonGrid(methodButtonPanel, methods.length);
-        
+
         for (Mode method : methods) {
             JButton methodButton = createMethodButton(method.toString());
             methodButton.addActionListener(e -> {
@@ -281,7 +281,7 @@ public class AutoBankStanderPanel extends PluginPanel {
             });
             methodButtonPanel.add(methodButton);
         }
-        
+
         // auto-select first method if none selected
         if (currentConfig.getHerbloreMode() != null) {
             // find and select the current method button
@@ -295,11 +295,11 @@ public class AutoBankStanderPanel extends PluginPanel {
             }
         }
     }
-    
+
     private void updateMagicConfiguration(MagicMethod method) {
         // remove existing config components
         removeConfigComponents();
-        
+
         switch (method) {
             case ENCHANTING:
                 JComboBox<BoltType> boltDropdown = new JComboBox<>(BoltType.values());
@@ -307,7 +307,7 @@ public class AutoBankStanderPanel extends PluginPanel {
                 boltDropdown.addActionListener(e -> {
                     currentConfig.setBoltType((BoltType) boltDropdown.getSelectedItem());
                 });
-                
+
                 JPanel boltPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 boltPanel.add(boltDropdown);
                 configurationPanel.add(boltPanel);
@@ -315,21 +315,21 @@ public class AutoBankStanderPanel extends PluginPanel {
             default:
                 JLabel placeholder = new JLabel(method.getDisplayName() + " configuration (coming soon)");
                 placeholder.setFont(FontManager.getRunescapeSmallFont());
-                
+
                 JPanel placeholderPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 placeholderPanel.add(placeholder);
                 configurationPanel.add(placeholderPanel);
                 break;
         }
-        
+
         configurationPanel.revalidate();
         configurationPanel.repaint();
     }
-    
+
     private void updateHerbloreConfiguration(Mode mode) {
         // remove existing config components
         removeConfigComponents();
-        
+
         switch (mode) {
             case CLEAN_HERBS:
                 JComboBox<CleanHerbMode> herbModeDropdown = new JComboBox<>(CleanHerbMode.values());
@@ -337,7 +337,7 @@ public class AutoBankStanderPanel extends PluginPanel {
                 herbModeDropdown.addActionListener(e -> {
                     currentConfig.setCleanHerbMode((CleanHerbMode) herbModeDropdown.getSelectedItem());
                 });
-                
+
                 JPanel herbPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 herbPanel.add(herbModeDropdown);
                 configurationPanel.add(herbPanel);
@@ -348,7 +348,7 @@ public class AutoBankStanderPanel extends PluginPanel {
                 potionModeDropdown.addActionListener(e -> {
                     currentConfig.setUnfinishedPotionMode((UnfinishedPotionMode) potionModeDropdown.getSelectedItem());
                 });
-                
+
                 JPanel potionPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 potionPanel.add(potionModeDropdown);
                 configurationPanel.add(potionPanel);
@@ -359,32 +359,32 @@ public class AutoBankStanderPanel extends PluginPanel {
                 potionDropdown.addActionListener(e -> {
                     currentConfig.setFinishedPotion((HerblorePotion) potionDropdown.getSelectedItem());
                 });
-                
+
                 JPanel finishedPotionPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 finishedPotionPanel.add(potionDropdown);
                 configurationPanel.add(finishedPotionPanel);
                 configurationPanel.add(Box.createRigidArea(new Dimension(0, 10)));
-                
+
                 JCheckBox amuletCheckbox = new JCheckBox("Use amulet of chemistry");
                 amuletCheckbox.setSelected(currentConfig.isUseAmuletOfChemistry());
                 amuletCheckbox.addActionListener(e -> {
                     currentConfig.setUseAmuletOfChemistry(amuletCheckbox.isSelected());
                 });
-                
+
                 JPanel checkboxPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 checkboxPanel.add(amuletCheckbox);
                 configurationPanel.add(checkboxPanel);
                 break;
         }
-        
+
         configurationPanel.revalidate();
         configurationPanel.repaint();
     }
-    
+
     private void createFletchingMethodButtons() {
         FletchingMode[] methods = FletchingMode.values();
         setupMethodButtonGrid(methodButtonPanel, methods.length);
-        
+
         for (FletchingMode method : methods) {
             JButton methodButton = createMethodButton(method.getDisplayName());
             methodButton.addActionListener(e -> {
@@ -396,7 +396,7 @@ public class AutoBankStanderPanel extends PluginPanel {
             });
             methodButtonPanel.add(methodButton);
         }
-        
+
         // auto-select current method if set
         if (currentConfig.getFletchingMode() != null) {
             Component[] components = methodButtonPanel.getComponents();
@@ -409,10 +409,10 @@ public class AutoBankStanderPanel extends PluginPanel {
             }
         }
     }
-    
+
     private void updateFletchingConfiguration(FletchingMode mode) {
         removeConfigComponents();
-        
+
         switch (mode) {
             case DARTS:
                 JComboBox<DartType> dartDropdown = new JComboBox<>(DartType.values());
@@ -420,49 +420,49 @@ public class AutoBankStanderPanel extends PluginPanel {
                 dartDropdown.addActionListener(e -> {
                     currentConfig.setDartType((DartType) dartDropdown.getSelectedItem());
                 });
-                
+
                 JPanel dartPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 dartPanel.add(dartDropdown);
                 configurationPanel.add(dartPanel);
                 break;
-                
+
             case BOLTS:
-                JComboBox<net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums.BoltType> fletchingBoltDropdown = 
-                    new JComboBox<>(net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums.BoltType.values());
+                JComboBox<net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums.BoltType> fletchingBoltDropdown =
+                    new JComboBox<>(net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums.BoltType.values());
                 fletchingBoltDropdown.setSelectedItem(currentConfig.getFletchingBoltType());
                 fletchingBoltDropdown.addActionListener(e -> {
-                    currentConfig.setFletchingBoltType((net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums.BoltType) fletchingBoltDropdown.getSelectedItem());
+                    currentConfig.setFletchingBoltType((net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums.BoltType) fletchingBoltDropdown.getSelectedItem());
                 });
-                
+
                 JPanel fletchingBoltPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 fletchingBoltPanel.add(fletchingBoltDropdown);
                 configurationPanel.add(fletchingBoltPanel);
                 break;
-                
+
             case ARROWS:
                 JComboBox<ArrowType> arrowDropdown = new JComboBox<>(ArrowType.values());
                 arrowDropdown.setSelectedItem(currentConfig.getArrowType());
                 arrowDropdown.addActionListener(e -> {
                     currentConfig.setArrowType((ArrowType) arrowDropdown.getSelectedItem());
                 });
-                
+
                 JPanel arrowPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 arrowPanel.add(arrowDropdown);
                 configurationPanel.add(arrowPanel);
                 break;
-                
+
             case JAVELINS:
                 JComboBox<JavelinType> javelinDropdown = new JComboBox<>(JavelinType.values());
                 javelinDropdown.setSelectedItem(currentConfig.getJavelinType());
                 javelinDropdown.addActionListener(e -> {
                     currentConfig.setJavelinType((JavelinType) javelinDropdown.getSelectedItem());
                 });
-                
+
                 JPanel javelinPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 javelinPanel.add(javelinDropdown);
                 configurationPanel.add(javelinPanel);
                 break;
-                
+
             case BOWS:
                 JComboBox<BowType> bowDropdown = new JComboBox<>(BowType.values());
                 bowDropdown.setSelectedItem(currentConfig.getBowType());
@@ -472,60 +472,60 @@ public class AutoBankStanderPanel extends PluginPanel {
                     currentConfig.setBowType(selected);
                     log.info("Config updated - bow type: {}", currentConfig.getBowType());
                 });
-                
+
                 JPanel bowPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 bowPanel.add(bowDropdown);
                 configurationPanel.add(bowPanel);
                 break;
-                
+
             case CROSSBOWS:
                 JComboBox<CrossbowType> crossbowDropdown = new JComboBox<>(CrossbowType.values());
                 crossbowDropdown.setSelectedItem(currentConfig.getCrossbowType());
                 crossbowDropdown.addActionListener(e -> {
                     currentConfig.setCrossbowType((CrossbowType) crossbowDropdown.getSelectedItem());
                 });
-                
+
                 JPanel crossbowPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 crossbowPanel.add(crossbowDropdown);
                 configurationPanel.add(crossbowPanel);
                 break;
-                
+
             case SHIELDS:
                 JComboBox<ShieldType> shieldDropdown = new JComboBox<>(ShieldType.values());
                 shieldDropdown.setSelectedItem(currentConfig.getShieldType());
                 shieldDropdown.addActionListener(e -> {
                     currentConfig.setShieldType((ShieldType) shieldDropdown.getSelectedItem());
                 });
-                
+
                 JPanel shieldPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 shieldPanel.add(shieldDropdown);
                 configurationPanel.add(shieldPanel);
                 break;
         }
-        
+
         configurationPanel.revalidate();
         configurationPanel.repaint();
     }
-    
+
     private void removeConfigComponents() {
         configurationPanel.removeAll();
     }
-    
+
     private void showComingSoon(String skillName) {
         methodButtonPanel.removeAll();
         configurationPanel.removeAll();
-        
+
         JLabel comingSoonLabel = new JLabel(skillName + " configuration coming soon");
         comingSoonLabel.setFont(FontManager.getRunescapeFont());
         comingSoonLabel.setHorizontalAlignment(SwingConstants.CENTER);
         methodButtonPanel.add(comingSoonLabel);
-        
+
         methodButtonPanel.revalidate();
         methodButtonPanel.repaint();
         configurationPanel.revalidate();
         configurationPanel.repaint();
     }
-    
+
     private JButton createMethodButton(String text) {
         JButton button = new JButton(text);
         button.setFont(FontManager.getRunescapeFont());
@@ -535,24 +535,24 @@ public class AutoBankStanderPanel extends PluginPanel {
         button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
         return button;
     }
-    
+
     private void setupMethodButtonGrid(JPanel panel, int buttonCount) {
         int columns = 2;
         int rows = (buttonCount + 1) / 2; // rounds up for odd numbers
         panel.setLayout(new GridLayout(rows, columns, 10, 5));
     }
-    
+
     private void selectMethodButton(JButton button) {
         // deselect previous button
         if (selectedMethodButton != null) {
             selectedMethodButton.setBackground(ColorScheme.MEDIUM_GRAY_COLOR);
         }
-        
+
         // select new button
         selectedMethodButton = button;
         button.setBackground(ColorScheme.BRAND_ORANGE);
     }
-    
+
 
     private void onStartStopClicked() {
         if (plugin.getScript().isRunning()) {
@@ -564,27 +564,27 @@ public class AutoBankStanderPanel extends PluginPanel {
             log.info("Script stopped from panel");
         } else {
             // only allow starting for implemented skills
-            if (selectedBankSkill != BankStandingSkill.MAGIC && 
-                selectedBankSkill != BankStandingSkill.HERBLORE && 
+            if (selectedBankSkill != BankStandingSkill.MAGIC &&
+                selectedBankSkill != BankStandingSkill.HERBLORE &&
                 selectedBankSkill != BankStandingSkill.FLETCHING) {
                 log.info("Skill {} not yet implemented", selectedBankSkill);
                 statusLabel.setText("Skill not yet implemented");
                 return;
             }
-            
+
             log.info("=== USER CLICKED START BUTTON ===");
             log.info("Selected skill: {}", selectedBankSkill);
             log.info("Current config skill: {}", currentConfig.getSkill());
             log.info("Current config fletching mode: {}", currentConfig.getFletchingMode());
             log.info("Current config bow type: {}", currentConfig.getBowType());
-            
+
             // validate configuration before starting
             if (!currentConfig.isValid()) {
                 statusLabel.setText("Invalid configuration");
                 log.info("Cannot start: invalid configuration - {}", currentConfig);
                 return;
             }
-            
+
             // start the script using plugin helper method
             plugin.runScriptWithConfig(currentConfig);
             startStopButton.setText("Stop");
@@ -597,7 +597,7 @@ public class AutoBankStanderPanel extends PluginPanel {
     public void updateStatus(String status) {
         SwingUtilities.invokeLater(() -> {
             statusLabel.setText(status);
-            
+
             // update button state based on script status
             if (plugin.getScript().isRunning()) {
                 startStopButton.setText("Stop");
@@ -608,7 +608,7 @@ public class AutoBankStanderPanel extends PluginPanel {
             }
         });
     }
-    
+
     public void ensureStoppedState() {
         SwingUtilities.invokeLater(() -> {
             startStopButton.setText("Start");

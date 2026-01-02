@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.blastoisefurnace;
+package net.runelite.client.plugins.microbot.custom.blastoisefurnace;
 
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
@@ -12,17 +12,20 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.blastoisefurnace.enums.State;
+import net.runelite.client.plugins.microbot.custom.blastoisefurnace.enums.State;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 import javax.inject.Inject;
 import java.awt.*;
 
-import static net.runelite.client.plugins.microbot.blastoisefurnace.BlastoiseFurnaceScript.*;
+import static net.runelite.client.plugins.microbot.custom.blastoisefurnace.BlastoiseFurnaceScript.coalBagEmpty;
+import static net.runelite.client.plugins.microbot.custom.blastoisefurnace.BlastoiseFurnaceScript.primaryOreEmpty;
+import static net.runelite.client.plugins.microbot.custom.blastoisefurnace.BlastoiseFurnaceScript.secondaryOreEmpty;
+import static net.runelite.client.plugins.microbot.custom.blastoisefurnace.BlastoiseFurnaceScript.state;
 
 
 @PluginDescriptor(
-        name = "BlastoiseFurnace",
+        name = "DonderFurnace",
         description = "Storm's BlastoiseFurnace plugin",
         tags = {"microbot", "smithing", "bar", "ore", "blast", "furnace"},
         authors = {"Storm"},

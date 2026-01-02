@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.autobankstander;
+package net.runelite.client.plugins.microbot.custom.autobankstander;
 
 import com.google.inject.Provides;
 import lombok.Getter;
@@ -9,8 +9,8 @@ import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.SkillIconManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.microbot.autobankstander.config.ConfigData;
 import net.runelite.client.plugins.microbot.PluginConstants;
+import net.runelite.client.plugins.microbot.custom.autobankstander.config.ConfigData;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
@@ -20,7 +20,7 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 
 @PluginDescriptor(
-    name = PluginConstants.DEFAULT_PREFIX + "Bank Stander",
+    name = "Donder's Bank Stander",
     description = "AIO bank standing plugin for various processing activities",
     tags = {"magic", "skilling", "processing"},
     authors = {"Unknown"},
@@ -34,23 +34,23 @@ import java.awt.image.BufferedImage;
 @Slf4j
 public class AutoBankStanderPlugin extends Plugin {
     static final String version = "1.0.2";
-    
+
     @Inject
     private AutoBankStanderConfig config;
-    
+
     @Getter
     @Inject
     private AutoBankStanderScript script;
-    
+
     @Inject
     private ConfigManager configManager;
-    
+
     @Inject
     private ClientToolbar clientToolbar;
-    
+
     @Inject
     private SkillIconManager skillIconManager;
-    
+
     private AutoBankStanderPanel panel;
     private NavigationButton navButton;
     private ConfigData currentConfigData;
@@ -64,13 +64,13 @@ public class AutoBankStanderPlugin extends Plugin {
     protected void startUp() throws AWTException {
         // set plugin reference in script for callbacks
         script.setPlugin(this);
-        
+
         // create and add panel to sidebar
         addPanel();
-        
+
         // build configuration data directly from config values
         buildConfigurationData();
-        
+
         // plugin starts in stopped state - script only runs when user clicks start
         log.info("Plugin started in stopped state. Use panel to start script.");
     }
@@ -81,18 +81,18 @@ public class AutoBankStanderPlugin extends Plugin {
         removePanel();
         log.info("Plugin stopped");
     }
-    
+
     @Subscribe
     public void onConfigChanged(ConfigChanged event) {
         if (!event.getGroup().equals("AutoBankStander")) {
             return;
         }
-        
+
         log.info("Configuration changed: {}", event.getKey());
-        
+
         // rebuild config data from new values
         buildConfigurationData();
-        
+
         // only restart script if it's currently running and user initiated the change
         // panel-driven changes should not auto-restart the script
         if (script.isRunning()) {
@@ -100,45 +100,45 @@ public class AutoBankStanderPlugin extends Plugin {
             // note: we don't auto-restart to give user control over when script runs
         }
     }
-    
+
     private void buildConfigurationData() {
         try {
             currentConfigData = new ConfigData();
-            
+
             // set skill and methods from config
             currentConfigData.setSkill(config.skill());
             currentConfigData.setMagicMethod(config.magicMethod());
             currentConfigData.setHerbloreMode(config.herbloreMode());
-            
+
             // set method-specific configurations
             currentConfigData.setBoltType(config.boltType());
             currentConfigData.setCleanHerbMode(config.cleanHerbMode());
             currentConfigData.setUnfinishedPotionMode(config.unfinishedPotionMode());
             currentConfigData.setFinishedPotion(config.finishedPotion());
             currentConfigData.setUseAmuletOfChemistry(config.useAmuletOfChemistry());
-            
+
             // note: fletching configurations are set by panel since config doesn't store them
             // they remain at their defaults until panel updates them
-            
+
             log.info("Built configuration from config values: {}", currentConfigData);
-            
+
         } catch (Exception e) {
             log.error("Error building configuration data: {}", e.getMessage(), e);
             currentConfigData = new ConfigData(); // fallback to defaults
         }
     }
-    
+
     private void addPanel() {
         if (panel == null) {
             panel = new AutoBankStanderPanel(this, skillIconManager);
-            
+
             // ensure panel starts in stopped state
             panel.ensureStoppedState();
-            
+
             // load the crafting icon from resources
-            final BufferedImage icon = ImageUtil.loadImageResource(AutoBankStanderPlugin.class, 
+            final BufferedImage icon = ImageUtil.loadImageResource(AutoBankStanderPlugin.class,
                 "icon.png");
-            
+
             // create navigation button
             navButton = NavigationButton.builder()
                 .tooltip("Auto Bank Stander")
@@ -146,12 +146,12 @@ public class AutoBankStanderPlugin extends Plugin {
                 .priority(8)
                 .panel(panel)
                 .build();
-            
+
             clientToolbar.addNavigation(navButton);
             log.info("Panel added to sidebar");
         }
     }
-    
+
     private void removePanel() {
         if (navButton != null) {
             clientToolbar.removeNavigation(navButton);
@@ -160,7 +160,7 @@ public class AutoBankStanderPlugin extends Plugin {
             log.info("Panel removed from sidebar");
         }
     }
-    
+
     // helper method for panel to run script with new configuration
     public void runScriptWithConfig(ConfigData configData) {
         log.info("=== RUNNING SCRIPT FROM PANEL ===");
@@ -168,23 +168,23 @@ public class AutoBankStanderPlugin extends Plugin {
         log.info("Config fletching mode: {}", configData.getFletchingMode());
         log.info("Config bow type: {}", configData.getBowType());
         log.info("Full config: {}", configData);
-        
+
         // ensure script is fully stopped before starting
         if (script.isRunning()) {
             log.info("Script already running, stopping first");
             script.shutdown();
         }
-        
+
         this.currentConfigData = configData;
         script.run(configData);
         log.info("=== SCRIPT START COMMAND SENT ===");
     }
-    
+
     // helper method for panel to get current configuration
     public ConfigData getCurrentConfig() {
         return currentConfigData != null ? new ConfigData(currentConfigData) : new ConfigData();
     }
-    
+
     // helper method for panel to update its state based on script status
     public void updatePanelState() {
         if (panel != null) {

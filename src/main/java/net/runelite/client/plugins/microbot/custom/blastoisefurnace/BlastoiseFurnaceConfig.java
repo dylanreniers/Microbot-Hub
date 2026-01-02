@@ -2,10 +2,14 @@
 
 
 
-package net.runelite.client.plugins.microbot.blastoisefurnace;
+package net.runelite.client.plugins.microbot.custom.blastoisefurnace;
 
-import net.runelite.client.config.*;
-import net.runelite.client.plugins.microbot.blastoisefurnace.enums.Bars;
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigGroup;
+import net.runelite.client.config.ConfigInformation;
+import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.ConfigSection;
+import net.runelite.client.plugins.microbot.custom.blastoisefurnace.enums.Bars;
 
 @ConfigGroup("blastoisefurnace")
 @ConfigInformation("Must have Ice Gloves or smiths gloves (i) equiped<br /><br />If not doing gold bars coal bag is required. <br /><br /> Must have stamina and energy potions in bank<br /><br /> Handles Foreman for < 60 Smithing.<br /><br /> If doing gold bars you must have Goldsmiths Gauntlet and bank your coal bag<br /><br />Current version does not support  coffer refill<br /><br />")

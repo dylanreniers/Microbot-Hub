@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.jewelleryenchant;
+package net.runelite.client.plugins.microbot.custom.jewelleryenchant;
 
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
@@ -7,10 +7,11 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.PluginConstants;
 import net.runelite.client.ui.overlay.OverlayManager;
+
 import javax.inject.Inject;
 
 @PluginDescriptor(
-        name = PluginConstants.Lumusi + "Jewellery Enchant",
+        name = "Donder's Jewellery Enchant",
         description = "Enchants all types of jewellery, with smart staff & rune handling.",
         tags = {"magic", "enchant", "jewellery", "skilling", "microbot"},
         authors = { "Lumusi" },

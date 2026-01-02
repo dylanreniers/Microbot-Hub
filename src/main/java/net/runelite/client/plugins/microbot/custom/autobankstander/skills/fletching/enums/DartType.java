@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums;
+package net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums;
 
 import net.runelite.api.gameval.ItemID;
 

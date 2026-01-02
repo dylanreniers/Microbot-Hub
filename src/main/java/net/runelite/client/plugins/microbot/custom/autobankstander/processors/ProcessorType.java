@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.autobankstander.processors;
+package net.runelite.client.plugins.microbot.custom.autobankstander.processors;
 
 public enum ProcessorType {
     ENCHANTING("Bolt enchanting"),

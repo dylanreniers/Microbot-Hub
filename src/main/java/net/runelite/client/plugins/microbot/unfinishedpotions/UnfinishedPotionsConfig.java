@@ -1,18 +1,18 @@
-package net.runelite.client.plugins.microbot.custom.arrowmaker;
+package net.runelite.client.plugins.microbot.unfinishedpotions;
 
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
-import net.runelite.client.plugins.microbot.custom.arrowmaker.enums.Arrows;
-import net.runelite.client.plugins.microbot.custom.arrowmaker.enums.Bolts;
-import net.runelite.client.plugins.microbot.custom.arrowmaker.enums.Darts;
-import net.runelite.client.plugins.microbot.custom.arrowmaker.enums.DragonTipping;
-import net.runelite.client.plugins.microbot.custom.arrowmaker.enums.Tipping;
+import net.runelite.client.plugins.microbot.arrowmaker.enums.Arrows;
+import net.runelite.client.plugins.microbot.arrowmaker.enums.Bolts;
+import net.runelite.client.plugins.microbot.arrowmaker.enums.Darts;
+import net.runelite.client.plugins.microbot.arrowmaker.enums.DragonTipping;
+import net.runelite.client.plugins.microbot.arrowmaker.enums.Tipping;
 
 
-@ConfigGroup("ArrowMaking")
-public interface ArrowConfig extends Config {
+@ConfigGroup("Unfinished potions")
+public interface UnfinishedPotionsConfig extends Config {
     @ConfigSection(
             name = "General",
             description = "General",

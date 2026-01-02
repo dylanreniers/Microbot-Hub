@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.blastoisefurnace;
+package net.runelite.client.plugins.microbot.custom.blastoisefurnace;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Skill;
@@ -6,9 +6,9 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
-import net.runelite.client.plugins.microbot.blastoisefurnace.enums.Bars;
-import net.runelite.client.plugins.microbot.blastoisefurnace.enums.State;
 import net.runelite.client.plugins.microbot.breakhandler.BreakHandlerScript;
+import net.runelite.client.plugins.microbot.custom.blastoisefurnace.enums.Bars;
+import net.runelite.client.plugins.microbot.custom.blastoisefurnace.enums.State;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2AntibanSettings;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
@@ -28,13 +28,34 @@ import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
 import javax.inject.Inject;
 import java.awt.event.KeyEvent;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 
-import static net.runelite.api.gameval.ItemID.*;
-import static net.runelite.api.gameval.ObjectID.*;
-import static net.runelite.api.gameval.VarbitID.*;
+import static net.runelite.api.gameval.ItemID.COAL;
+import static net.runelite.api.gameval.ItemID.COINS;
+import static net.runelite.api.gameval.ItemID.GAUNTLETS_OF_GOLDSMITHING;
+import static net.runelite.api.gameval.ItemID.GOLD_ORE;
+import static net.runelite.api.gameval.ItemID.ICE_GLOVES;
+import static net.runelite.api.gameval.ItemID.SMITHING_UNIFORM_GLOVES_ICE;
+import static net.runelite.api.gameval.ObjectID.BLAST_FURNACE_AUTOMATA_COFFER;
+import static net.runelite.api.gameval.ObjectID.BLAST_FURNACE_CONVEYER_BELT_CLICKABLE;
+import static net.runelite.api.gameval.ObjectID.BLAST_FURNACE_DISPENSER;
+import static net.runelite.api.gameval.ObjectID.DWARF_KELDAGRIM_FACTORY_STAIRS;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_ADAMANTITE_BARS;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_COAL;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_COFFER;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_COINSINCOFFER;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_GOLD_BARS;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_GOLD_ORE;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_IRON_BARS;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_MITHRIL_BARS;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_RUNITE_BARS;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_STEEL_BARS;
 import static net.runelite.client.plugins.microbot.util.misc.Rs2UiHelper.ITEM_NAME_SUFFIX_PATTERN;
 
 @Slf4j

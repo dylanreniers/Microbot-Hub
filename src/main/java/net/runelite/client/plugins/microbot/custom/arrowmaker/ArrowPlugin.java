@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.arrowmaker;
+package net.runelite.client.plugins.microbot.custom.arrowmaker;
 
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
@@ -14,7 +14,7 @@ import java.awt.*;
 
 
 @PluginDescriptor(
-        name = PluginDescriptor.Nate + "Arrow Maker",
+        name = "Donder's Arrow Maker",
         description = "Nate's Arrow Maker",
         tags = {"MoneyMaking", "nate", "Arrow"},
         minClientVersion = "2.0.7",

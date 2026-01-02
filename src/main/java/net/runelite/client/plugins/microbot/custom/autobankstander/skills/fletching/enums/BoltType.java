@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums;
+package net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums;
 
 import net.runelite.api.gameval.ItemID;
 
@@ -14,7 +14,7 @@ public enum BoltType {
     ADAMANT("Adamant bolts", 61, ItemID.XBOWS_CROSSBOW_BOLTS_ADAMANTITE_UNFEATHERED, ItemID.FEATHER, ItemID.XBOWS_CROSSBOW_BOLTS_ADAMANTITE),
     RUNE("Rune bolts", 69, ItemID.XBOWS_CROSSBOW_BOLTS_RUNITE_UNFEATHERED, ItemID.FEATHER, ItemID.XBOWS_CROSSBOW_BOLTS_RUNITE),
     DRAGON("Dragon bolts", 84, ItemID.DRAGON_BOLTS_UNFEATHERED, ItemID.FEATHER, ItemID.DRAGON_BOLTS),
-    
+
     // Tipped bolts
     OPAL_BRONZE("Opal bronze bolts", 11, ItemID.BOLT, ItemID.OPAL_BOLTTIPS, ItemID.OPAL_BOLT),
     JADE_BLURITE("Jade blurite bolts", 26, ItemID.XBOWS_CROSSBOW_BOLTS_BLURITE, ItemID.XBOWS_BOLT_TIPS_JADE, ItemID.XBOWS_CROSSBOW_BOLTS_BLURITE_TIPPED_JADE),
@@ -28,7 +28,7 @@ public enum BoltType {
     DRAGONSTONE_RUNE("Dragonstone rune bolts", 71, ItemID.XBOWS_CROSSBOW_BOLTS_RUNITE, ItemID.XBOWS_BOLT_TIPS_DRAGONSTONE, ItemID.XBOWS_CROSSBOW_BOLTS_RUNITE_TIPPED_DRAGONSTONE),
     ONYX_RUNE("Onyx rune bolts", 73, ItemID.XBOWS_CROSSBOW_BOLTS_RUNITE, ItemID.XBOWS_BOLT_TIPS_ONYX, ItemID.XBOWS_CROSSBOW_BOLTS_RUNITE_TIPPED_ONYX),
     AMETHYST_BROAD("Amethyst broad bolts", 76, ItemID.SLAYER_BROAD_BOLT, ItemID.XBOWS_BOLT_TIPS_AMETHYST, ItemID.SLAYER_BROAD_BOLT_AMETHYST),
-    
+
     // Dragon bolt tips
     OPAL_DRAGON("Opal dragon bolts", 84, ItemID.DRAGON_BOLTS, ItemID.OPAL_BOLTTIPS, ItemID.DRAGON_BOLTS_UNENCHANTED_OPAL),
     JADE_DRAGON("Jade dragon bolts", 84, ItemID.DRAGON_BOLTS, ItemID.XBOWS_BOLT_TIPS_JADE, ItemID.DRAGON_BOLTS_UNENCHANTED_JADE),

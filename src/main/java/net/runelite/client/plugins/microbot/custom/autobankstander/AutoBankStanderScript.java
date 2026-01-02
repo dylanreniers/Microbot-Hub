@@ -1,24 +1,21 @@
-package net.runelite.client.plugins.microbot.autobankstander;
+package net.runelite.client.plugins.microbot.custom.autobankstander;
 
-import java.util.concurrent.TimeUnit;
-
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
-import net.runelite.client.plugins.microbot.autobankstander.processors.BankStandingProcessor;
-import net.runelite.client.plugins.microbot.autobankstander.processors.SkillType;
-import net.runelite.client.plugins.microbot.autobankstander.skills.magic.MagicMethod;
-import net.runelite.client.plugins.microbot.autobankstander.skills.magic.enchanting.EnchantingProcessor;
-import net.runelite.client.plugins.microbot.autobankstander.skills.magic.lunars.LunarsProcessor;
-import net.runelite.client.plugins.microbot.autobankstander.skills.herblore.HerbloreProcessor;
-import net.runelite.client.plugins.microbot.autobankstander.skills.fletching.FletchingProcessor;
-import net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums.FletchingMode;
-import net.runelite.client.plugins.microbot.autobankstander.config.ConfigData;
+import net.runelite.client.plugins.microbot.custom.autobankstander.config.ConfigData;
+import net.runelite.client.plugins.microbot.custom.autobankstander.processors.BankStandingProcessor;
+import net.runelite.client.plugins.microbot.custom.autobankstander.processors.SkillType;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.FletchingProcessor;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums.FletchingMode;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.herblore.HerbloreProcessor;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.magic.MagicMethod;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.magic.enchanting.EnchantingProcessor;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.magic.lunars.LunarsProcessor;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 
-import lombok.extern.slf4j.Slf4j;
-
-import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class AutoBankStanderScript extends Script {

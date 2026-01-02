@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.arrowmaker.enums;
+package net.runelite.client.plugins.microbot.custom.arrowmaker.enums;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;

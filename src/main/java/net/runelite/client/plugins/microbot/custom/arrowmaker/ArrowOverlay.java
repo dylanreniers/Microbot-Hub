@@ -1,7 +1,6 @@
-package net.runelite.client.plugins.microbot.arrowmaker;
+package net.runelite.client.plugins.microbot.custom.arrowmaker;
 
 import net.runelite.client.plugins.microbot.Microbot;
-import net.runelite.client.plugins.microbot.arrowmaker.ArrowPlugin;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.LineComponent;

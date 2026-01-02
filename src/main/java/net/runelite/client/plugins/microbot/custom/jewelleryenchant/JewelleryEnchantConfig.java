@@ -1,10 +1,10 @@
-package net.runelite.client.plugins.microbot.jewelleryenchant;
+package net.runelite.client.plugins.microbot.custom.jewelleryenchant;
 
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigInformation;
 import net.runelite.client.config.ConfigItem;
-import net.runelite.client.plugins.microbot.jewelleryenchant.util.Jewellery;
+import net.runelite.client.plugins.microbot.custom.jewelleryenchant.util.Jewellery;
 
 @ConfigGroup("jewelleryenchant")
 @ConfigInformation(
@@ -25,5 +25,15 @@ public interface JewelleryEnchantConfig extends Config {
     )
     default Jewellery jewellery() {
         return Jewellery.SAPPHIRE_RING;
+    }
+
+    @ConfigItem(
+            keyName = "onlyEnchant",
+            name = "Only enchant?",
+            description = "Should we only enchant material in your bank?",
+            position = 2
+    )
+    default boolean onlyEnchant() {
+        return true;
     }
 }

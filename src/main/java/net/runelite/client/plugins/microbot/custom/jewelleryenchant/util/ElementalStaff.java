@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.jewelleryenchant.util;
+package net.runelite.client.plugins.microbot.custom.jewelleryenchant.util;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;

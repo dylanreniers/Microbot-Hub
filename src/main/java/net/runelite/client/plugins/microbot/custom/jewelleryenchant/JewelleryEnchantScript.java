@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.jewelleryenchant;
+package net.runelite.client.plugins.microbot.custom.jewelleryenchant;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ObjectID;
@@ -7,19 +7,24 @@ import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectQueryable;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
-import net.runelite.client.plugins.microbot.jewelleryenchant.util.ElementalStaff;
-import net.runelite.client.plugins.microbot.jewelleryenchant.util.Jewellery;
+import net.runelite.client.plugins.microbot.custom.jewelleryenchant.util.ElementalStaff;
+import net.runelite.client.plugins.microbot.custom.jewelleryenchant.util.Jewellery;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
+import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
 import net.runelite.client.plugins.microbot.util.magic.Runes;
+import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 @Slf4j
 public class JewelleryEnchantScript extends Script {
@@ -40,7 +45,7 @@ public class JewelleryEnchantScript extends Script {
 
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
-                if (!Microbot.isLoggedIn() || !super.run()) {
+                if (!Microbot.isLoggedIn() || !super.run() || !super.isRunning()) {
                     return;
                 }
 
@@ -58,9 +63,18 @@ public class JewelleryEnchantScript extends Script {
                     initialized = true;
                 }
 
-                createJewellery(jewellery);
-                performEnchantment(jewellery);
-                bankAndRestock(jewellery);
+                handleStaffEquipping(jewellery);
+                ensureCorrectRunes(jewellery);
+
+                if (!config.onlyEnchant()) {
+                    createJewellery(jewellery);
+                    performEnchantment(jewellery);
+                    bankAndRestock(jewellery);
+                } else {
+                    getJewelleryFromBank(jewellery);
+                    performEnchantment(jewellery);
+                }
+
 
             } catch (Exception ex) {
                 log.error("Error running Jewellery enchant script", ex);
@@ -75,7 +89,7 @@ public class JewelleryEnchantScript extends Script {
     }
 
     private static void smeltJewellery(Jewellery jewellery) {
-        sleepUntilTrue(() -> Rs2Widget.isGoldCraftingWidgetOpen() || Rs2Widget.isSilverCraftingWidgetOpen(), 500, 20000);
+        sleepUntil(() -> Rs2Widget.isGoldCraftingWidgetOpen() || Rs2Widget.isSilverCraftingWidgetOpen());
         Rs2Widget.clickWidget(jewellery.getName());
         sleepUntil(() -> !Rs2Inventory.contains(jewellery.getBarId()) && !Rs2Inventory.contains(jewellery.getGemId()), 30000);
         log.info("Done creating jewellery. Adding random sleep.");
@@ -85,7 +99,6 @@ public class JewelleryEnchantScript extends Script {
 
     private static void goToFurnace() {
         Rs2TileObjectModel furnaceObject = new Rs2TileObjectQueryable()
-                //.fromWorldView()
                 .where(rs2TileObjectModel -> rs2TileObjectModel.getId() == ObjectID.FURNACE_16469)
                 .nearest(40);
 
@@ -109,10 +122,20 @@ public class JewelleryEnchantScript extends Script {
             Rs2Magic.cast(jewellery);
             log.info("Opening enchantment menu and clicking on spell. Adding random sleep.");
             sleep(200, 600);
-            Rs2Inventory.interact(jewellery.getName(), "Use");
+            List<Rs2ItemModel> items = Rs2Inventory.all(model -> jewellery.getName().equals(model.getName()));
+            Rs2Inventory.interact(items.get(new Random().nextInt(items.size())), "Use"); //randomize which one to enchant
             log.info("Enchantment done. {} left to enchant. Adding sleep until next one can be enchanted", Rs2Inventory.count(jewellery.getUnenchantedId()));
             sleep(2000, 3000);
         }
+    }
+
+    private void getJewelleryFromBank(Jewellery jewellery) {
+        openBank();
+        Rs2Bank.depositAllExcept(item -> item.getId() == Runes.COSMIC.getItemId());
+        sleep(300, 500);
+        handleJewelleryToEnchantWithdrawal(jewellery);
+        Rs2Bank.closeBank();
+        sleepUntil(() -> !Rs2Bank.isOpen());
     }
 
     private void setFullView() {
@@ -129,20 +152,9 @@ public class JewelleryEnchantScript extends Script {
     }
 
     private void bankAndRestock(Jewellery jewellery) {
-        log.info("Restocking on items.");
-
-        if (!Rs2Bank.isOpen()) {
-            log.info("Opening bank.");
-            Rs2Bank.openBank();
-        }
-
-        log.info("Depositing all items. Adding random sleep.");
+        openBank();
         Rs2Bank.depositAllExcept(item -> item.getId() == Runes.COSMIC.getItemId() || item.getId() == jewellery.getMouldId());
         sleep(300, 500);
-
-        log.info("Withdrawing all necessary items.");
-        handleStaffEquipping(jewellery);
-        ensureCorrectRunes(jewellery);
         handleJewelleryWithdrawal(jewellery);
         Rs2Bank.closeBank();
         sleepUntil(() -> !Rs2Bank.isOpen(), 600);
@@ -154,6 +166,8 @@ public class JewelleryEnchantScript extends Script {
             return;
         }
 
+        openBank();
+
         int staffToWithdraw = -1;
         for (ElementalStaff staff : ElementalStaff.values()) {
             if (staff.providesRune(elementalRune) && Rs2Bank.hasItem(staff.getItemId())) {
@@ -164,12 +178,14 @@ public class JewelleryEnchantScript extends Script {
 
         if (staffToWithdraw != -1) {
             Rs2Bank.withdrawAndEquip(staffToWithdraw);
-            sleepUntil(() -> isWearingElementalStaffFor(elementalRune), 3000);
+            sleepUntil(() -> isWearingElementalStaffFor(elementalRune));
 
             for (ElementalStaff staff : ElementalStaff.values()) {
                 if (Rs2Inventory.hasItem(staff.getItemId())) {
                     // Check if the staff in inventory is the one we just equipped. If so, don't deposit it.
-                    if (Rs2Equipment.isWearing(staff.getItemId())) continue;
+                    if (Rs2Equipment.isWearing(staff.getItemId())) {
+                        continue;
+                    }
 
                     Rs2Bank.depositAll(staff.getItemId());
                     sleep(200, 300);
@@ -189,6 +205,7 @@ public class JewelleryEnchantScript extends Script {
 
     private void ensureCorrectRunes(Jewellery jewellery) {
         if (!Rs2Inventory.hasItem(Runes.COSMIC.getItemId())) {
+            openBank();
             if (Rs2Bank.hasItem(Runes.COSMIC.getItemId())) {
                 Rs2Bank.withdrawAll(Runes.COSMIC.getItemId());
                 sleepUntil(() -> Rs2Inventory.hasItem(Runes.COSMIC.getItemId()));
@@ -198,10 +215,13 @@ public class JewelleryEnchantScript extends Script {
                 return;
             }
         }
+
         for (Map.Entry<Runes, Integer> entry : jewellery.getRequiredRunes().entrySet()) {
             Runes rune = entry.getKey();
             int amount = entry.getValue();
-            if (rune == Runes.COSMIC) continue;
+            if (rune == Runes.COSMIC) {
+                continue;
+            }
             boolean needsRuneInInventory = !isWearingElementalStaffFor(rune);
             if (needsRuneInInventory && !Rs2Inventory.hasItemAmount(rune.getItemId(), amount)) {
                 if (Rs2Bank.hasBankItem(rune.getItemId(), amount)) {
@@ -216,10 +236,26 @@ public class JewelleryEnchantScript extends Script {
         }
     }
 
+    private static void openBank() {
+        if (!Rs2Bank.isOpen()) {
+            log.info("Opening bank.");
+            Rs2Bank.openBank();
+            sleepUntil(Rs2Bank::isOpen);
+        }
+    }
+
+    private void handleJewelleryToEnchantWithdrawal(Jewellery jewellery) {
+        if (!Rs2Bank.hasItem(jewellery.getUnenchantedId())) {
+            log.info("Couldn't find jewellery to enchant.");
+            shutdown();
+            return;
+        }
+        Rs2Bank.withdrawAll(jewellery.getUnenchantedId());
+        sleepUntil(() -> Rs2Inventory.hasItem(jewellery.getUnenchantedId()));
+        sleep(300, 1800);
+    }
+
     private void handleJewelleryWithdrawal(Jewellery jewellery) {
-        log.info("Looking for IDs in bank: {} and  {}", jewellery.getGemId(), jewellery.getBarId());
-        log.info("Items found in bank:");
-        Rs2Bank.bankItems().forEach(item -> log.info("Item ID: {}", item.getId()));
         if (!Rs2Bank.hasItem(jewellery.getGemId()) || !Rs2Bank.hasItem(jewellery.getBarId())) {
             log.info("Couldn't find bars or gems. Shutting down.");
             shutdown();

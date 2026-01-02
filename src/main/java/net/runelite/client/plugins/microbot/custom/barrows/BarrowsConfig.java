@@ -1,7 +1,11 @@
-package net.runelite.client.plugins.microbot.barrows;
+package net.runelite.client.plugins.microbot.custom.barrows;
 
 import net.runelite.api.gameval.ItemID;
-import net.runelite.client.config.*;
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigGroup;
+import net.runelite.client.config.ConfigInformation;
+import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.Range;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 import net.runelite.client.plugins.microbot.util.misc.Rs2Food;
 

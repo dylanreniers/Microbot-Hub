@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.jewelleryenchant;
+package net.runelite.client.plugins.microbot.custom.jewelleryenchant;
 
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.ui.overlay.OverlayPanel;

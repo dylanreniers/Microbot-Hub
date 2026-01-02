@@ -1,17 +1,16 @@
-package net.runelite.client.plugins.microbot.autobankstander;
+package net.runelite.client.plugins.microbot.custom.autobankstander;
 
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigInformation;
 import net.runelite.client.config.ConfigItem;
-import net.runelite.client.config.ConfigSection;
-import net.runelite.client.plugins.microbot.autobankstander.processors.SkillType;
-import net.runelite.client.plugins.microbot.autobankstander.skills.magic.MagicMethod;
-import net.runelite.client.plugins.microbot.autobankstander.skills.magic.enchanting.BoltType;
-import net.runelite.client.plugins.microbot.autobankstander.skills.herblore.enums.CleanHerbMode;
-import net.runelite.client.plugins.microbot.autobankstander.skills.herblore.enums.HerblorePotion;
-import net.runelite.client.plugins.microbot.autobankstander.skills.herblore.enums.Mode;
-import net.runelite.client.plugins.microbot.autobankstander.skills.herblore.enums.UnfinishedPotionMode;
+import net.runelite.client.plugins.microbot.custom.autobankstander.processors.SkillType;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.herblore.enums.CleanHerbMode;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.herblore.enums.HerblorePotion;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.herblore.enums.Mode;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.herblore.enums.UnfinishedPotionMode;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.magic.MagicMethod;
+import net.runelite.client.plugins.microbot.custom.autobankstander.skills.magic.enchanting.BoltType;
 
 @ConfigGroup("AutoBankStander")
 @ConfigInformation(

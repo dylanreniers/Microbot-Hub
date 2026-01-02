@@ -4,17 +4,18 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import net.runelite.client.plugins.fishing.FishingPlugin;
-import net.runelite.client.plugins.microbot.aiofighter.AIOFighterPlugin;
-import net.runelite.client.plugins.microbot.astralrc.AstralRunesPlugin;
-import net.runelite.client.plugins.microbot.autofishing.AutoFishingPlugin;
-import net.runelite.client.plugins.microbot.example.ExamplePlugin;
+import net.runelite.client.plugins.microbot.custom.arrowmaker.ArrowPlugin;
+import net.runelite.client.plugins.microbot.banksbankstander.BanksBankStanderPlugin;
+import net.runelite.client.plugins.microbot.custom.barrows.BarrowsPlugin;
+import net.runelite.client.plugins.microbot.custom.blastoisefurnace.BlastoiseFurnacePlugin;
+import net.runelite.client.plugins.microbot.fletching.FletchingPlugin;
+import net.runelite.client.plugins.microbot.custom.jewelleryenchant.JewelleryEnchantPlugin;
 
 public class Microbot
 {
 
 	private static final Class<?>[] debugPlugins = {
-		AIOFighterPlugin.class
+            net.runelite.client.plugins.microbot.jewelleryenchant.JewelleryEnchantPlugin.class, JewelleryEnchantPlugin.class, BarrowsPlugin.class, BanksBankStanderPlugin.class, BlastoiseFurnacePlugin.class, ArrowPlugin.class, FletchingPlugin.class
 	};
 
     public static void main(String[] args) throws Exception

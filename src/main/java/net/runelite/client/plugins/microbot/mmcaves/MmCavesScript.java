@@ -80,14 +80,6 @@ public class MmCavesScript extends Script {
                 if (!Microbot.isLoggedIn()) return;
                 if (!super.run()) return;
 
-                // Check if player has light source
-                boolean hasLightSource = Arrays.stream(LightSources.values())
-                        .anyMatch(lightSource -> Rs2Inventory.contains(lightSource.getItemName()));
-                if (!hasLightSource) {
-                    Microbot.log("Player does NOT have a light source");
-                    stopAndLog();
-                }
-
                 state = getState();
                 switch (state) {
                     case WALK_TO_START:

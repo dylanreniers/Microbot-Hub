@@ -1,13 +1,27 @@
-package net.runelite.client.plugins.microbot.blastoisefurnace.enums;
-
+package net.runelite.client.plugins.microbot.custom.blastoisefurnace.enums;
 
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import net.runelite.api.gameval.ItemID;
 
-import static net.runelite.api.gameval.ItemID.*;
-import static net.runelite.api.gameval.VarbitID.*;
+import static net.runelite.api.gameval.ItemID.ADAMANTITE_ORE;
+import static net.runelite.api.gameval.ItemID.COAL;
+import static net.runelite.api.gameval.ItemID.GOLD_ORE;
+import static net.runelite.api.gameval.ItemID.IRON_ORE;
+import static net.runelite.api.gameval.ItemID.MITHRIL_ORE;
+import static net.runelite.api.gameval.ItemID.RUNITE_ORE;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_ADAMANTITE_BARS;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_ADAMANTITE_ORE;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_COAL;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_GOLD_BARS;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_GOLD_ORE;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_IRON_ORE;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_MITHRIL_BARS;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_MITHRIL_ORE;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_RUNITE_BARS;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_RUNITE_ORE;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_STEEL_BARS;
 
 @Getter
 @RequiredArgsConstructor
@@ -121,5 +135,5 @@ public enum Bars {
     private final Integer BFSecondaryOreID;
     private final boolean requiresCoalBag;
     private final boolean requiresGoldsmithGloves;
-    
+
 }

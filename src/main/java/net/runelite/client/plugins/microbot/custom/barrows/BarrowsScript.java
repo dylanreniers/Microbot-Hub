@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.barrows;
+package net.runelite.client.plugins.microbot.custom.barrows;
 
 import lombok.Getter;
 import lombok.Setter;

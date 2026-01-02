@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.custom.jewelleryenchant.crafting;
+package net.runelite.client.plugins.microbot.jewelleryenchant.crafting;
 
 import lombok.Getter;
 

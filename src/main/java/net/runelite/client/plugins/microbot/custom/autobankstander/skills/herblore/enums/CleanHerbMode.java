@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.autobankstander.skills.herblore.enums;
+package net.runelite.client.plugins.microbot.custom.autobankstander.skills.herblore.enums;
 
 public enum CleanHerbMode {
     ANY_AND_ALL("Any available", "Any available"),

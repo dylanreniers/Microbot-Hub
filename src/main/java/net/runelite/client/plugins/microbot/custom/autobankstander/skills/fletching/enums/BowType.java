@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.autobankstander.skills.fletching.enums;
+package net.runelite.client.plugins.microbot.custom.autobankstander.skills.fletching.enums;
 
 import net.runelite.api.gameval.ItemID;
 
@@ -16,7 +16,7 @@ public enum BowType {
     YEW_LONGBOW_UNSTRUNG("Yew longbow (u)", 70, ItemID.YEW_LOGS, ItemID.BRONZE_KNIFE, ItemID.UNSTRUNG_YEW_LONGBOW),
     MAGIC_SHORTBOW_UNSTRUNG("Magic shortbow (u)", 80, ItemID.MAGIC_LOGS, ItemID.BRONZE_KNIFE, ItemID.UNSTRUNG_MAGIC_SHORTBOW),
     MAGIC_LONGBOW_UNSTRUNG("Magic longbow (u)", 85, ItemID.MAGIC_LOGS, ItemID.BRONZE_KNIFE, ItemID.UNSTRUNG_MAGIC_LONGBOW),
-    
+
     // Strung bows
     SHORTBOW("Shortbow", 5, ItemID.UNSTRUNG_SHORTBOW, ItemID.BOW_STRING, ItemID.SHORTBOW),
     LONGBOW("Longbow", 10, ItemID.UNSTRUNG_LONGBOW, ItemID.BOW_STRING, ItemID.LONGBOW),

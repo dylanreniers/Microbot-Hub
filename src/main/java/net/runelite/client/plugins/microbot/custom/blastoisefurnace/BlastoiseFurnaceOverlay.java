@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.blastoisefurnace;
+package net.runelite.client.plugins.microbot.custom.blastoisefurnace;
 
 
 import net.runelite.client.plugins.microbot.Microbot;

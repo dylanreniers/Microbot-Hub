@@ -1,12 +1,12 @@
-package net.runelite.client.plugins.microbot.fletching;
+package net.runelite.client.plugins.microbot.custom.fletching;
 
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
-import net.runelite.client.plugins.microbot.fletching.enums.FletchingItem;
-import net.runelite.client.plugins.microbot.fletching.enums.FletchingMaterial;
-import net.runelite.client.plugins.microbot.fletching.enums.FletchingMode;
+import net.runelite.client.plugins.microbot.custom.fletching.enums.FletchingItem;
+import net.runelite.client.plugins.microbot.custom.fletching.enums.FletchingMaterial;
+import net.runelite.client.plugins.microbot.custom.fletching.enums.FletchingMode;
 
 @ConfigGroup(FletchingConfig.GROUP)
 public interface FletchingConfig extends Config {

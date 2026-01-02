@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.barrows;
+package net.runelite.client.plugins.microbot.custom.barrows;
 
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.ui.overlay.OverlayPanel;
@@ -26,7 +26,7 @@ public class BarrowsOverlay extends OverlayPanel {
         try {
             panelComponent.setPreferredSize(new Dimension(200, 300));
             panelComponent.getChildren().add(TitleComponent.builder()
-                    .text("Barrows V"+BarrowsPlugin.version)
+                    .text("Barrows V"+ BarrowsPlugin.version)
                     .color(Color.GREEN)
                     .build());
 

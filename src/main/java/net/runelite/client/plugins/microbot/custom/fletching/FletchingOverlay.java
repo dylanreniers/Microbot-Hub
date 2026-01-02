@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.fletching;
+package net.runelite.client.plugins.microbot.custom.fletching;
 
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.ui.overlay.OverlayPanel;

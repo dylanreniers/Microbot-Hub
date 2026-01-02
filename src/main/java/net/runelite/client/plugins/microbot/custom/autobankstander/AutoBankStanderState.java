@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.autobankstander;
+package net.runelite.client.plugins.microbot.custom.autobankstander;
 
 public enum AutoBankStanderState {
     INITIALIZING,

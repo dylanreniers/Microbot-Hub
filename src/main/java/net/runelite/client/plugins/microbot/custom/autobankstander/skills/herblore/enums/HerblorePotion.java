@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.autobankstander.skills.herblore.enums;
+package net.runelite.client.plugins.microbot.custom.autobankstander.skills.herblore.enums;
 
 import net.runelite.api.gameval.ItemID;
 

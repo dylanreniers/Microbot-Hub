@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.fletching.enums;
+package net.runelite.client.plugins.microbot.custom.fletching.enums;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -25,15 +25,19 @@ public enum FletchingItem
     }
 
     public char getOption(FletchingMaterial material, FletchingMode fletchingMode) {
-        if (fletchingMode == FletchingMode.STRUNG
-                || fletchingMode == FletchingMode.PROGRESSIVE_STRUNG) {
+        if (fletchingMode == FletchingMode.STRUNG) {
             return '1';
         }
-        if (material == FletchingMaterial.LOG && option == '2') return '3';
-        if (material == FletchingMaterial.LOG && option == '3') return '4';
+        if (material == FletchingMaterial.LOG && option == '2') {
+            return '3';
+        }
+        if (material == FletchingMaterial.LOG && option == '3') {
+            return '4';
+        }
         //redwood is an exception
-        if (material == FletchingMaterial.REDWOOD)
+        if (material == FletchingMaterial.REDWOOD) {
             return '2';
+        }
         return option;
     }
 }

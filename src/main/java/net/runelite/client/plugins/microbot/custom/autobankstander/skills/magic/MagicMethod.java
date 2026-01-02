@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.autobankstander.skills.magic;
+package net.runelite.client.plugins.microbot.custom.autobankstander.skills.magic;
 
 public enum MagicMethod {
     ENCHANTING("Bolt enchanting"),

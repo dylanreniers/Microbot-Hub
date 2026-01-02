@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.blastoisefurnace.enums;
+package net.runelite.client.plugins.microbot.custom.blastoisefurnace.enums;
 
 
 
