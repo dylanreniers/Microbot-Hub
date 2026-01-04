@@ -1,5 +1,7 @@
 package net.runelite.client.plugins.microbot.custom.barrows;
 
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
@@ -9,12 +11,12 @@ import net.runelite.client.config.Range;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 import net.runelite.client.plugins.microbot.util.misc.Rs2Food;
 
-@ConfigGroup("barrows")
+@ConfigGroup("donder barrows")
 @ConfigInformation("1. Have an inventory setup named Barrows <br><br> 2. Required items: prayer potions or moonlight moth mixes(2), barrows teleports tablets, or teleport to house tablets, food, Catalyic runes (if using wind spells), and a spade.<br /><br /> 3. Spells: Wind: Blast, Wave, and Surge. Or Powered staffs: supports any trident, any sceptre, any crystal staff, Tumeken's, and Sanguinesti. <br /><br /> Special thanks to george for adding the barrows dungeon to the walker; and Crannyy for script testing!<br /><br /> Config by Crannyy")
 public interface BarrowsConfig extends Config {
 
     @ConfigItem(
-            keyName = "Food",
+            keyName = "food",
             name = "Food",
             description = "type of food",
             position = 1
@@ -25,29 +27,18 @@ public interface BarrowsConfig extends Config {
     }
 
     @ConfigItem(
-            keyName = "targetFoodAmount",
-            name = "Max Food Amount",
-            description = "Max amount of food to withdraw from the bank.",
+            keyName = "foodAmount",
+            name = "Food amount",
+            description = "Amount of food to withdraw from the bank.",
             position = 2
     )
     @Range(min = 1, max = 28)
-    default int targetFoodAmount() {
-        return 10;
+    default int foodAmount() {
+        return 12;
     }
 
     @ConfigItem(
-            keyName = "minFood",
-            name = "Min Food",
-            description = "Minimum amount of food to withdraw from the bank.",
-            position = 3
-    )
-    @Range(min = 1, max = 28)
-    default int minFood() {
-        return 5;
-    }
-
-    @ConfigItem(
-            keyName = "selectedPrayerRestoreType",
+            keyName = "prayerRestoreType",
             name = "Prayer Restore Type:",
             description = "Between prayer potions, or moonlight moth mixes.",
             position = 4
@@ -56,50 +47,33 @@ public interface BarrowsConfig extends Config {
         return PrayerRestoreType.PRAYER_POTION;
     }
 
+    @Getter
+    @RequiredArgsConstructor
     enum PrayerRestoreType {
-        PRAYER_POTION(ItemID._4DOSEPRAYERRESTORE),
-        MOONLIGHT_MOTH_MIX(ItemID.HUNTER_MIX_MOONMOTH_2DOSE),
-        MOONLIGHT_MOTH(ItemID.BUTTERFLY_JAR_MOONMOTH);
+        PRAYER_POTION("Prayer Potion", ItemID._4DOSEPRAYERRESTORE),
+        MOONLIGHT_MOTH_MIX("Moonlight Moth Mix", ItemID.HUNTER_MIX_MOONMOTH_2DOSE),
+        MOONLIGHT_MOTH("Moonlight Moth", ItemID.BUTTERFLY_JAR_MOONMOTH);
 
+        private final String name;
         private final int id;
-
-        PrayerRestoreType(int id) {
-            this.id = id;
-        }
-
-
-        public int getPrayerRestoreTypeID() {
-            return id;
-        }
-    }
-
-    @ConfigItem(
-            keyName = "targetPrayerPots",
-            name = "Max Prayer Restore",
-            description = "Max amount of prayer potions, or moonlight moth mixes to withdraw from the bank.",
-            position = 5
-    )
-    @Range(min = 1, max = 20)
-    default int targetPrayerPots() {
-        return 8;
     }
 
     @ConfigItem(
             keyName = "minPrayerPots",
-            name = "Min Prayer Restore",
-            description = "Minimum amount of prayer potions, or moonlight moth mixes to withdraw from the bank.",
-            position = 6
+            name = "Prayer Restoration items",
+            description = "Number of prayer potions, or moonlight moth mixes to withdraw from the bank.",
+            position = 5
     )
     @Range(min = 1, max = 10)
-    default int minPrayerPots() {
-        return 4;
+    default int prayerRestorationItems() {
+        return 2;
     }
 
     @ConfigItem(
             keyName = "minRuneAmount",
             name = "Min Runes",
             description = "Minimum amount of runes before banking",
-            position = 7
+            position = 6
     )
     @Range(min = 50, max = 1000)
     default int minRuneAmount() {
@@ -110,7 +84,7 @@ public interface BarrowsConfig extends Config {
             keyName = "shouldGainRP",
             name = "Aim for 86+% rewards potential",
             description = "Should we gain additional RP other than the barrows brothers?",
-            position = 8
+            position = 7
     )
     default boolean shouldGainRP() {
         return false;
@@ -120,7 +94,7 @@ public interface BarrowsConfig extends Config {
             keyName = "shouldPrayAgainstWeakerBrothers",
             name = "Pray against Torag, Verac, and Guthans?",
             description = "Should we Pray against Torag, Verac, and Guthans?",
-            position = 9
+            position = 8
     )
     default boolean shouldPrayAgainstWeakerBrothers() {
         return true;
@@ -130,7 +104,7 @@ public interface BarrowsConfig extends Config {
             keyName = "inventorySetupMelee",
             name = "Inventory Setup (melee)",
             description = "Inventory Setup to use for melee brothers (and karil)",
-            position = 10
+            position = 9
     )
     default InventorySetup inventorySetupMelee() { return null; }
 
@@ -138,7 +112,7 @@ public interface BarrowsConfig extends Config {
             keyName = "inventoryMagic",
             name = "Inventory Setup (Ahrim)",
             description = "Inventory Setup to use for Ahrim",
-            position = 11
+            position = 10
     )
     default InventorySetup inventorySetupAhrim() { return null; }
 
@@ -146,7 +120,7 @@ public interface BarrowsConfig extends Config {
             keyName = "inventoryTunnels",
             name = "Inventory Setup",
             description = "Inventory Setup to use for the tunnels while gaining reward potential",
-            position = 12
+            position = 11
     )
     default InventorySetup inventorySetupTunnels() { return null; }
 }

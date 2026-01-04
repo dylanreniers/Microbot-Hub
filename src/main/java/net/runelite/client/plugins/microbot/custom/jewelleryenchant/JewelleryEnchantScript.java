@@ -3,6 +3,7 @@ package net.runelite.client.plugins.microbot.custom.jewelleryenchant;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ObjectID;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectQueryable;
@@ -11,20 +12,22 @@ import net.runelite.client.plugins.microbot.custom.jewelleryenchant.util.Element
 import net.runelite.client.plugins.microbot.custom.jewelleryenchant.util.Jewellery;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
+import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
+import net.runelite.client.plugins.microbot.util.keyboard.Rs2Keyboard;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
 import net.runelite.client.plugins.microbot.util.magic.Runes;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
+import java.awt.event.KeyEvent;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 
 @Slf4j
 public class JewelleryEnchantScript extends Script {
@@ -35,8 +38,10 @@ public class JewelleryEnchantScript extends Script {
     public void shutdown() {
         log.info("Shutting down.");
         initialized = false;
-        mainScheduledFuture.cancel(true);
-        mainScheduledFuture = null;
+        if (mainScheduledFuture != null) {
+            mainScheduledFuture.cancel(true);
+            mainScheduledFuture = null;
+        }
         super.shutdown();
     }
 
@@ -68,6 +73,9 @@ public class JewelleryEnchantScript extends Script {
 
                 if (!config.onlyEnchant()) {
                     createJewellery(jewellery);
+                    if (jewellery.isAmulet()) {
+                        addBallsOfWoolToAmulets(jewellery);
+                    }
                     performEnchantment(jewellery);
                     bankAndRestock(jewellery);
                 } else {
@@ -119,14 +127,37 @@ public class JewelleryEnchantScript extends Script {
     private static void performEnchantment(Jewellery jewellery) {
         while (Rs2Inventory.hasItem(jewellery.getUnenchantedId())) {
             log.info("Enchanting jewellery.");
-            Rs2Magic.cast(jewellery);
+            Rs2Magic.cast(jewellery.getMagicAction());
             log.info("Opening enchantment menu and clicking on spell. Adding random sleep.");
             sleep(200, 600);
-            List<Rs2ItemModel> items = Rs2Inventory.all(model -> jewellery.getName().equals(model.getName()));
-            Rs2Inventory.interact(items.get(new Random().nextInt(items.size())), "Use"); //randomize which one to enchant
+            List<Rs2ItemModel> items = Rs2Inventory.all(model -> model.getId() == jewellery.getUnenchantedId());
+            if (items.size() == 1) {
+                Rs2Inventory.interact(items.get(0));
+            } else if (items.size() > 1) {
+                Rs2Inventory.interact(items.get(Rs2Random.between(0, items.size()))); //randomize which one to enchant
+            }
             log.info("Enchantment done. {} left to enchant. Adding sleep until next one can be enchanted", Rs2Inventory.count(jewellery.getUnenchantedId()));
             sleep(2000, 3000);
         }
+    }
+
+    private void addBallsOfWoolToAmulets(Jewellery jewellery) {
+        openBank();
+        log.info("Withdrawing balls of wool.");
+        Rs2Bank.withdrawX(ItemID.BALL_OF_WOOL, 13);
+        sleepUntil(() -> Rs2Inventory.contains(ItemID.BALL_OF_WOOL, 13));
+        Rs2Bank.closeBank();
+        sleepUntil(() -> !Rs2Bank.isOpen());
+        if (!Rs2Inventory.contains(jewellery.getName() + " (u)")) {
+            log.error("Unstrung Amulet not found.");
+        } else {
+            Rs2Inventory.combine(jewellery.getName() + " (u)", "Ball of wool");
+            sleepUntil(Rs2Dialogue::isInDialogue);
+            Rs2Keyboard.keyPress(KeyEvent.VK_SPACE);
+            sleepUntil(() -> !Rs2Inventory.contains(jewellery.getUnstrungAmuletId()), 20000);
+        }
+
+        sleep(600, 1800);
     }
 
     private void getJewelleryFromBank(Jewellery jewellery) {

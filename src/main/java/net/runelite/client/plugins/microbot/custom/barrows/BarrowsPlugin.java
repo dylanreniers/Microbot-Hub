@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.WidgetLoaded;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -34,8 +35,6 @@ public class BarrowsPlugin extends Plugin  {
 
     public static final String version = "3.0.0";
 
-    @Inject
-    private BarrowsConfig config;
     @Provides
     BarrowsConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(BarrowsConfig.class);
@@ -45,7 +44,8 @@ public class BarrowsPlugin extends Plugin  {
     private OverlayManager overlayManager;
     @Inject
     private BarrowsOverlay barrowsOverlay;
-
+    @Inject
+    private BarrowsConfig config;
     @Inject
     @Getter
     private BarrowsScript barrowsScript;

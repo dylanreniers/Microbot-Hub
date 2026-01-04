@@ -14,17 +14,15 @@ import javax.inject.Inject;
         name = "Donder's Jewellery Enchant",
         description = "Enchants all types of jewellery, with smart staff & rune handling.",
         tags = {"magic", "enchant", "jewellery", "skilling", "microbot"},
-        authors = { "Lumusi" },
+        authors = { "Donder" },
         version = JewelleryEnchantPlugin.version,
-        minClientVersion = "1.9.8",
-        cardUrl = "https://chsami.github.io/Microbot-Hub/JewelleryEnchantPlugin/assets/card.png",
-        iconUrl = "https://chsami.github.io/Microbot-Hub/JewelleryEnchantPlugin/assets/icon.png",
+        minClientVersion = "2.1.0",
         enabledByDefault = PluginConstants.DEFAULT_ENABLED,
         isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
 public class JewelleryEnchantPlugin extends Plugin {
-     static final String version = "1.0.1";
+     static final String version = "2.0.0";
 
     @Inject
     private JewelleryEnchantConfig config;
