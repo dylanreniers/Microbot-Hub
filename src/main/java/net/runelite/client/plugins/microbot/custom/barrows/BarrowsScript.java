@@ -3,65 +3,48 @@ package net.runelite.client.plugins.microbot.custom.barrows;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.NPC;
 import net.runelite.api.Quest;
 import net.runelite.api.QuestState;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldArea;
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.api.gameval.ItemID;
-import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.plugins.microbot.Microbot;
-import net.runelite.client.plugins.microbot.Script;
-import net.runelite.client.plugins.microbot.api.npc.Rs2NpcCache;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
-import net.runelite.client.plugins.microbot.api.tileitem.Rs2TileItemCache;
-import net.runelite.client.plugins.microbot.api.tileitem.models.Rs2TileItemModel;
-import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.custom.barrows.services.BankService;
 import net.runelite.client.plugins.microbot.custom.barrows.services.PuzzleSolverService;
 import net.runelite.client.plugins.microbot.custom.barrows.services.TileObjectService;
 import net.runelite.client.plugins.microbot.custom.barrows.services.LocationService;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
-import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
-import net.runelite.client.plugins.microbot.util.coords.Rs2WorldArea;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
-import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.keyboard.Rs2Keyboard;
-import net.runelite.client.plugins.microbot.util.magic.Rs2CombatSpells;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
-import net.runelite.client.plugins.microbot.util.magic.Rs2Spellbook;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
-import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
+import net.runelite.client.plugins.util.AbstractScript;
 
 import javax.inject.Inject;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
-public class BarrowsScript extends Script {
+public class BarrowsScript extends AbstractScript {
 
-    private static final int TICK_TIMEOUT = 100;
     private static final String DRINK = "Drink";
     private static final String SEARCH = "Search";
     private static final String OPEN = "Open";
@@ -71,21 +54,16 @@ public class BarrowsScript extends Script {
     private static final String DIG = "Dig";
     private static final String STRANGE_OLD_MAN = "Strange Old Man";
     private static final String CLIMB_UP = "Climb-up";
-    private static final String TAKE = "Take";
     private static final String ATTACK = "Attack";
     private static final String SKELETON = "Skeleton";
     private static final String BLOODWORM = "Bloodworm";
-    private static final String DEATH_RUNE = "Death rune";
-    private static final String BLOOD_RUNE = "Blood rune";
-    private static final String WRATH_RUNE = "Wrath rune";
     private static final String PRAYER_POTION = "Prayer potion";
     private static final String MOONLIGHT_MOTH = "Moonlight moth";
     private static final String RELEASE = "Release";
     private static final String UNKNOWN_BROTHER = "Unknown";
-    private static final String UNKNOWN_RUNE = "unknown";
     private static final WorldPoint CHEST_LOCATION = new WorldPoint(3552, 9694, 0);
 
-    private enum State {
+    private enum BarrowsState {
         RESTORE,
         BANKING,
         TRAVEL_TO_BARROWS,
@@ -95,15 +73,14 @@ public class BarrowsScript extends Script {
         CHEST,
     }
 
-    private boolean usePrayerAgainstWeakerBrother;
-    private boolean usingPoweredStaffs;
-    private boolean shouldGainRp;
-    private String neededRune = UNKNOWN_RUNE;
+    @Inject
     private BarrowsConfig config;
-    private boolean chestLooted;
 
-    @Getter
-    private final Set<String> barrowsPieces = new HashSet<>();
+    private BankService bankService;
+    private PuzzleSolverService puzzleSolverService;
+    private LocationService locationService;
+    private TileObjectService tileObjectService;
+
     @Getter
     private int chestsOpened = 0;
     @Getter
@@ -111,69 +88,43 @@ public class BarrowsScript extends Script {
     @Setter
     private boolean outOfPoweredStaffCharges;
 
-    @Inject
-    private Rs2TileItemCache rs2TileItemCache;
-    @Inject
-    private Rs2NpcCache rs2NpcCache;
-    @Inject
-    private Rs2TileObjectCache rs2TileObjectCache;
-
-    private BankService bankService;
-    private PuzzleSolverService puzzleSolverService;
-    private LocationService locationService;
-    private TileObjectService tileObjectService;
+    private int skeletonsKilled;
+    private int bloodwormsKilled;
 
     private final AtomicReference<ScheduledFuture<?>> walkToChestTask = new AtomicReference<>();
     private final Map<BarrowsBrother, Boolean> brotherStatuses = new LinkedHashMap<>();
 
-    public boolean run(BarrowsConfig config) {
+    @Override
+    public void initialize() {
         Microbot.enableAutoRunOn = false;
-        this.config = config;
-
         bankService = new BankService(config);
         puzzleSolverService = new PuzzleSolverService();
         locationService = new LocationService(rs2TileObjectCache);
         tileObjectService = new TileObjectService(rs2TileObjectCache);
-
-        this.usePrayerAgainstWeakerBrother = config.shouldPrayAgainstWeakerBrothers();
-        if (barrowsPieces.isEmpty()) {
-            barrowsPieces.add("Nothing yet.");
-        }
-
-        updateCombatMode();
 
         if (!BarrowsBrother.allBarrowsBrothersAreKilled()) {
             Arrays.stream(BarrowsBrother.values()).forEach(brother -> brotherStatuses.put(brother, brother.hasBeenKilled()));
         } else {
             Arrays.stream(BarrowsBrother.values()).forEach(brother -> brotherStatuses.put(brother, false));
         }
-
-        mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() ->
-        {
-            try {
-                if (!Microbot.isLoggedIn() || !super.run()) {
-                    return;
-                }
-
-                tick();
-            } catch (Exception ex) {
-                if (ex instanceof BarrowsScriptException) {
-                    BarrowsScriptException barrowsScriptException = (BarrowsScriptException) ex;
-                    Microbot.showMessage(barrowsScriptException.getMessage());
-                }
-                log.error("Barrows tick exception", ex);
-                mainScheduledFuture.cancel(true);
-                shutdown();
-            }
-        }, 0, TICK_TIMEOUT, TimeUnit.MILLISECONDS);
-
-        return true;
     }
 
-    private void tick() {
-        State state = getState();
+    @Override
+    public void onException(Exception ex) {
+        if (ex instanceof BarrowsScriptException) {
+            BarrowsScriptException barrowsScriptException = (BarrowsScriptException) ex;
+            Microbot.showMessage(barrowsScriptException.getMessage());
+        }
+        log.error("Barrows tick exception", ex);
+        mainScheduledFuture.cancel(true);
+        shutdown();
+    }
 
-        if (state != State.TUNNELS) {
+    @Override
+    public void tick() {
+        BarrowsState state = getState();
+
+        if (state != BarrowsState.TUNNELS) {
             cancelWalkToChestTask();
         }
 
@@ -182,7 +133,7 @@ public class BarrowsScript extends Script {
                 restoreAtFerox();
                 break;
             case BANKING:
-                bankService.handleBanking(neededRune, usingPoweredStaffs, outOfPoweredStaffCharges);
+                bankService.handleBanking(config.magicAttack(), outOfPoweredStaffCharges);
                 break;
             case TRAVEL_TO_BARROWS:
                 locationService.handleTravelToBarrows();
@@ -202,23 +153,23 @@ public class BarrowsScript extends Script {
         }
     }
 
-    private State getState() {
-        if (chestLooted || (isNearFerox() && !isPrayerAndRunSufficient())) {
-            return State.RESTORE;
-        } else if (isNearFerox() && isPrayerAndRunSufficient() && !bankService.bankingRequirementsMet(neededRune, usingPoweredStaffs)) {
-            return State.BANKING;
-        } else if (bankService.bankingRequirementsMet(neededRune, usingPoweredStaffs) && locationService.needsTravelToBarrows()) {
-            return State.TRAVEL_TO_BARROWS;
+    private BarrowsState getState() {
+        if (sleepUntil(() -> Rs2Widget.hasWidget(BARROWS_CHEST)) || (locationService.needsTravelToBarrows() && !isPrayerAndRunSufficient())) {
+            return BarrowsState.RESTORE;
+        } else if (locationService.needsTravelToBarrows() && !bankService.bankingRequirementsMet()) {
+            return BarrowsState.BANKING;
+        } else if (bankService.bankingRequirementsMet() && locationService.needsTravelToBarrows()) {
+            return BarrowsState.TRAVEL_TO_BARROWS;
         } else if (locationService.isInBarrowsTunnel()) {
             if (isNearChest()) {
-                return State.CHEST;
+                return BarrowsState.CHEST;
             }
-            return State.TUNNELS;
+            return BarrowsState.TUNNELS;
         } else if (enoughBrothersKilledToEnterTunnel()) {
-            return State.ENTER_TUNNELS;
+            return BarrowsState.ENTER_TUNNELS;
         }
 
-        return State.MOUNDS;
+        return BarrowsState.MOUNDS;
     }
 
     private boolean isNearChest() {
@@ -236,12 +187,7 @@ public class BarrowsScript extends Script {
         }
     }
 
-    private static boolean isNearFerox() {
-        return Rs2Player.getWorldLocation().distanceTo(BankLocation.FEROX_ENCLAVE.getWorldPoint()) <= 50;
-    }
-
     private void restoreAtFerox() {
-        chestLooted = false;
         locationService.teleportToFerox();
         drinkFromPoolOfRefreshment();
         sleep(1200, 1800);
@@ -281,7 +227,7 @@ public class BarrowsScript extends Script {
         log.info("Going for brother: {}" , brother.getName());
         changeEquipment(brother);
 
-        if (!usingPoweredStaffs) {
+        if (!config.magicAttack().isPoweredStaff() && !brother.isAhrim()) {
             setAutoCast();
         }
 
@@ -352,62 +298,19 @@ public class BarrowsScript extends Script {
             chest = tileObjectService.getChest();
             if (chest.isPresent()) {
                 chest.get().click(SEARCH);
-                sleepUntil(() -> Rs2Widget.hasWidget(BARROWS_CHEST));
-                recordBarrowsPiece();
-                brotherInTunnel = UNKNOWN_BROTHER;
                 chestsOpened++;
-                chestLooted = true;
-                brotherStatuses.replaceAll((brother, checked) -> false);
+                reset();
                 sleep(600, 1800);
             }
 
         }
     }
 
-    private void updateCombatMode() {
-        usingPoweredStaffs = isWearingPoweredStaff();
-
-        if (!usingPoweredStaffs) {
-            resolveNeededRuneIfUnknown();
-
-            if (Rs2Magic.getSpellbook() != Rs2Spellbook.MODERN) {
-                swapTheSpellbook();
-            }
-        }
-
-        shouldGainRp = config.shouldGainRP();
-    }
-
-    private static boolean isWearingPoweredStaff() {
-        Rs2ItemModel weapon = Rs2Equipment.get(EquipmentInventorySlot.WEAPON);
-        if (weapon == null || weapon.getName() == null) {
-            return false;
-        }
-
-        String name = weapon.getName();
-        return name.contains("Trident of the")
-                || name.contains("Tumeken's")
-                || name.contains("sceptre")
-                || name.contains("Sanguinesti")
-                || name.contains("Crystal staff");
-    }
-
-    private void resolveNeededRuneIfUnknown() {
-        if (!UNKNOWN_RUNE.equalsIgnoreCase(neededRune)) {
-            return;
-        }
-
-        /* int magicLvl = Rs2Player.getRealSkillLevel(Skill.MAGIC);
-
-        if (magicLvl >= 81) {
-            neededRune = "Wrath rune";
-        } else if (magicLvl >= 62) {
-            neededRune = "Blood rune";
-        } else {
-            neededRune = "Death rune";
-        } */
-
-        neededRune = "Death rune";
+    private void reset() {
+        brotherInTunnel = UNKNOWN_BROTHER;
+        bloodwormsKilled = 0;
+        skeletonsKilled = 0;
+        brotherStatuses.replaceAll((brother, checked) -> false);
     }
 
     private boolean everyBrotherWasKilled() {
@@ -480,20 +383,6 @@ public class BarrowsScript extends Script {
         }
     }
 
-    private void lootChampionScroll() {
-        Rs2TileItemModel scroll = rs2TileItemCache
-                .query()
-                .where(x -> x.getId() == ItemID.CHAMPIONS_CHALLENGE_SKELETON)
-                .nearestOnClientThread();
-
-        if (scroll == null) {
-            return;
-        }
-
-        scroll.click(TAKE);
-        sleepUntil(() -> Rs2Inventory.contains(scroll.getId()));
-    }
-
     private void gainPotential() {
         Rs2InventorySetup inventorySetup = new Rs2InventorySetup(config.inventorySetupTunnels(), mainScheduledFuture);
 
@@ -517,7 +406,7 @@ public class BarrowsScript extends Script {
         NPC attackingNpc = (NPC) Microbot.getClientThread().invoke(() -> Microbot.getClient().getLocalPlayer().getInteracting());
         if (attackingNpc == null) {
             log.info("No NPC being attacked by player?");
-        } else {
+        } else if (stillNeedsToKillNpc(attackingNpc)) {
             log.info("Attacking NPC");
             try {
                 sleepUntil(() -> attackingNpc.isDead() || !Rs2Combat.inCombat(), () -> {
@@ -528,12 +417,37 @@ public class BarrowsScript extends Script {
             } catch (Exception e) {
                 log.error("isCombat has thrown a timeout exception.");
             }
+
+            registerKill(attackingNpc);
+            log.info("NPC killed.");
+        } else {
+            log.info("Not a skeleton or bloodworm. Continuing to chest.");
         }
 
-        log.info("NPC killed.");
 
         sleep(600, 1800);
-        lootChampionScroll();
+    }
+
+    private void registerKill(NPC npc) {
+        if (isSkeleton(npc)) {
+            skeletonsKilled++;
+        } else {
+            bloodwormsKilled++;
+        }
+    }
+
+    private boolean stillNeedsToKillNpc(NPC npc) {
+        return isSkeleton(npc) || isBloodworm(npc) && (bloodwormsKilled == 0 || skeletonsKilled < 2);
+    }
+
+    private boolean isSkeleton(NPC npc) {
+        String name = Microbot.getClientThread().invoke(npc::getName);
+        return "skeleton".equalsIgnoreCase(name);
+    }
+
+    private boolean isBloodworm(NPC npc) {
+        String name = Microbot.getClientThread().invoke(npc::getName);
+        return "bloodworm".equalsIgnoreCase(name);
     }
 
     private Optional<Rs2NpcModel> getNearestSkeletonOrBloodworm() {
@@ -547,35 +461,9 @@ public class BarrowsScript extends Script {
         );
     }
 
-    private void swapTheSpellbook() {
-        if (Rs2Magic.getSpellbook() == Rs2Spellbook.MODERN) {
-            return;
-        }
-
-        WorldPoint swapLocation = Rs2Magic.getSpellbook().getSwitchLocation();
-        if (Rs2Player.getWorldLocation().distanceTo(swapLocation) > 5) {
-            Rs2Walker.walkTo(swapLocation);
-        }
-
-        Rs2Spellbook.MODERN.switchTo();
-    }
-
     private void setAutoCast() {
-        if (WRATH_RUNE.equals(neededRune)) {
-            if (Rs2Magic.getCurrentAutoCastSpell() != Rs2CombatSpells.WIND_SURGE) {
-                log.info("Setting autocast to wind surge.");
-                Rs2Combat.setAutoCastSpell(Rs2CombatSpells.WIND_SURGE, false);
-            }
-        } else if (BLOOD_RUNE.equals(neededRune)) {
-            if (Rs2Magic.getCurrentAutoCastSpell() != Rs2CombatSpells.WIND_WAVE) {
-                log.info("Setting autocast to wind wave.");
-                Rs2Combat.setAutoCastSpell(Rs2CombatSpells.WIND_WAVE, false);
-            }
-        } else if (DEATH_RUNE.equals(neededRune)) {
-            if (Rs2Magic.getCurrentAutoCastSpell() != Rs2CombatSpells.WIND_BLAST) {
-                log.info("Setting autocast to wind blast.");
-                Rs2Combat.setAutoCastSpell(Rs2CombatSpells.WIND_BLAST, false);
-            }
+        if (!config.magicAttack().isPoweredStaff() && Rs2Magic.getCurrentAutoCastSpell() != config.magicAttack().getAutocast()) {
+            Rs2Combat.setAutoCastSpell(config.magicAttack().getAutocast(), false);
         }
     }
 
@@ -603,7 +491,7 @@ public class BarrowsScript extends Script {
             return false;
         }
 
-        if ((this.usePrayerAgainstWeakerBrother || !brother.isWeakerBrother()) && !BarrowsBrother.allBarrowsBrothersAreKilled()) {
+        if ((config.shouldPrayAgainstWeakerBrothers() || !brother.isWeakerBrother()) && !BarrowsBrother.allBarrowsBrothersAreKilled()) {
             if (Rs2Player.getBoostedSkillLevel(Skill.PRAYER) < Rs2Random.between(8, 15)) {
                 usePrayerRestoration();
                 sleep(600);
@@ -662,8 +550,7 @@ public class BarrowsScript extends Script {
     }
 
     private boolean shouldGainMorePotential() {
-        int rp = Microbot.getVarbitValue(VarbitID.BARROWS_KILLED_MONSTER);
-        if (shouldGainRp && ((everyBrotherWasKilled() && rp < 840) || (BarrowsBrother.getNumberOfBarrowsBrothersKilled() == 5 && rp < 750))) {
+        if (config.shouldGainRP() && bloodwormsKilled < 1 && skeletonsKilled < 2) {
             var nearestSkeletonOrBloodworm = getNearestSkeletonOrBloodworm();
             return nearestSkeletonOrBloodworm.isPresent();
         }
@@ -672,27 +559,59 @@ public class BarrowsScript extends Script {
     }
 
     private void handleTunnels() {
+        ensureQuestDone();
+
+        if (handleBrotherIfPresent() || handlePuzzleIfPresent() || handlePotentialIfNeeded()) {
+            return;
+        }
+
+        handleWalkToChestIfNeeded();
+    }
+
+    private void ensureQuestDone() {
         if (Rs2Player.getQuestState(Quest.HIS_FAITHFUL_SERVANTS) != QuestState.FINISHED) {
             throw new BarrowsScriptException("Quest 'His faithful servants' is not finished");
         }
-
-        if (hintNpcModel() != null) {
-            log.info("Barrows brother located in tunnel.");
-            resetChestWalker();
-            checkForAndFightBrother(BarrowsBrother.getFinalBarrowsBrother());
-            disablePrayer();
-        } else if (puzzleSolverService.isPuzzleOnScreen()) {
-            log.info("Puzzle is on screen");
-            resetChestWalker();
-            puzzleSolverService.solvePuzzle();
-        } else if (shouldGainMorePotential()) {
-            log.info("Gaining more reward potential");
-            resetChestWalker();
-            gainPotential();
-        } else if (!chestLooted && !puzzleSolverService.isPuzzleOnScreen()) {
-            walkToChest();
-        }
     }
+
+    private boolean handleBrotherIfPresent() {
+        if (Objects.isNull(hintNpcModel())) {
+            return false;
+        }
+
+        log.info("Barrows brother located in tunnel.");
+        resetChestWalker();
+        checkForAndFightBrother(BarrowsBrother.getFinalBarrowsBrother());
+        disablePrayer();
+        return true;
+    }
+
+    private boolean handlePuzzleIfPresent() {
+        if (!puzzleSolverService.isPuzzleOnScreen()) {
+            return false;
+        }
+
+        log.info("Puzzle is on screen");
+        resetChestWalker();
+        puzzleSolverService.solvePuzzle();
+        return true;
+    }
+
+    private boolean handlePotentialIfNeeded() {
+        if (!shouldGainMorePotential()) {
+            return false;
+        }
+
+        log.info("Gaining more reward potential");
+        resetChestWalker();
+        gainPotential();
+        return true;
+    }
+
+    private void handleWalkToChestIfNeeded() {
+        walkToChest();
+    }
+
 
     private void walkToChest() {
         if (walkToChestTask.get() != null) {
@@ -756,7 +675,7 @@ public class BarrowsScript extends Script {
         Optional<Rs2TileObjectModel> sarcophagus = tileObjectService.getSarcophagus();
 
         if (sarcophagus.isPresent() && sarcophagus.get().click(SEARCH)) {
-            sleepUntil(() -> hintNpcModel() != null || Rs2Dialogue.isInDialogue());
+            sleepUntil(() -> Objects.nonNull(hintNpcModel()) || Rs2Dialogue.isInDialogue());
 
             if (Rs2Dialogue.isInDialogue() && Rs2Dialogue.hasDialogueText("You've found a hidden")) {
                 log.info("Found the crypt for brother: {}", brother.getName());
@@ -766,14 +685,6 @@ public class BarrowsScript extends Script {
         }
 
         return false;
-    }
-
-    private void recordBarrowsPiece() {
-        Rs2ItemModel piece = Rs2Inventory.get(it -> it != null && it.getName().contains("'s"));
-        if (piece != null) {
-            barrowsPieces.add(piece.getName());
-            barrowsPieces.remove("Nothing yet.");
-        }
     }
 
     @Override

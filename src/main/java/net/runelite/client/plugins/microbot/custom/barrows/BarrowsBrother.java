@@ -36,6 +36,10 @@ public enum BarrowsBrother {
         return Arrays.stream(BarrowsBrother.values()).filter(BarrowsBrother::hasBeenKilled).count() == 6;
     }
 
+    public static boolean noBarrowsBrothersAreKilled() {
+        return Arrays.stream(BarrowsBrother.values()).noneMatch(BarrowsBrother::hasBeenKilled);
+    }
+
     public static int getNumberOfBarrowsBrothersKilled() {
         return (int) Arrays.stream(BarrowsBrother.values()).filter(BarrowsBrother::hasBeenKilled).count();
     }

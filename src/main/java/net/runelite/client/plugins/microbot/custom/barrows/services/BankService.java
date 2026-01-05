@@ -7,6 +7,7 @@ import net.runelite.api.gameval.ItemID;
 import net.runelite.client.plugins.microbot.custom.barrows.BarrowsConfig;
 import net.runelite.client.plugins.microbot.custom.barrows.BarrowsScript;
 import net.runelite.client.plugins.microbot.custom.barrows.BarrowsScriptException;
+import net.runelite.client.plugins.microbot.custom.barrows.MagicAttack;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
@@ -27,19 +28,18 @@ public class BankService {
 
     private static final String SPADE = "Spade";
 
-    public void handleBanking(String neededRune, boolean usingPoweredStaffs, boolean outOfPoweredStaffCharges) {
+    public void handleBanking(MagicAttack magicAttack, boolean outOfPoweredStaffCharges) {
         openBank();
-        bankRefill(neededRune, usingPoweredStaffs, outOfPoweredStaffCharges);
+        bankRefill(magicAttack, outOfPoweredStaffCharges);
         closeBank();
     }
 
-    private void bankRefill(String neededRune, boolean usingPoweredStaffs, boolean outOfPoweredStaffCharges) {
+    private void bankRefill(MagicAttack magicAttack, boolean outOfPoweredStaffCharges) {
         Set<String> itemsToKeep = new HashSet<>();
         config.inventorySetupMelee().getEquipment().forEach(i -> itemsToKeep.add(i.getName()));
         config.inventorySetupAhrim().getEquipment().forEach(i -> itemsToKeep.add(i.getName()));
         config.inventorySetupTunnels().getEquipment().forEach(i -> itemsToKeep.add(i.getName()));
         itemsToKeep.addAll(Set.of(
-                neededRune,
                 "Teleport to house",
                 "Spade",
                 "Barrows teleport",
@@ -50,12 +50,14 @@ public class BankService {
                 "Rune pouch")
         );
 
+        if (magicAttack != MagicAttack.POWERED_STAFF) {
+            itemsToKeep.add(magicAttack.getRune());
+        }
+
         log.info("Keeping items: {}", String.join(", ", itemsToKeep));
         Rs2Bank.depositAllExcept(itemsToKeep);
 
-        if (!usingPoweredStaffs) {
-            //checkRunes(config); TODO: rune pouch check
-        } else if (outOfPoweredStaffCharges) {
+        if (outOfPoweredStaffCharges) {
             throw new BarrowsScriptException("Out of charges on staff");
         }
 
@@ -63,24 +65,6 @@ public class BankService {
         checkFood();
         checkSpade();
         checkRingOfDueling();
-    }
-
-    private void checkRunes(String neededRune) {
-        if (Rs2Inventory.get(neededRune) == null || Rs2Inventory.get(neededRune).getQuantity() <= config.minRuneAmount()) {
-            if (Rs2Bank.getBankItem(neededRune) != null && Rs2Bank.getBankItem(neededRune).getQuantity() > config.minRuneAmount()) {
-                int max = Rs2Bank.getBankItem(neededRune).getQuantity();
-                int withdraw = Rs2Random.between(config.minRuneAmount(), Math.max(config.minRuneAmount(), max));
-                if (Rs2Bank.withdrawX(neededRune, withdraw)) {
-                    sleepUntil(() ->
-                    {
-                        Rs2ItemModel r = Rs2Inventory.get(neededRune);
-                        return r != null && r.getQuantity() > config.minRuneAmount();
-                    });
-                }
-            } else {
-                throw new BarrowsScriptException("Out of runes for the spell.");
-            }
-        }
     }
 
     private static void openBank() {
@@ -157,7 +141,7 @@ public class BankService {
         }
     }
 
-    public boolean bankingRequirementsMet(String neededRune, boolean usingPoweredStaffs) {
+    public boolean bankingRequirementsMet() {
         if (!Rs2Inventory.contains(SPADE)) {
             log.info("Missing spade");
             return false;
@@ -172,15 +156,7 @@ public class BankService {
         }
 
         int prayerId = config.prayerRestoreType().getId();
-        if (Rs2Inventory.count(prayerId) < config.prayerRestorationItems()) {
-            return false;
-        }
 
-        /* if (!usingPoweredStaffs) { //TODO check rune pouch
-            Rs2ItemModel runes = Rs2Inventory.get(neededRune);
-            return runes != null && runes.getQuantity() > config.minRuneAmount();
-        } */
-
-        return true;
+        return Rs2Inventory.count(prayerId) >= config.prayerRestorationItems();
     }
 }

@@ -57,9 +57,7 @@ public class JewelleryEnchantScript extends Script {
 
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
-                log.info("tick");
                 if (!Microbot.isLoggedIn() || !super.run()) {
-                    log.info("Not running?");
                     return;
                 }
 

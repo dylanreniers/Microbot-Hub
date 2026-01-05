@@ -7,7 +7,6 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.api.IEntity;
 import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
-import net.runelite.client.plugins.microbot.custom.barrows.BarrowsScript;
 import net.runelite.client.plugins.microbot.custom.barrows.BarrowsScriptException;
 import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
@@ -37,11 +36,11 @@ public class LocationService {
         sleepUntil(Rs2Player::isAnimating);
         sleepUntil(() -> !Rs2Player.isAnimating());
         sleep(600, 1200);
-        log.info("Waiting until POH portal can no longer be found.");
+        log.info("Waiting until POH portal can be found.");
         sleepUntil(() -> rs2TileObjectCache.query()
                 .where(IEntity::isReachable)
                 .where(object -> object.getId() == POH_PORTAL_ID)
-                .nearestOnClientThread(40) == null);
+                .nearestOnClientThread(40) != null);
     }
 
     public void handleTravelToBarrows() {

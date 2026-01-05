@@ -5,7 +5,6 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.events.ChatMessage;
-import net.runelite.api.events.WidgetLoaded;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -39,13 +38,10 @@ public class BarrowsPlugin extends Plugin  {
     BarrowsConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(BarrowsConfig.class);
     }
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private BarrowsOverlay barrowsOverlay;
-    @Inject
-    private BarrowsConfig config;
     @Inject
     @Getter
     private BarrowsScript barrowsScript;
@@ -59,7 +55,7 @@ public class BarrowsPlugin extends Plugin  {
         Rs2Antiban.resetAntibanSettings();
         Rs2Antiban.antibanSetupTemplates.applyCombatSetup();
         Rs2Antiban.setActivity(Activity.BARROWS);
-        barrowsScript.run(config);
+        barrowsScript.run();
     }
 
     protected void shutDown() {

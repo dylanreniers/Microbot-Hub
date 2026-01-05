@@ -11,16 +11,16 @@ import java.awt.*;
 
 public class BarrowsOverlay extends OverlayPanel {
 
-    private BarrowsPlugin barrowsPlugin;
+    private final BarrowsPlugin barrowsPlugin;
 
     @Inject
-    BarrowsOverlay(BarrowsPlugin plugin)
-    {
+    public BarrowsOverlay(BarrowsPlugin plugin) {
         super(plugin);
         this.barrowsPlugin = plugin;
         setPosition(OverlayPosition.TOP_LEFT);
         setNaughty();
     }
+
     @Override
     public Dimension render(Graphics2D graphics) {
         try {
@@ -46,17 +46,6 @@ public class BarrowsOverlay extends OverlayPanel {
                     .left("Tunnel:")
                     .right(barrowsPlugin.getBarrowsScript().getBrotherInTunnel().split(" ")[0])
                     .build());
-
-            panelComponent.getChildren().add(LineComponent.builder()
-                    .left("Pieces found:")
-                    .build());
-
-            panelComponent.getChildren().add(LineComponent.builder()
-                    .left(barrowsPlugin.getBarrowsScript().getBarrowsPieces().toString())
-                    .build());
-
-
-
         } catch(Exception ex) {
             System.out.println(ex.getMessage());
         }

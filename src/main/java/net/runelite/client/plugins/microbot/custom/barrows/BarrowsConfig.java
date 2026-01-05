@@ -70,14 +70,13 @@ public interface BarrowsConfig extends Config {
     }
 
     @ConfigItem(
-            keyName = "minRuneAmount",
-            name = "Min Runes",
-            description = "Minimum amount of runes before banking",
+            keyName = "magicAttack",
+            name = "Magic attack",
+            description = "Which magic attack to use",
             position = 6
     )
-    @Range(min = 50, max = 1000)
-    default int minRuneAmount() {
-        return 180;
+    default MagicAttack magicAttack() {
+        return MagicAttack.WIND_BLAST;
     }
 
     @ConfigItem(
