@@ -199,3 +199,74 @@ When you run `./gradlew build`:
 - Config classes use `@Provides` methods to register with `ConfigManager`
 - Overlays are registered in `startUp()`, unregistered in `shutDown()`
 - Use `@Subscribe` for event handling (ChatMessage, GameTick, etc.)
+
+## Threading
+
+Scripts run on a scheduled executor thread, but certain RuneLite API calls (widgets, game objects, etc.) must run on the client thread:
+
+```java
+// Use invoke() for client thread operations
+TrialInfo info = Microbot.getClientThread().invoke(() -> TrialInfo.getCurrent(client));
+
+// For void operations
+Microbot.getClientThread().invoke(() -> {
+    // client thread code here
+});
+```
+
+**Always use `Microbot.getClientThread().invoke()`** when accessing:
+- Widgets (`client.getWidget()`, `widget.isHidden()`)
+- Game objects that aren't cached
+- Player world view (`client.getLocalPlayer().getWorldView()`)
+- Varbits (`client.getVarbitValue()`)
+- `BoatLocation.fromLocal()` - accesses player world view internally
+- `TrialInfo.getCurrent()` - accesses widgets internally
+- `Rs2BoatCache.getLocalBoat()` - accesses player world view
+- `Rs2BoatModel.isNavigating()` - accesses varbits
+- `Rs2BoatModel.isMovingForward()` - accesses varbits
+- `Rs2BoatModel.getHeading()` - accesses varbits
+- Any RuneLite API that throws "must be called on client thread"
+
+## Event Subscription from Scripts
+
+**Important:** `@Subscribe` event handlers (`onGameTick`, `onClientTick`, `onVarbitChanged`, `onGameObjectSpawned`, etc.) **run on the client thread automatically**. You do NOT need to wrap client API calls in `Microbot.getClientThread().invoke()` inside these handlers.
+
+Scripts can subscribe to RuneLite events by injecting the EventBus:
+
+```java
+@Slf4j
+public class MyScript {
+    private final EventBus eventBus;
+
+    @Inject
+    public MyScript(EventBus eventBus) {
+        this.eventBus = eventBus;
+    }
+
+    public void register() {
+        eventBus.register(this);
+    }
+
+    public void unregister() {
+        eventBus.unregister(this);
+    }
+
+    @Subscribe
+    public void onGameTick(GameTick event) {
+        // Handle game tick
+    }
+}
+```
+
+In the plugin, call `register()` in `startUp()` and `unregister()` in `shutDown()`:
+
+```java
+@Override
+protected void startUp() {
+    myScript.register();
+}
+
+protected void shutDown() {
+    myScript.unregister();
+}
+```

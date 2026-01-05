@@ -105,14 +105,25 @@ public class NavigationHandler {
 
     /**
      * Custom walking method that only enables run energy if we have more than 10% energy
+     * Also handles stamina potion drinking when energy is low
      * @param worldPoint the target location
      * @return true if the walk command was successfully issued
      */
     private static boolean walkWithRunEnergyCheck(WorldPoint worldPoint) {
-        // Check current run energy before toggling run on
         int currentRunEnergy = Rs2Player.getRunEnergy();
-        boolean shouldToggleRun = currentRunEnergy > 10;
 
+        if (InventoryUtils.isStaminaSupportEnabled()) {
+            int threshold = InventoryUtils.getStaminaThreshold();
+            if (currentRunEnergy < threshold && !Rs2Player.hasStaminaBuffActive()) {
+                if (InventoryUtils.drinkStaminaOrEnergyPotion()) {
+                    System.out.println("Drank stamina/energy potion - run energy was at " + currentRunEnergy + "%");
+                    InventoryUtils.dropEmptyVials();
+                    currentRunEnergy = Rs2Player.getRunEnergy();
+                }
+            }
+        }
+
+        boolean shouldToggleRun = currentRunEnergy > 10;
         return Rs2Walker.walkFastCanvas(worldPoint, shouldToggleRun);
     }
 
@@ -138,7 +149,7 @@ public class NavigationHandler {
             }
 
             System.out.println("Navigating to " + totemLocation.getDescription());
-            
+
             // Clear processed ent trails for this new navigation run
             clearProcessedEntTrails();
             
@@ -309,14 +320,23 @@ public class NavigationHandler {
         try {
             WorldPoint bankLocation = BankLocation.PLAYER_STANDING_TILE.getLocation();
 
-            // Check if already at bank
             if (CoordinateUtils.isAtBankingPosition()) {
                 return true;
             }
 
             System.out.println("Returning to bank");
 
-            // Simple blocking walk to bank - no need for concurrent actions while banking
+            if (InventoryUtils.isStaminaSupportEnabled()) {
+                int currentEnergy = Rs2Player.getRunEnergy();
+                int threshold = InventoryUtils.getStaminaThreshold();
+                if (currentEnergy < threshold && !Rs2Player.hasStaminaBuffActive()) {
+                    if (InventoryUtils.drinkStaminaOrEnergyPotion()) {
+                        System.out.println("Drank potion before returning to bank - energy was at " + currentEnergy + "%");
+                        InventoryUtils.dropEmptyVials();
+                    }
+                }
+            }
+
             boolean walked = Rs2Walker.walkTo(bankLocation);
             if (walked) {
                 return CoordinateUtils.isAtBankingPosition();

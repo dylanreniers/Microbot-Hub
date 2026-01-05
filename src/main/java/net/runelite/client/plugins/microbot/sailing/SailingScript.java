@@ -3,8 +3,8 @@ package net.runelite.client.plugins.microbot.sailing;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
-import net.runelite.client.plugins.microbot.sailing.features.PortTaskFeature;
-import net.runelite.client.plugins.microbot.sailing.features.SalvagingFeature;
+import net.runelite.client.plugins.microbot.sailing.features.salvaging.SalvagingScript;
+import net.runelite.client.plugins.microbot.sailing.features.trials.TrialsScript;
 
 import javax.inject.Inject;
 import java.util.concurrent.TimeUnit;
@@ -12,46 +12,40 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class SailingScript extends Script {
 
-    private final SailingPlugin plugin;
-	private final SailingConfig config;
-
-    private final SalvagingFeature salvagingFeature = new SalvagingFeature();
-    private final PortTaskFeature portTaskFeature = new PortTaskFeature();
+    private final SailingConfig config;
+    private final SalvagingScript salvagingFeature;
+    private final TrialsScript trialsFeature;
 
 	@Inject
-	public SailingScript(SailingPlugin plugin, SailingConfig config) {
-		this.plugin = plugin;
+	public SailingScript(SailingConfig config, SalvagingScript salvagingFeature, TrialsScript trialsFeature) {
 		this.config = config;
+		this.salvagingFeature = salvagingFeature;
+		this.trialsFeature = trialsFeature;
 	}
 
     public boolean run() {
         Microbot.enableAutoRunOn = false;
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
-                if (!Microbot.isLoggedIn() || !super.run()) {
-                    return;
-                }
-                long startTime = System.currentTimeMillis();
-
-                log.info("Salvaging? {}", config.salvaging());
+                if (!Microbot.isLoggedIn()) return;
+                if (!super.run()) return;
 
                 if (config.salvaging()) {
                     salvagingFeature.run(config);
-                } else {
-                    portTaskFeature.run(config);
                 }
 
-                long endTime = System.currentTimeMillis();
-                long totalTime = endTime - startTime;
-                log.info("Total time for loop {}ms", totalTime);
+                if (config.trials()) {
+                    trialsFeature.run(config);
+                }
+
 
             } catch (Exception ex) {
                 log.trace("Exception in main loop: ", ex);
             }
-        }, 0, 600, TimeUnit.MILLISECONDS);
+        }, 0, 100, TimeUnit.MILLISECONDS);
         return true;
     }
-
+    
     @Override
     public void shutdown() {
         super.shutdown();

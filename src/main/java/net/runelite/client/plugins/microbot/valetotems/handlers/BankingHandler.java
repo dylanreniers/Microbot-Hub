@@ -12,8 +12,12 @@ import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
+import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
+import net.runelite.client.plugins.microbot.util.misc.Rs2Potion;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
+
+import java.util.List;
 
 import static net.runelite.client.plugins.microbot.util.Global.sleep;
 import static net.runelite.client.plugins.microbot.util.Global.sleepGaussian;
@@ -310,7 +314,7 @@ public class BankingHandler {
                 return false;
             }
 
-            // Step 2: Deposit all except knife
+            // Step 2: Deposit all except knife (and stamina potion if we have one)
             if (!depositAllExceptKnife()) {
                 Microbot.log("Failed to deposit items for standard route");
                 return false;
@@ -327,6 +331,11 @@ public class BankingHandler {
             if (!withdrawRequiredItems(gameSession)) {
                 Microbot.log("Failed to withdraw required items for standard route");
                 return false;
+            }
+
+            // Step 5: Handle stamina potion withdrawal if enabled
+            if (!handleStaminaPotionWithdrawal()) {
+                Microbot.log("Warning: Failed to handle stamina potions - continuing without");
             }
 
             return true;
@@ -376,6 +385,11 @@ public class BankingHandler {
             if (!performLogBasketFillingOperation(gameSession)) {
                 Microbot.log("Failed to perform log basket filling operation");
                 return false;
+            }
+
+            // Step 6: Handle stamina potion withdrawal if enabled
+            if (!handleStaminaPotionWithdrawal()) {
+                Microbot.log("Warning: Failed to handle stamina potions - continuing without");
             }
 
             Microbot.log("Extended route banking operations completed successfully");
@@ -733,6 +747,61 @@ public class BankingHandler {
             Microbot.log("Error ensuring knife and log basket in inventory: " + e.getMessage());
             return false;
         }
+    }
+
+    private static boolean handleStaminaPotionWithdrawal() {
+        if (config == null || !config.useStaminaPotions() || !Rs2Bank.isOpen()) {
+            return true;
+        }
+
+        if (Rs2Inventory.hasItem(Rs2Potion.getStaminaPotion()) ||
+            Rs2Inventory.hasItem(Rs2Potion.getRestoreEnergyPotionsVariants().toArray(String[]::new))) {
+            return true;
+        }
+
+        InventoryUtils.depositEmptyVials();
+
+        int currentEnergy = Rs2Player.getRunEnergy();
+        int threshold = config.staminaThreshold();
+        boolean needsDrink = currentEnergy <= threshold && !Rs2Player.hasStaminaBuffActive();
+
+        String potionToWithdraw = findBestPotionInBank();
+        if (potionToWithdraw == null) {
+            Microbot.log("No stamina or energy potions available in bank");
+            return true;
+        }
+
+        if (needsDrink) {
+            Microbot.log("Run energy low - withdrawing and drinking potion");
+            Rs2Bank.withdrawOne(potionToWithdraw);
+            Rs2Inventory.waitForInventoryChanges(1800);
+            if (Rs2Inventory.hasItem(potionToWithdraw)) {
+                Rs2Inventory.interact(potionToWithdraw, "drink");
+                Rs2Inventory.waitForInventoryChanges(1800);
+                InventoryUtils.depositEmptyVials();
+            }
+        } else {
+            Microbot.log("Withdrawing potion for navigation");
+            Rs2Bank.withdrawOne(potionToWithdraw);
+            Rs2Inventory.waitForInventoryChanges(1800);
+        }
+
+        return true;
+    }
+
+    private static String findBestPotionInBank() {
+        if (Rs2Bank.hasItem(Rs2Potion.getStaminaPotion())) {
+            return Rs2Potion.getStaminaPotion();
+        }
+
+        List<String> energyVariants = Rs2Potion.getRestoreEnergyPotionsVariants();
+        Rs2ItemModel energyPotion = Rs2Bank.bankItems().stream()
+                .filter(item -> energyVariants.stream()
+                        .anyMatch(variant -> item.getName().toLowerCase().contains(variant.toLowerCase())))
+                .findFirst()
+                .orElse(null);
+
+        return energyPotion != null ? energyPotion.getName() : null;
     }
 
     /**

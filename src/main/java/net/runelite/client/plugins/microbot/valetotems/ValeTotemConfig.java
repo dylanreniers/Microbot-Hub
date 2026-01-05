@@ -4,6 +4,8 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigInformation;
+import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Range;
 
 @ConfigGroup("valeTotems")
 @ConfigInformation(
@@ -45,7 +47,12 @@ import net.runelite.client.config.ConfigInformation;
     "• Ensure desired logs and knife/fletching knife are in bank<br />" +
     "• <b>Equip desired gear before starting</b> (bot doesn't wield/unwield)<br />" +
     "• <b>Recommended:</b> Graceful gear for reduced run energy drain<br />" +
-    "• Bot handles all navigation and banking automatically!"
+    "• Bot handles all navigation and banking automatically!<br /><br />" +
+
+    "⚡ <b>STAMINA SUPPORT:</b><br />" +
+    "• Enable 'Use Stamina Potions' to automatically drink stamina potions<br />" +
+    "• Bot will withdraw potions from bank and drink when run energy is low<br />" +
+    "• Stamina potions are prioritized over energy potions"
 )
 public interface ValeTotemConfig extends Config {
     
@@ -77,6 +84,36 @@ public interface ValeTotemConfig extends Config {
     )
     default int collectOfferingsFrequency() {
         return 5;
+    }
+
+    @ConfigSection(
+            name = "Stamina",
+            description = "Stamina potion settings",
+            position = 10
+    )
+    String staminaSection = "stamina";
+
+    @ConfigItem(
+            keyName = "useStaminaPotions",
+            name = "Use Stamina Potions",
+            description = "Automatically drink stamina potions when run energy is low",
+            position = 11,
+            section = staminaSection
+    )
+    default boolean useStaminaPotions() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "staminaThreshold",
+            name = "Drink At Energy %",
+            description = "Drink stamina potion when run energy falls below this percentage",
+            position = 12,
+            section = staminaSection
+    )
+    @Range(min = 10, max = 90)
+    default int staminaThreshold() {
+        return 50;
     }
 
     enum LogType {

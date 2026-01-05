@@ -7,9 +7,13 @@ import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
+import net.runelite.client.plugins.microbot.util.misc.Rs2Potion;
+import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import static net.runelite.client.plugins.microbot.util.Global.sleep;
 import static net.runelite.client.plugins.microbot.util.Global.sleepGaussian;
 import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
+
+import java.util.List;
 
 /**
  * Utility class for inventory management in the Vale Totems minigame
@@ -224,15 +228,11 @@ public class InventoryUtils {
      * @return number of logs to withdraw for optimal inventory management
      */
     public static int getOptimalLogWithdrawAmount() {
-        // Keep 1 slot for knife, rest for logs
-        // Consider existing bows and logs
-        int availableSlots = 27; // 28 - 1 for knife
-        
-        // Withdraw enough for full round (25 total) but don't exceed inventory
-        int targetTotal = 27;
-        int needed = Math.max(0, targetTotal);
-        
-        return Math.min(needed, availableSlots);
+        // Reserve slots: 1 for knife, optionally 1 for stamina potion
+        int reservedSlots = isStaminaSupportEnabled() ? 2 : 1;
+        int availableSlots = 28 - reservedSlots;
+
+        return availableSlots;
     }
 
     /**
@@ -430,27 +430,27 @@ public class InventoryUtils {
         int currentLogs = getLogCount();
         int basketLogs = getLogBasketLogCount(gameSession);
         int totalCurrentLogs = currentLogs + basketLogs;
-        
-        // Calculate how many more logs we need
+
         int logsNeeded = Math.max(0, totalLogsNeeded - totalCurrentLogs);
-        
-        // Don't exceed inventory capacity (leaving room for knife and basket)
-        int maxCanTake = 26; // 28 slots - knife - basket
-        
+
+        // Reserve slots: knife, basket, optionally stamina potion
+        int reservedSlots = isStaminaSupportEnabled() ? 3 : 2;
+        int maxCanTake = 28 - reservedSlots;
+
         return Math.min(logsNeeded, maxCanTake);
     }
 
     public static int getOptimalLogBasketLogAmountForExtendedRoute(net.runelite.client.plugins.microbot.valetotems.models.GameSession gameSession) {
-        int totalLogsNeeded = 40 - 26; // 8 totems * 5 logs each - we will hold 26 in inventory
+        // Reserve slots: knife, basket, optionally stamina potion
+        int reservedSlots = isStaminaSupportEnabled() ? 3 : 2;
+        int inventoryLogsCapacity = 28 - reservedSlots;
+
+        int totalLogsNeeded = 40 - inventoryLogsCapacity;
         int basketLogs = getLogBasketLogCount(gameSession);
-        
-        // Calculate how many more logs we need
+
         int logsNeeded = Math.max(0, totalLogsNeeded - basketLogs);
-        
-        // Don't exceed inventory capacity (leaving room for knife and basket)
-        int maxCanTake = 26; // 28 slots - knife - basket
-        
-        return Math.min(logsNeeded, maxCanTake);
+
+        return Math.min(logsNeeded, inventoryLogsCapacity);
     }
 
     /**
@@ -502,5 +502,52 @@ public class InventoryUtils {
         // Always empty basket if it has logs and we're starting a new banking session
         // This ensures we start fresh with the correct log type
         return hasLogBasket() && gameSession != null && gameSession.getLogBasketLogCount() > 0;
+    }
+
+    public static final int VIAL_EMPTY_ID = ItemID.VIAL;
+
+    public static boolean drinkStaminaOrEnergyPotion() {
+        boolean hasStaminaBuff = Rs2Player.hasStaminaBuffActive();
+
+        if (!hasStaminaBuff && Rs2Inventory.hasItem(Rs2Potion.getStaminaPotion())) {
+            if (Rs2Inventory.interact(Rs2Potion.getStaminaPotion(), "drink")) {
+                sleepGaussian(600, 150);
+                return true;
+            }
+        }
+
+        Rs2ItemModel energyPotion = Rs2Inventory.get(Rs2Potion.getRestoreEnergyPotionsVariants().toArray(String[]::new));
+        if (energyPotion != null) {
+            if (Rs2Inventory.interact(energyPotion.getId(), "drink")) {
+                sleepGaussian(600, 150);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static void dropEmptyVials() {
+        if (Rs2Inventory.hasItem(VIAL_EMPTY_ID)) {
+            Rs2Inventory.dropAll(VIAL_EMPTY_ID);
+            sleepGaussian(300, 100);
+        }
+    }
+
+    public static boolean depositEmptyVials() {
+        if (Rs2Bank.isOpen() && Rs2Inventory.hasItem(VIAL_EMPTY_ID)) {
+            Rs2Bank.depositAll(VIAL_EMPTY_ID);
+            sleepGaussian(300, 100);
+            return true;
+        }
+        return false;
+    }
+
+    public static boolean isStaminaSupportEnabled() {
+        return config != null && config.useStaminaPotions();
+    }
+
+    public static int getStaminaThreshold() {
+        return config != null ? config.staminaThreshold() : 50;
     }
 } 

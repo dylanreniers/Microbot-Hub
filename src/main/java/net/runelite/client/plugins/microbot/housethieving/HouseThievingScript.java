@@ -60,18 +60,19 @@ public class HouseThievingScript extends Script {
         initialPlayerLocation = null;
         Rs2Antiban.resetAntibanSettings();
         Rs2AntibanSettings.naturalMouse = true;
+
+        var childrenOfTheSunComplete = Rs2Player.getQuestState(Quest.CHILDREN_OF_THE_SUN) == QuestState.FINISHED;
+        if (!childrenOfTheSunComplete) {
+            Microbot.showMessage("Children of the Sun quest is required to be complete to use this plugin.");
+            shutdown();
+            return false;
+        }
+
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
                 if (!super.run()) return;
                 if (!Microbot.isLoggedIn()) return;
                 if (Rs2AntibanSettings.actionCooldownActive) return;
-
-                var childrenOfTheSunComplete = Rs2Player.getQuestState(Quest.CHILDREN_OF_THE_SUN) == QuestState.FINISHED;
-                if (!childrenOfTheSunComplete) {
-                    Microbot.showMessage("Children of the Sun quest is required to be complete to use this plugin.");
-                    shutdown();
-                    return;
-                }
 
                 if (state == null)
                     state = State.BANKING;
