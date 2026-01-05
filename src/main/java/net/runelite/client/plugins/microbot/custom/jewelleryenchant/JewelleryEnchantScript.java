@@ -6,6 +6,7 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
 import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectQueryable;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.custom.jewelleryenchant.util.ElementalStaff;
@@ -23,16 +24,22 @@ import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
+import javax.inject.Inject;
 import java.awt.event.KeyEvent;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 public class JewelleryEnchantScript extends Script {
 
     private boolean initialized = false;
+
+    @Inject
+    private Rs2TileObjectCache rs2TileObjectCache;
 
     @Override
     public void shutdown() {
@@ -50,7 +57,9 @@ public class JewelleryEnchantScript extends Script {
 
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
-                if (!Microbot.isLoggedIn() || !super.run() || !super.isRunning()) {
+                log.info("tick");
+                if (!Microbot.isLoggedIn() || !super.run()) {
+                    log.info("Not running?");
                     return;
                 }
 
@@ -62,28 +71,22 @@ public class JewelleryEnchantScript extends Script {
                     return;
                 }
 
-                if (!initialized) {
-                    log.info("Not initialized. Restocking first, to ensure proper run.");
-                    bankAndRestock(jewellery);
-                    initialized = true;
-                }
-
                 handleStaffEquipping(jewellery);
                 ensureCorrectRunes(jewellery);
 
+                log.info("only enchantment? {}", config.onlyEnchant());
                 if (!config.onlyEnchant()) {
+                    bankAndRestock(jewellery);
                     createJewellery(jewellery);
                     if (jewellery.isAmulet()) {
                         addBallsOfWoolToAmulets(jewellery);
                     }
                     performEnchantment(jewellery);
-                    bankAndRestock(jewellery);
                 } else {
+                    log.info("Starting enchantment only");
                     getJewelleryFromBank(jewellery);
                     performEnchantment(jewellery);
                 }
-
-
             } catch (Exception ex) {
                 log.error("Error running Jewellery enchant script", ex);
             }
@@ -91,7 +94,7 @@ public class JewelleryEnchantScript extends Script {
         return true;
     }
 
-    private static void createJewellery(Jewellery jewellery) {
+    private void createJewellery(Jewellery jewellery) {
         goToFurnace();
         smeltJewellery(jewellery);
     }
@@ -105,23 +108,29 @@ public class JewelleryEnchantScript extends Script {
         log.info("Done waiting.");
     }
 
-    private static void goToFurnace() {
-        Rs2TileObjectModel furnaceObject = new Rs2TileObjectQueryable()
-                .where(rs2TileObjectModel -> rs2TileObjectModel.getId() == ObjectID.FURNACE_16469)
-                .nearest(40);
-
+    private void goToFurnace() {
+        Rs2TileObjectModel furnaceObject = getFurnace();
         if (furnaceObject == null) {
             log.info("Couldn't find furnace. Walking towards it.");
             Rs2Walker.walkTo(new WorldPoint(3097, 3494, 0)); // EDGEVILLE FURNACE
+            furnaceObject = getFurnace();
         }
 
         if (!Rs2Camera.isTileOnScreen(furnaceObject.getLocalLocation())) {
             log.info("Turning camera towards furnace.");
             Rs2Camera.turnTo(furnaceObject.getLocalLocation());
+
         }
 
         log.info("Crafting the jewellery. Waiting until finished.");
         furnaceObject.click("smelt");
+    }
+
+    private Rs2TileObjectModel getFurnace() {
+        return rs2TileObjectCache
+                .query()
+                .where(rs2TileObjectModel -> rs2TileObjectModel.getId() == ObjectID.FURNACE_16469)
+                .nearestOnClientThread(40);
     }
 
     private static void performEnchantment(Jewellery jewellery) {
@@ -129,7 +138,7 @@ public class JewelleryEnchantScript extends Script {
             log.info("Enchanting jewellery.");
             Rs2Magic.cast(jewellery.getMagicAction());
             log.info("Opening enchantment menu and clicking on spell. Adding random sleep.");
-            sleep(200, 600);
+            sleep(200, 400);
             List<Rs2ItemModel> items = Rs2Inventory.all(model -> model.getId() == jewellery.getUnenchantedId());
             if (items.size() == 1) {
                 Rs2Inventory.interact(items.get(0));
@@ -137,8 +146,10 @@ public class JewelleryEnchantScript extends Script {
                 Rs2Inventory.interact(items.get(Rs2Random.between(0, items.size()))); //randomize which one to enchant
             }
             log.info("Enchantment done. {} left to enchant. Adding sleep until next one can be enchanted", Rs2Inventory.count(jewellery.getUnenchantedId()));
-            sleep(2000, 3000);
+            sleep(2000, 2400);
         }
+
+        log.info("Done enchanting all jewellery");
     }
 
     private void addBallsOfWoolToAmulets(Jewellery jewellery) {
@@ -297,5 +308,6 @@ public class JewelleryEnchantScript extends Script {
         log.info("Withdrawing gems.");
         Rs2Bank.withdrawX(jewellery.getGemId(), 13);
         sleepUntil(() -> Rs2Inventory.hasItem(jewellery.getBarId()) && Rs2Inventory.hasItem(jewellery.getGemId()));
+        log.info("Everything is withdrawn");
     }
 }

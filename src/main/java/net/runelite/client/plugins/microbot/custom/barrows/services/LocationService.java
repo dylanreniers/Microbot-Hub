@@ -8,6 +8,7 @@ import net.runelite.client.plugins.microbot.api.IEntity;
 import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.custom.barrows.BarrowsScript;
+import net.runelite.client.plugins.microbot.custom.barrows.BarrowsScriptException;
 import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
@@ -54,7 +55,7 @@ public class LocationService {
 
         if (barrowsPortal == null) {
             log.info("Barrows Portal not found.");
-            throw new BarrowsScript.BarrowsScriptException("No barrows portal found in POH.");
+            throw new BarrowsScriptException("No barrows portal found in POH.");
         }
 
         log.info("Entering barrows portal.");

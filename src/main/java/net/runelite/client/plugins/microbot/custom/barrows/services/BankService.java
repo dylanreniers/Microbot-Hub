@@ -6,6 +6,7 @@ import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.client.plugins.microbot.custom.barrows.BarrowsConfig;
 import net.runelite.client.plugins.microbot.custom.barrows.BarrowsScript;
+import net.runelite.client.plugins.microbot.custom.barrows.BarrowsScriptException;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
@@ -55,7 +56,7 @@ public class BankService {
         if (!usingPoweredStaffs) {
             //checkRunes(config); TODO: rune pouch check
         } else if (outOfPoweredStaffCharges) {
-            throw new BarrowsScript.BarrowsScriptException("Out of charges on staff");
+            throw new BarrowsScriptException("Out of charges on staff");
         }
 
         checkPrayerRestorationPotions();
@@ -77,7 +78,7 @@ public class BankService {
                     });
                 }
             } else {
-                throw new BarrowsScript.BarrowsScriptException("Out of runes for the spell.");
+                throw new BarrowsScriptException("Out of runes for the spell.");
             }
         }
     }
@@ -104,7 +105,7 @@ public class BankService {
                 Rs2Bank.withdrawX(prayerId, config.prayerRestorationItems());
                 sleepUntil(() -> Rs2Inventory.count(prayerId) == config.prayerRestorationItems());
             } else {
-                throw new BarrowsScript.BarrowsScriptException("Out of prayer restoration potions");
+                throw new BarrowsScriptException("Out of prayer restoration potions");
             }
         }
     }
@@ -117,7 +118,7 @@ public class BankService {
                 Rs2Bank.withdrawX(foodId, config.foodAmount());
                 sleepUntil(() -> Rs2Inventory.count(foodId) == config.foodAmount());
             } else {
-                throw new BarrowsScript.BarrowsScriptException("Out of food");
+                throw new BarrowsScriptException("Out of food");
             }
         }
     }
@@ -129,7 +130,7 @@ public class BankService {
                 sleepUntil(() -> Rs2Inventory.contains(SPADE));
                 sleep(300, 1000);
             } else {
-                throw new BarrowsScript.BarrowsScriptException("No spade found.");
+                throw new BarrowsScriptException("No spade found.");
             }
         }
     }
@@ -137,7 +138,7 @@ public class BankService {
     private void checkRingOfDueling() {
         if (Rs2Equipment.get(EquipmentInventorySlot.RING) == null) {
             if (Rs2Bank.count(ItemID.RING_OF_DUELING_8) <= 0) {
-                throw new BarrowsScript.BarrowsScriptException("No ring of dueling found in bank.");
+                throw new BarrowsScriptException("No ring of dueling found in bank.");
             }
 
             if (!Rs2Inventory.contains(ItemID.RING_OF_DUELING_8)) {

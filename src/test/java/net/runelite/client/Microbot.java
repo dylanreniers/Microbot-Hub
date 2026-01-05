@@ -10,19 +10,19 @@ import net.runelite.client.plugins.microbot.custom.barrows.BarrowsPlugin;
 import net.runelite.client.plugins.microbot.custom.blastoisefurnace.BlastoiseFurnacePlugin;
 import net.runelite.client.plugins.microbot.custom.fletching.FletchingPlugin;
 import net.runelite.client.plugins.microbot.custom.jewelleryenchant.JewelleryEnchantPlugin;
-import org.apache.commons.lang3.ArrayUtils;
+import net.runelite.client.plugins.microbot.custom.woodcutting.AutoWoodcuttingPlugin;
 
 public class Microbot
 {
 
 	private static final Class<?>[] debugPlugins = {
-            JewelleryEnchantPlugin.class, BarrowsPlugin.class, BanksBankStanderPlugin.class, BlastoiseFurnacePlugin.class, ArrowPlugin.class, FletchingPlugin.class
+            AutoWoodcuttingPlugin.class, JewelleryEnchantPlugin.class, BarrowsPlugin.class, BanksBankStanderPlugin.class, BlastoiseFurnacePlugin.class, ArrowPlugin.class, FletchingPlugin.class
 	};
 
     public static void main(String[] args) throws Exception
     {
 		List<Class<?>> _debugPlugins = Arrays.stream(debugPlugins).collect(Collectors.toList());
         RuneLiteDebug.pluginsToDebug.addAll(_debugPlugins);
-        RuneLiteDebug.main(ArrayUtils.add(args, "profile=358011942"));
+        RuneLiteDebug.main(args);
     }
 }
