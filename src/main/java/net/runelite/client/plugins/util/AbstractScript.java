@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.api.npc.Rs2NpcCache;
+import net.runelite.client.plugins.microbot.api.tileitem.Rs2TileItemCache;
 import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
 
 import javax.inject.Inject;
@@ -16,12 +17,18 @@ public abstract class AbstractScript extends Script {
     protected Rs2NpcCache rs2NpcCache;
     @Inject
     protected Rs2TileObjectCache rs2TileObjectCache;
+    @Inject
+    protected Rs2TileItemCache rs2TileItemCache;
 
     public abstract void tick();
 
-    public abstract void initialize();
+    public void initialize() {
 
-    public abstract void onException(Exception e);
+    }
+
+    public void onException(Exception e) {
+
+    }
 
     @Override
     public boolean run() {
@@ -36,6 +43,7 @@ public abstract class AbstractScript extends Script {
                 tick();
             } catch (Exception ex) {
                 onException(ex);
+                log.error("Exception during tick.", ex);
             }
         }, 0, getTickDelay(), TimeUnit.MILLISECONDS);
 

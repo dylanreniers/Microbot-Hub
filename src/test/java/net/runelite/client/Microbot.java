@@ -4,19 +4,22 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import net.runelite.client.plugins.microbot.custom.arrowmaker.ArrowPlugin;
+import net.runelite.client.plugins.custom.microhunter.AutoHunterPlugin;
+import net.runelite.client.plugins.custom.arrowmaker.ArrowPlugin;
+import net.runelite.client.plugins.custom.moonlightmoth.MoonlightMothPlugin;
 import net.runelite.client.plugins.microbot.banksbankstander.BanksBankStanderPlugin;
-import net.runelite.client.plugins.microbot.custom.barrows.BarrowsPlugin;
-import net.runelite.client.plugins.microbot.custom.blastoisefurnace.BlastoiseFurnacePlugin;
-import net.runelite.client.plugins.microbot.custom.fletching.FletchingPlugin;
-import net.runelite.client.plugins.microbot.custom.jewelleryenchant.JewelleryEnchantPlugin;
-import net.runelite.client.plugins.microbot.custom.woodcutting.AutoWoodcuttingPlugin;
+import net.runelite.client.plugins.custom.barrows.BarrowsPlugin;
+import net.runelite.client.plugins.custom.blastoisefurnace.BlastoiseFurnacePlugin;
+import net.runelite.client.plugins.custom.fletching.FletchingPlugin;
+import net.runelite.client.plugins.custom.jewelleryenchant.JewelleryEnchantPlugin;
+import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingPlugin;
 
 public class Microbot
 {
 
 	private static final Class<?>[] debugPlugins = {
-            AutoWoodcuttingPlugin.class, JewelleryEnchantPlugin.class, BarrowsPlugin.class, BanksBankStanderPlugin.class, BlastoiseFurnacePlugin.class, ArrowPlugin.class, FletchingPlugin.class
+            //MoonlightMothPlugin.class, AutoHunterPlugin.class, AutoWoodcuttingPlugin.class, JewelleryEnchantPlugin.class, BarrowsPlugin.class, BanksBankStanderPlugin.class, BlastoiseFurnacePlugin.class, ArrowPlugin.class, FletchingPlugin.class
+            MoonlightMothPlugin.class
 	};
 
     public static void main(String[] args) throws Exception

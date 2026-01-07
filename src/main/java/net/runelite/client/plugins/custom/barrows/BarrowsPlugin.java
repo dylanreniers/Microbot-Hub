@@ -1,0 +1,81 @@
+package net.runelite.client.plugins.custom.barrows;
+
+import com.google.inject.Provides;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatMessageType;
+import net.runelite.api.events.ChatMessage;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.microbot.PluginConstants;
+import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
+import net.runelite.client.plugins.microbot.util.antiban.enums.Activity;
+import net.runelite.client.ui.overlay.OverlayManager;
+
+import javax.inject.Inject;
+import java.awt.*;
+
+@PluginDescriptor(
+        name =  "Donder's Barrows", // Field to define the plugin name (required)
+        description = "Completes the Barrows Brothers mini-game", // A brief description of the plugin (optional, default is '')
+        tags = {"combat", "mm", "barrows"}, // Tags to categorize the plugin (optional, default is '')
+        authors = { "Donderstone2" }, // Author(s) of the plugin (optional, default is "Unknown Author")
+        version = BarrowsPlugin.version, // Version of the plugin (required)
+        minClientVersion = "2.1.0", // Minimum client version required to run the plugin (required)
+        iconUrl = "https://chsami.github.io/Microbot-Hub/BarrowsPlugin/assets/icon.png", // URL to plugin icon shown in client (optional)
+        cardUrl = "https://chsami.github.io/Microbot-Hub/BarrowsPlugin/assets/card.png", // URL to plugin card image for website (optional)
+        enabledByDefault = PluginConstants.DEFAULT_ENABLED, // Whether the plugin is enabled by default
+        isExternal = PluginConstants.IS_EXTERNAL // Whether the plugin is external
+)
+@Slf4j
+public class BarrowsPlugin extends Plugin  {
+
+    public static final String version = "3.0.0";
+
+    @Provides
+    BarrowsConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(BarrowsConfig.class);
+    }
+    @Inject
+    private OverlayManager overlayManager;
+    @Inject
+    private BarrowsOverlay barrowsOverlay;
+    @Inject
+    @Getter
+    private BarrowsScript barrowsScript;
+
+    @Override
+    protected void startUp() throws AWTException {
+        if (overlayManager != null) {
+            overlayManager.add(barrowsOverlay);
+        }
+        Rs2Antiban.activateAntiban();
+        Rs2Antiban.resetAntibanSettings();
+        Rs2Antiban.antibanSetupTemplates.applyCombatSetup();
+        Rs2Antiban.setActivity(Activity.BARROWS);
+        barrowsScript.run();
+    }
+
+    protected void shutDown() {
+        Rs2Antiban.resetAntibanSettings();
+        Rs2Antiban.deactivateAntiban();
+        barrowsScript.shutdown();
+        overlayManager.remove(barrowsOverlay);
+    }
+
+    @Subscribe
+    public void onChatMessage(ChatMessage chatMessage) {
+        if (chatMessage.getType() != ChatMessageType.GAMEMESSAGE) {
+            return;
+        }
+
+        String msg = chatMessage.getMessage();
+        //need to add the chat message we get when we try to attack an NPC with an empty staff.
+
+        if (msg.contains("out of charges") || msg.contains("no charges")) {
+            barrowsScript.setOutOfPoweredStaffCharges(true);
+        }
+    }
+}
