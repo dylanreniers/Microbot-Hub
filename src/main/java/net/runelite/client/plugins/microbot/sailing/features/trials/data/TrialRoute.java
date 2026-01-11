@@ -4,7 +4,9 @@ import net.runelite.api.coords.WorldPoint;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public class TrialRoute {
@@ -14,22 +16,102 @@ public class TrialRoute {
         public List<ToadFlagColors> ToadOrder;
         public List<Integer> WindMoteIndices;
         public List<PortalDirection> PortalDirections;
+        private List<WorldPoint> interpolatedPoints;
+        private Map<Integer, Integer> originalToInterpolatedIndexMap;
+        private boolean interpolationApplied = false;
+
+        private static final double DEFAULT_SPACING = 5.0;
 
         public TrialRoute(TrialLocations location, TrialRanks rank, List<WorldPoint> points) {
                 Location = location;
                 Rank = rank;
-                Points = points == null ? new ArrayList<>() : new ArrayList<>(points); // ensure mutable
+                Points = points == null ? new ArrayList<>() : new ArrayList<>(points);
                 ToadOrder = Collections.emptyList();
                 WindMoteIndices = Collections.emptyList();
                 PortalDirections = Collections.emptyList();
         }
 
-        // Unified extended constructor to avoid type erasure collision between different generic list overloads.
         public TrialRoute(TrialLocations location, TrialRanks rank, List<WorldPoint> points, List<ToadFlagColors> toadOrder, List<Integer> windMoteIndices, List<PortalDirection> portalDirections) {
                 this(location, rank, points);
                 ToadOrder = toadOrder == null ? Collections.emptyList() : toadOrder;
                 WindMoteIndices = windMoteIndices == null ? Collections.emptyList() : windMoteIndices;
                 PortalDirections = portalDirections == null ? Collections.emptyList() : portalDirections;
+        }
+
+        public List<WorldPoint> getInterpolatedPoints() {
+                if (!interpolationApplied) {
+                        originalToInterpolatedIndexMap = new HashMap<>();
+                        interpolatedPoints = interpolateRoute(Points, DEFAULT_SPACING, originalToInterpolatedIndexMap);
+                        interpolationApplied = true;
+                }
+                return interpolatedPoints;
+        }
+
+        public int getInterpolatedIndex(int originalIndex) {
+                if (!interpolationApplied) {
+                        getInterpolatedPoints();
+                }
+                return originalToInterpolatedIndexMap.getOrDefault(originalIndex, originalIndex);
+        }
+
+        public static List<WorldPoint> interpolateRoute(List<WorldPoint> originalPoints, double spacing, Map<Integer, Integer> indexMapping) {
+                if (originalPoints == null || originalPoints.size() < 2) {
+                        if (indexMapping != null && originalPoints != null) {
+                                for (int i = 0; i < originalPoints.size(); i++) {
+                                        indexMapping.put(i, i);
+                                }
+                        }
+                        return originalPoints == null ? new ArrayList<>() : new ArrayList<>(originalPoints);
+                }
+
+                List<WorldPoint> result = new ArrayList<>();
+                result.add(originalPoints.get(0));
+                if (indexMapping != null) {
+                        indexMapping.put(0, 0);
+                }
+
+                for (int i = 0; i < originalPoints.size() - 1; i++) {
+                        WorldPoint current = originalPoints.get(i);
+                        WorldPoint next = originalPoints.get(i + 1);
+
+                        List<WorldPoint> segment = interpolateSegment(current, next, spacing);
+                        for (int j = 1; j < segment.size(); j++) {
+                                result.add(segment.get(j));
+                        }
+
+                        if (indexMapping != null) {
+                                indexMapping.put(i + 1, result.size() - 1);
+                        }
+                }
+
+                return result;
+        }
+
+        private static List<WorldPoint> interpolateSegment(WorldPoint from, WorldPoint to, double spacing) {
+                List<WorldPoint> points = new ArrayList<>();
+                points.add(from);
+
+                double dx = to.getX() - from.getX();
+                double dy = to.getY() - from.getY();
+                double distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance <= spacing) {
+                        points.add(to);
+                        return points;
+                }
+
+                int numSegments = (int) Math.ceil(distance / spacing);
+                double stepX = dx / numSegments;
+                double stepY = dy / numSegments;
+
+                for (int i = 1; i < numSegments; i++) {
+                        int x = from.getX() + (int) Math.round(stepX * i);
+                        int y = from.getY() + (int) Math.round(stepY * i);
+                        points.add(new WorldPoint(x, y, from.getPlane()));
+                }
+
+                points.add(to);
+                return points;
         }
 
         @Override

@@ -60,7 +60,11 @@ public class TrialRouteOverlay extends Overlay {
         }
 
         var route = trialsScript.getActiveTrialRoute();
-        if (route == null || route.Points == null || route.Points.isEmpty()) {
+        if (route == null) {
+            return null;
+        }
+        var routePoints = route.getInterpolatedPoints();
+        if (routePoints == null || routePoints.isEmpty()) {
             return null;
         }
 
@@ -151,7 +155,7 @@ public class TrialRouteOverlay extends Overlay {
             return false;
         }
         for (var portal : route.PortalDirections) {
-            if (portal.Index == index) {
+            if (route.getInterpolatedIndex(portal.Index) == index) {
                 return true;
             }
         }

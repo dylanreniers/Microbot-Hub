@@ -14,11 +14,9 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.api.boat.Rs2BoatCache;
-import net.runelite.client.plugins.microbot.api.boat.data.Heading;
 import net.runelite.client.plugins.microbot.sailing.SailingConfig;
 import net.runelite.client.plugins.microbot.sailing.features.trials.data.*;
 import net.runelite.client.plugins.microbot.sailing.features.trials.debug.BoatPathHelper;
-import net.runelite.client.plugins.microbot.util.menu.NewMenuEntry;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -127,10 +125,7 @@ public class TrialsScript {
             TrialInfo info = Microbot.getClientThread().invoke(() -> TrialInfo.getCurrent(client));
 
             if (info == null) {
-                if (activeRoute != null) {
-                    log.info("Trial ended, resetting state");
-                    resetState();
-                }
+                resetState();
                 return;
             }
 
@@ -141,89 +136,35 @@ public class TrialsScript {
             }
 
             if (!route.equals(activeRoute)) {
-                log.info("Starting route for {} - {}", route.Location, route.Rank);
                 activeRoute = route;
+                currentWaypointIndex = 0;
+            }
+
+            List<WorldPoint> routePoints = route.getInterpolatedPoints();
+            if (routePoints == null || routePoints.isEmpty()) {
+                return;
+            }
+
+            if (currentWaypointIndex >= routePoints.size()) {
                 currentWaypointIndex = 0;
             }
 
             WorldPoint boatPos = getBoatPosition();
             if (boatPos == null) {
-                log.debug("Could not determine boat position");
                 return;
             }
 
-            WorldPoint target = route.Points.get(currentWaypointIndex);
+            WorldPoint target = routePoints.get(currentWaypointIndex);
             int distance = boatPos.distanceTo(target);
 
-            int nextIndex = getNextWaypointIndex(currentWaypointIndex, route.Points.size());
-            WorldPoint nextWaypoint = route.Points.get(nextIndex);
-
-            double dirToTarget = calculateDirection(boatPos, target);
-            double dirToNext = calculateDirection(target, nextWaypoint);
-            double turnAngle = calculateTurnAngle(boatPos, target, nextWaypoint);
-            int dynamicThreshold = calculateDynamicThreshold(turnAngle);
-
-            System.out.println("dynamicThreshold: " + dynamicThreshold + " | turnAngle: " + turnAngle);
-
-            String currentDir = degreesToCompass(dirToTarget);
-            String nextDir = degreesToCompass(dirToNext);
-
-
-            int orientation = boatCache.getLocalBoat().getOrientation();
-            int currentDirection = ((orientation + 64) / 128) & 0xF;
-            var result = boatCache.getLocalBoat().getDirection(target);
-
-
-            // boatCache.getLocalBoat().setHeading(Heading.getHeading(result));
-
-            var menuEntry = new NewMenuEntry()
-                    .option("Set-Heading")
-                    .target("")
-                    .identifier(result)
-                    .type(MenuAction.SET_HEADING)
-                    .param0(0)
-                    .param1(0)
-                    .forceLeftClick(false);
-            var worldview = Microbot.getClientThread().invoke(() -> Microbot.getClient().getLocalPlayer().getWorldView());
-
-            if (worldview == null)
-            {
-                menuEntry.setWorldViewId(Microbot.getClient().getTopLevelWorldView().getId());
-            }
-            else
-            {
-                menuEntry.setWorldViewId(worldview.getId());
-            }
-            Microbot.doInvoke(menuEntry, new java.awt.Rectangle(1, 1, Microbot.getClient().getCanvasWidth(), Microbot.getClient().getCanvasHeight()));
-
-            System.out.println("Boat heading: " + Heading.getHeading(currentDirection) + " | Target direction: " + Heading.getHeading(result));
-
-
-           /* log.info("Navigation: wp={}/{} boat=({},{}) -> target=({},{}) [{}] dist={} | next=({},{}) [{}] | turn={}° thresh={}",
-                    currentWaypointIndex, route.Points.size() - 1,
-                    boatPos.getX(), boatPos.getY(),
-                    target.getX(), target.getY(), currentDir,
-                    distance,
-                    nextWaypoint.getX(), nextWaypoint.getY(), nextDir,
-                    String.format("%.1f", turnAngle), dynamicThreshold);*/
-
-            if (distance < dynamicThreshold) {
-            /*    log.info(">> ADVANCING: wp {} -> {} | dist {} < thresh {} | turn {}° ({} -> {})",
-                        currentWaypointIndex, nextIndex,
-                        distance, dynamicThreshold,
-                        String.format("%.1f", turnAngle), currentDir, nextDir);*/
+            if (distance <= 5) {
                 lastVisitedIndex = currentWaypointIndex;
-                currentWaypointIndex = nextIndex;
-                target = route.Points.get(currentWaypointIndex);
+                currentWaypointIndex = (currentWaypointIndex + 1) % routePoints.size();
+                target = routePoints.get(currentWaypointIndex);
             }
 
             final WorldPoint hintTarget = target;
             Microbot.getClientThread().invoke(() -> client.setHintArrow(hintTarget));
-
-            if (needsTrim) {
-                boatCache.getLocalBoat().trimSails();
-                needsTrim = false;
-            }
 
             if (config.autoNavigate()) {
                 navigateToWaypoint(target);
@@ -272,68 +213,6 @@ public class TrialsScript {
         activeRoute = null;
         lastVisitedIndex = -1;
         Microbot.getClientThread().invoke(() -> client.clearHintArrow());
-    }
-
-    private int getNextWaypointIndex(int currentIndex, int routeSize) {
-        return (currentIndex + 1) % routeSize;
-    }
-
-    private double calculateTurnAngle(WorldPoint current, WorldPoint next, WorldPoint afterNext) {
-        if (current == null || next == null || afterNext == null) {
-            return 0.0;
-        }
-
-        double dx1 = next.getX() - current.getX();
-        double dy1 = next.getY() - current.getY();
-
-        double dx2 = afterNext.getX() - next.getX();
-        double dy2 = afterNext.getY() - next.getY();
-
-        double len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
-        double len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-
-        if (len1 < 0.001 || len2 < 0.001) {
-            return 0.0;
-        }
-
-        dx1 /= len1;
-        dy1 /= len1;
-        dx2 /= len2;
-        dy2 /= len2;
-
-        double dot = dx1 * dx2 + dy1 * dy2;
-        dot = Math.max(-1.0, Math.min(1.0, dot));
-
-        double angleRadians = Math.acos(dot);
-        double angleDegrees = Math.toDegrees(angleRadians);
-
-        return angleDegrees;
-    }
-
-    private int calculateDynamicThreshold(double turnAngleDegrees) {
-        int baseThreshold = 1;
-        int additionalThreshold = (int) (turnAngleDegrees / 6.0);
-        int maxAdditional = 10;
-        return baseThreshold + Math.min(additionalThreshold, maxAdditional);
-    }
-
-    private double calculateDirection(WorldPoint from, WorldPoint to) {
-        if (from == null || to == null) {
-            return 0.0;
-        }
-        double dx = to.getX() - from.getX();
-        double dy = to.getY() - from.getY();
-        double angle = Math.toDegrees(Math.atan2(dy, dx));
-        if (angle < 0) {
-            angle += 360;
-        }
-        return angle;
-    }
-
-    private String degreesToCompass(double degrees) {
-        String[] directions = {"E", "ENE", "NE", "NNE", "N", "NNW", "NW", "WNW", "W", "WSW", "SW", "SSW", "S", "SSE", "SE", "ESE"};
-        int index = (int) Math.round(degrees / 22.5) % 16;
-        return directions[index];
     }
 
     @Subscribe
@@ -637,14 +516,18 @@ public class TrialsScript {
     }
 
     public void markNextWaypointVisited(final WorldPoint player, final TrialRoute route, final int tolerance) {
-        if (player == null || route == null || route.Points == null || route.Points.isEmpty()) {
+        if (player == null || route == null) {
+            return;
+        }
+        var points = route.getInterpolatedPoints();
+        if (points == null || points.isEmpty()) {
             return;
         }
         var nextIdx = lastVisitedIndex + 1;
-        if (nextIdx >= route.Points.size()) {
-            return; // finished route
+        if (nextIdx >= points.size()) {
+            return;
         }
-        var target = route.Points.get(nextIdx);
+        var target = points.get(nextIdx);
         if (target == null) {
             return;
         }
@@ -655,20 +538,24 @@ public class TrialsScript {
     }
 
     public List<Integer> getNextIndicesAfterLastVisited(final TrialRoute route, final int limit) {
-        if (route == null || route.Points == null || route.Points.isEmpty() || limit <= 0) {
+        if (route == null || limit <= 0) {
+            return Collections.emptyList();
+        }
+        var points = route.getInterpolatedPoints();
+        if (points == null || points.isEmpty()) {
             return Collections.emptyList();
         }
         var start = Math.max(0, lastVisitedIndex);
-        if (start >= route.Points.size()) {
+        if (start >= points.size()) {
             return Collections.emptyList();
         }
         var out = new ArrayList<Integer>(limit);
         var nextPortal = route.PortalDirections.stream()
-                .filter(x -> x.Index >= lastVisitedIndex)
-                .min((a, b) -> Integer.compare(a.Index, b.Index))
+                .filter(x -> route.getInterpolatedIndex(x.Index) >= lastVisitedIndex)
+                .min((a, b) -> Integer.compare(route.getInterpolatedIndex(a.Index), route.getInterpolatedIndex(b.Index)))
                 .orElse(null);
-        for (var i = start; i < route.Points.size() && out.size() < limit; i++) {
-            if (nextPortal != null && i > nextPortal.Index) {
+        for (var i = start; i < points.size() && out.size() < limit; i++) {
+            if (nextPortal != null && i > route.getInterpolatedIndex(nextPortal.Index)) {
                 break;
             }
             out.add(i);
@@ -686,18 +573,23 @@ public class TrialsScript {
             return Collections.emptyList();
         }
 
+        var points = route.getInterpolatedPoints();
         List<WorldPoint> out = new ArrayList<>();
         for (var idx : nextIdx) {
-            var real = route.Points.get(idx);
-            out.add(real);
+            if (idx >= 0 && idx < points.size()) {
+                out.add(points.get(idx));
+            }
         }
         return out;
     }
 
     public PortalDirection getVisiblePortalDirection(TrialRoute route) {
         var portalDirection = route.PortalDirections.stream()
-                .filter(x -> x.Index - 1 == lastVisitedIndex || x.Index == lastVisitedIndex || x.Index + 1 == lastVisitedIndex)
-                .min((a, b) -> Integer.compare(a.Index, b.Index))
+                .filter(x -> {
+                    int interpolatedIdx = route.getInterpolatedIndex(x.Index);
+                    return interpolatedIdx - 1 == lastVisitedIndex || interpolatedIdx == lastVisitedIndex || interpolatedIdx + 1 == lastVisitedIndex;
+                })
+                .min((a, b) -> Integer.compare(route.getInterpolatedIndex(a.Index), route.getInterpolatedIndex(b.Index)))
                 .orElse(null);
 
         return portalDirection;
