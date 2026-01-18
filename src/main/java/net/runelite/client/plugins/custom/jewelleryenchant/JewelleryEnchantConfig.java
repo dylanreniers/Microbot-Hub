@@ -34,6 +34,16 @@ public interface JewelleryEnchantConfig extends Config {
             position = 2
     )
     default boolean onlyEnchant() {
-        return true;
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "onlyCraft",
+            name = "Only craft?",
+            description = "Should we only craft material in your bank?",
+            position = 2
+    )
+    default boolean onlyCraft() {
+        return false;
     }
 }

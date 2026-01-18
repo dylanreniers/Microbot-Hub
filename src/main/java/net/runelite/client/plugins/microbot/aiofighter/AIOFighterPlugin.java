@@ -344,11 +344,14 @@ public class AIOFighterPlugin extends Plugin {
     }
     // Get blacklistedSlayerNpcs as a list
     public static List<String> getBlacklistedSlayerNpcs() {
-        return Arrays.asList(Microbot.getConfigManager().getConfiguration(
+
+        /* return Arrays.asList(Microbot.getConfigManager().getConfiguration(
                 AIOFighterConfig.GROUP,
                 "blacklistedSlayerNpcs",
                 String.class
-        ).toString().split(","));
+        ).toString().split(",")); */
+
+        return List.of();
     }
 
     private static LinkedHashSet<String> normalizeCsvEntries(String rawCsv) {
@@ -597,6 +600,7 @@ public class AIOFighterPlugin extends Plugin {
             addMenuEntry(event, SET, CENTER_TILE, 1);
         }
         if (Microbot.getClient().isKeyPressed(KeyCode.KC_SHIFT) && event.getOption().equals(WALK_HERE) && event.getTarget().isEmpty()) {
+            log.info("Added menu entry?");
             addMenuEntry(event, SET, SAFE_SPOT, 1);
         }
         if (event.getOption().equals(ATTACK) && config.attackableNpcs().contains(getNpcNameFromMenuEntry(Text.removeTags(event.getTarget())))) {

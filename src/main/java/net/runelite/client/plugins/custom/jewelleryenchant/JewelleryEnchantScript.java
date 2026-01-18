@@ -2,6 +2,7 @@ package net.runelite.client.plugins.custom.jewelleryenchant;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ObjectID;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.client.plugins.custom.jewelleryenchant.util.ElementalStaff;
@@ -10,6 +11,8 @@ import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
+import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
+import net.runelite.client.plugins.microbot.util.antiban.Rs2AntibanSettings;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
@@ -29,18 +32,37 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.LOW;
+import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.MODERATE;
+
 @Slf4j
 public class JewelleryEnchantScript extends Script {
-
-    private boolean initialized = false;
 
     @Inject
     private Rs2TileObjectCache rs2TileObjectCache;
 
+    static {
+        Microbot.enableAutoRunOn = false;
+        Rs2Antiban.resetAntibanSettings();
+        Rs2Antiban.antibanSetupTemplates.applyCraftingSetup();
+        Rs2AntibanSettings.usePlayStyle = true;
+        Rs2AntibanSettings.simulateFatigue = true;
+        Rs2AntibanSettings.simulateAttentionSpan = true;
+        Rs2AntibanSettings.behavioralVariability = true;
+        Rs2AntibanSettings.nonLinearIntervals = true;
+        Rs2AntibanSettings.dynamicActivity = true;
+        Rs2AntibanSettings.profileSwitching = true;
+        Rs2AntibanSettings.naturalMouse = true;
+        Rs2AntibanSettings.simulateMistakes = true;
+        Rs2AntibanSettings.moveMouseOffScreen = true;
+        Rs2AntibanSettings.moveMouseRandomly = true;
+        Rs2AntibanSettings.moveMouseRandomlyChance = 0.04;
+        Rs2Antiban.setActivityIntensity(LOW);
+    }
+
     @Override
     public void shutdown() {
         log.info("Shutting down.");
-        initialized = false;
         if (mainScheduledFuture != null) {
             mainScheduledFuture.cancel(true);
             mainScheduledFuture = null;
@@ -53,7 +75,7 @@ public class JewelleryEnchantScript extends Script {
 
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
-                if (!Microbot.isLoggedIn() || !super.run()) {
+                if (!Microbot.isLoggedIn() || !super.run() || Rs2AntibanSettings.actionCooldownActive) {
                     return;
                 }
 
@@ -65,8 +87,10 @@ public class JewelleryEnchantScript extends Script {
                     return;
                 }
 
-                handleStaffEquipping(jewellery);
-                ensureCorrectRunes(jewellery);
+                if (!config.onlyCraft()) {
+                    handleStaffEquipping(jewellery);
+                    ensureCorrectRunes(jewellery);
+                }
 
                 log.info("only enchantment? {}", config.onlyEnchant());
                 if (!config.onlyEnchant()) {
@@ -75,12 +99,18 @@ public class JewelleryEnchantScript extends Script {
                     if (jewellery.isAmulet()) {
                         addBallsOfWoolToAmulets(jewellery);
                     }
-                    performEnchantment(jewellery);
+
+                    if (!config.onlyCraft()) {
+                        performEnchantment(jewellery);
+                    }
                 } else {
                     log.info("Starting enchantment only");
                     getJewelleryFromBank(jewellery);
                     performEnchantment(jewellery);
                 }
+
+                Rs2Antiban.actionCooldown();
+                Rs2Antiban.takeMicroBreakByChance();
             } catch (Exception ex) {
                 log.error("Error running Jewellery enchant script", ex);
             }
@@ -89,8 +119,15 @@ public class JewelleryEnchantScript extends Script {
     }
 
     private void createJewellery(Jewellery jewellery) {
+        if (Rs2Random.between(0, 100) < 33) {
+            moveCameraToFurnace();
+        }
         goToFurnace();
         smeltJewellery(jewellery);
+    }
+
+    private void moveCameraToFurnace() {
+        Rs2Camera.turnTo(getFurnace(), Rs2Random.between(30, 60));
     }
 
     private static void smeltJewellery(Jewellery jewellery) {
@@ -188,6 +225,7 @@ public class JewelleryEnchantScript extends Script {
     }
 
     private void bankAndRestock(Jewellery jewellery) {
+        setFullView();
         openBank();
         Rs2Bank.depositAllExcept(item -> item.getId() == Runes.COSMIC.getItemId() || item.getId() == jewellery.getMouldId());
         sleep(300, 500);

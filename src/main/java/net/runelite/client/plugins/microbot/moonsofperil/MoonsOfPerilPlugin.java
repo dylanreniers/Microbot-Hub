@@ -63,7 +63,7 @@ public class MoonsOfPerilPlugin extends Plugin {
         }
         moonsOfPerilScript.run();
         Rs2Tile.init();
-        this.scriptStartTime = Instant.now();
+        scriptStartTime = Instant.now();
     }
 
     @Subscribe

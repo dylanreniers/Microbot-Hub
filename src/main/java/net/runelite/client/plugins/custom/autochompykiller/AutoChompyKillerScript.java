@@ -213,12 +213,6 @@ public class AutoChompyKillerScript extends Script {
 
                 long startTime = System.currentTimeMillis();
 
-                if (System.currentTimeMillis() - stateStartTime > 60000) {
-                    log.info("State timeout - resetting to FILLING_BELLOWS");
-                    changeState(AutoChompyKillerState.FILLING_BELLOWS);
-                    return;
-                }
-
                 if (!Rs2Player.isMoving() && !Rs2Player.isInteracting()) {
                     dropConfiguredItems(config);
                     manageRunEnergy(config);

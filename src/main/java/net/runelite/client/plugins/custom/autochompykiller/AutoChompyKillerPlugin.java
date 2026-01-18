@@ -84,15 +84,4 @@ public class AutoChompyKillerPlugin extends Plugin {
             autoChompyKillerScript.handlePetReceived(config.logoutOnCompletion());
         }
     }
-
-    int ticks = 10;
-
-    @Subscribe
-    public void onGameTick(GameTick tick) {
-        if (ticks > 0) {
-            ticks--;
-        } else {
-            ticks = 10;
-        }
-    }
 }

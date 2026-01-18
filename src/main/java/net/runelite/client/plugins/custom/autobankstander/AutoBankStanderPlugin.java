@@ -23,17 +23,15 @@ import java.awt.image.BufferedImage;
     name = "Donder's Bank Stander",
     description = "AIO bank standing plugin for various processing activities",
     tags = {"magic", "skilling", "processing"},
-    authors = {"Unknown"},
+    authors = {"Donderstone"},
     version = AutoBankStanderPlugin.version,
-    minClientVersion = "1.9.8",
-    iconUrl = "https://chsami.github.io/Microbot-Hub/AutoBankStanderPlugin/assets/icon.png",
-    cardUrl = "https://chsami.github.io/Microbot-Hub/AutoBankStanderPlugin/assets/card.png",
+    minClientVersion = "2.1.0",
     enabledByDefault = PluginConstants.DEFAULT_ENABLED,
     isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
 public class AutoBankStanderPlugin extends Plugin {
-    static final String version = "1.0.2";
+    static final String version = "2.0.0";
 
     @Inject
     private AutoBankStanderConfig config;

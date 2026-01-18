@@ -13,7 +13,7 @@ public enum CellType {
     STRONG,
     OVERCHARGED;
 
-    public static int GetCellTier(int cellID) {
+    public static int getCellTier(int cellID) {
         switch (cellID) {
             case ItemID.GOTR_CELL_TIER1:
                 return 1;
@@ -28,7 +28,7 @@ public enum CellType {
         }
     }
 
-    public static int GetShieldTier(int shieldID) {
+    public static int getShieldTier(int shieldID) {
         switch (shieldID) {
             case ObjectID.GOTR_CELL_TILE_INACTIVE_NOOP:
                 return 0;
@@ -45,7 +45,7 @@ public enum CellType {
         }
     }
 
-    public static List<Integer> PoweredCellList() {
+    public static List<Integer> poweredCellList() {
         return List.of(ItemID.GOTR_CELL_TIER1, ItemID.GOTR_CELL_TIER4, ItemID.GOTR_CELL_TIER3, ItemID.GOTR_CELL_TIER2);
     }
 }
