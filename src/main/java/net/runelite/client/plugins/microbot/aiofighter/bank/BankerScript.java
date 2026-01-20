@@ -153,13 +153,13 @@ public class BankerScript extends Script {
                 setupName = config.currentInventorySetup().getName();
             }
         } else {
-            if (config.inventorySetup() != null) {
+            if (config.inventorySetup() != null && config.useInventorySetup()) {
                 setupName = config.inventorySetup().getName();
             }
         }
 
-        if (setupName == null) {
-            Microbot.log("Invalid inventory setup name, skipping banking.");
+        if (setupName == null || !config.useInventorySetup()) {
+            Microbot.log("Inventory setup is disabled, skipping banking.");
             return false;
         }
         

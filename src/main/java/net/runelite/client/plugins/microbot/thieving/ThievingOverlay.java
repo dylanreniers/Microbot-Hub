@@ -2,6 +2,7 @@ package net.runelite.client.plugins.microbot.thieving;
 
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.thieving.enums.ThievingNpc;
+import net.runelite.client.plugins.microbot.thieving.npc.ThievingNpcStrategy;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.ui.overlay.OverlayPanel;
@@ -14,6 +15,7 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.time.Duration;
+import java.util.List;
 
 public class ThievingOverlay extends OverlayPanel {
     private final ThievingPlugin plugin;
@@ -45,7 +47,7 @@ public class ThievingOverlay extends OverlayPanel {
     @Override
     public Dimension render(Graphics2D graphics) {
         try {
-            panelComponent.setPreferredSize(new Dimension(220, 160));
+            panelComponent.setPreferredSize(new Dimension(240, 200));
 
             panelComponent.getChildren().add(
                     TitleComponent.builder()
@@ -65,6 +67,13 @@ public class ThievingOverlay extends OverlayPanel {
                     LineComponent.builder()
                             .left("STATE:")
                             .right(plugin.getState().toString())
+                            .build()
+            );
+
+            panelComponent.getChildren().add(
+                    LineComponent.builder()
+                            .left("Target:")
+                            .right(plugin.getConfig().THIEVING_NPC().toString())
                             .build()
             );
 
@@ -113,6 +122,12 @@ public class ThievingOverlay extends OverlayPanel {
                             .right(getFormattedDuration(plugin.getRunTime()))
                             .build()
             );
+
+            final ThievingNpcStrategy strategy = plugin.getThievingScript().getActiveStrategy();
+            if (strategy != null) {
+                final List<LineComponent> lines = strategy.overlayLines(plugin.getThievingScript());
+                panelComponent.getChildren().addAll(lines);
+            }
         } catch (Exception ex) {
             Microbot.logStackTrace(this.getClass().getSimpleName(), ex);
         }

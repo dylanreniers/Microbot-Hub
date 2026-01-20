@@ -708,7 +708,7 @@ public interface AIOFighterConfig extends Config {
             section = safetySection
     )
     default boolean missingRunes() {
-        return true;
+        return false;
     }
     // Missing arrows
     @ConfigItem(
@@ -719,7 +719,7 @@ public interface AIOFighterConfig extends Config {
             section = safetySection
     )
     default boolean missingArrows() {
-        return true;
+        return false;
     }
     // Missing food
     @ConfigItem(
@@ -730,7 +730,7 @@ public interface AIOFighterConfig extends Config {
             section = safetySection
     )
     default boolean missingFood() {
-        return true;
+        return false;
     }
 
     // Low health

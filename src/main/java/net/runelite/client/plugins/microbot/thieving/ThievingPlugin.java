@@ -34,7 +34,7 @@ import java.time.Duration;
 )
 @Slf4j
 public class ThievingPlugin extends Plugin {
-	public static final String version = "2.0.7";
+	public static final String version = "2.1.0";
 
     @Inject
     @Getter
@@ -49,6 +49,8 @@ public class ThievingPlugin extends Plugin {
     @Inject
     private ThievingOverlay thievingOverlay;
     @Inject
+    private ThievingNpcOverlay thievingNpcOverlay;
+    @Inject
     @Getter
     private ThievingScript thievingScript;
 
@@ -61,16 +63,18 @@ public class ThievingPlugin extends Plugin {
     protected void startUp() throws AWTException {
         if (overlayManager != null) {
             overlayManager.add(thievingOverlay);
+            overlayManager.add(thievingNpcOverlay);
         }
         startXp = 0;
-		maxCoinPouch = determineMaxCoinPouch();
+        maxCoinPouch = determineMaxCoinPouch();
         thievingScript.run();
     }
 
     protected void shutDown() {
         thievingScript.shutdown();
         overlayManager.remove(thievingOverlay);
-		maxCoinPouch = 0;
+        overlayManager.remove(thievingNpcOverlay);
+        maxCoinPouch = 0;
         startXp = 0;
     }
 
@@ -111,11 +115,12 @@ public class ThievingPlugin extends Plugin {
 
     @Subscribe
     public void onChatMessage(ChatMessage event) {
-        if (!event.getMessage().toLowerCase().contains("you can only cast shadow veil every 30 seconds.")) {
-            return;
+        final String message = event.getMessage().toLowerCase();
+        if (message.contains("you can only cast shadow veil every 30 seconds.")) {
+            log.warn("Attempted to cast shadow veil while it was active");
+            getThievingScript().forceShadowVeilActive = System.currentTimeMillis()+30_000;
         }
-        log.warn("Attempted to cast shadow veil while it was active");
-        getThievingScript().forceShadowVeilActive = System.currentTimeMillis()+30_000;
+        getThievingScript().onChatMessage(event);
     }
 
     @Subscribe

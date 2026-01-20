@@ -13,6 +13,7 @@ import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 import static net.runelite.client.plugins.microbot.Microbot.log;
 
@@ -56,7 +57,7 @@ public class SafetyScript extends Script {
     }
 
     public void stopAndLog(String reason) {
-        log(reason);
+        log(reason, Level.WARNING);
         if(Rs2Bank.walkToBank()){
             Rs2Player.logout();
             Plugin PlayerAssistPlugin = Microbot.getPlugin(AIOFighterPlugin.class.getName());
