@@ -10,6 +10,10 @@ import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.npc.Rs2NpcCache;
+import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
+import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
+import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.shortestpath.ShortestPathPlugin;
 import net.runelite.client.plugins.microbot.util.Global;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
@@ -43,6 +47,12 @@ public class MahoganyHomesScript extends Script {
 
     @Inject
     DonderMahoganyHomesPlugin plugin;
+
+    @Inject
+    private Rs2TileObjectCache rs2TileObjectCache;
+
+    @Inject
+    private Rs2NpcCache rs2NpcCache;
 
     public boolean run(MahoganyHomesConfig config) {
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
@@ -113,6 +123,17 @@ public class MahoganyHomesScript extends Script {
         return plugin.getPlankCount();
     }
 
+    private void tryToUseLadder() {
+        log("Walker missing transport, trying to find ladder manually.");
+        int plane = Rs2Player.getWorldLocation().getPlane();
+        Rs2TileObjectModel objectModel = rs2TileObjectCache.query()
+                .where(obj -> Home.isLadder(obj.getId()))
+                .nearestOnClientThread();
+        Microbot.getClientThread().invoke(() -> objectModel.click());
+        sleepUntil(() -> Rs2Player.getWorldLocation().getPlane() != plane, 5000);
+        sleep(200, 600);
+    }
+
     private void fix() {
         if (plugin.getCurrentHome() == null
                 || !plugin.getCurrentHome().isInside(Rs2Player.getWorldLocation())
@@ -127,7 +148,6 @@ public class MahoganyHomesScript extends Script {
         List<GameObject> sortedObjects = getFixableObjects().stream()
                 .sorted(Comparator.comparingInt(TileObject::getPlane).thenComparingInt(o -> o.getWorldLocation().distanceTo2D(playerLocation.getWorldPoint())))
                 .collect(Collectors.toList());
-
 
         GameObject object = sortedObjects.stream()
                 .findFirst()
@@ -145,8 +165,13 @@ public class MahoganyHomesScript extends Script {
         log("Local Path Distance: " + pathDistance);
 
         if (pathDistance > 20) {
-            openDoorToObject(object, objectLocation);
+            if (Rs2Player.getWorldLocation().getPlane() != object.getWorldLocation().getPlane()) {
+                tryToUseLadder();
+            } else {
+                openDoorToObject(object, objectLocation);
+            }
             log.info("Walking to object");
+
             Rs2Walker.walkTo(object.getWorldLocation(), 3);
         }
 
@@ -243,32 +268,28 @@ public class MahoganyHomesScript extends Script {
                     }
                 }
             }
-            var npc = Rs2Npc.getNpc(plugin.getCurrentHome().getNpcId());
+
+            var npc = rs2NpcCache.query().withId(plugin.getCurrentHome().getNpcId()).nearestOnClientThread();
 
             if (npc == null && Rs2Player.getWorldLocation().getPlane() > 0) {
                 log("We are on the wrong floor, Trying to find ladder to go down");
-                TileObject closestLadder = Rs2GameObject.findObject(plugin.getCurrentHome().getLadders());
-                if (Rs2GameObject.interact(closestLadder))
-                    sleepUntil(
-                            () -> Rs2Player.getWorldLocation().getPlane() == 0
-                            , 5000);
-                npc = Rs2Npc.getNpc(plugin.getCurrentHome().getNpcId());
+                tryToUseLadder();
+                npc = rs2NpcCache.query().withId(plugin.getCurrentHome().getNpcId()).nearestOnClientThread();
             }
 
             if (npc != null) {
                 Rs2WorldPoint npcLocation = new Rs2WorldPoint(npc.getWorldLocation());
                 log("Local NPC path distance: " + npcLocation.distanceToPath(Rs2Player.getWorldLocation()));
                 if (npcLocation.distanceToPath(Rs2Player.getWorldLocation()) < 20) {
-                    if (Rs2Npc.interact(npc, "Talk-to")) {
-                        log("Getting reward from NPC");
-                        sleepUntil(Rs2Dialogue::hasContinue, 10000);
-                        if (Rs2Dialogue.hasDialogueText("Please excuse me, I'm rather busy.")) {
-                            plugin.setCurrentHome(null);
-                        }
-                        sleepUntil(() -> !Rs2Dialogue.isInDialogue(), Rs2Dialogue::clickContinue, 6000, 300);
-                        sleep(600, 1200);
-
+                    Rs2NpcModel finalNpc = npc;
+                    Microbot.getClientThread().invoke(() -> finalNpc.click("Talk-to"));
+                    log("Getting reward from NPC");
+                    sleepUntil(Rs2Dialogue::hasContinue, 10000);
+                    if (Rs2Dialogue.hasDialogueText("Please excuse me, I'm rather busy.")) {
+                        plugin.setCurrentHome(null);
                     }
+                    sleepUntil(() -> !Rs2Dialogue.isInDialogue(), Rs2Dialogue::clickContinue, 6000, 300);
+                    sleep(600, 1200);
                 } else {
                     log("Local NPC path distance is too far, switching to WebWalker.");
                     Rs2Walker.walkTo(npc.getWorldLocation());
