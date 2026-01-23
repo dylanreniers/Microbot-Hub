@@ -47,14 +47,12 @@ public class MoonsOfPerilPlugin extends Plugin {
     private OverlayManager overlayManager;
     @Inject
     private MoonsOfPerilOverlay moonsOfPerilOverlay;
-
     @Inject
     MoonsOfPerilScript moonsOfPerilScript;
     @Inject
     private MoonsOfPerilConfig moonsOfPerilConfig;
     public static int bloodPoolTick;
     public static Instant scriptStartTime;
-
 
     @Override
     protected void startUp() throws AWTException {
@@ -86,10 +84,10 @@ public class MoonsOfPerilPlugin extends Plugin {
         moonsOfPerilScript.shutdown();
         overlayManager.remove(moonsOfPerilOverlay);
     }
+
     int ticks = 10;
     @Subscribe
-    public void onGameTick(GameTick tick)
-    {
+    public void onGameTick(GameTick tick) {
         bloodPoolTick ++;
         if (ticks > 0) {
             ticks--;

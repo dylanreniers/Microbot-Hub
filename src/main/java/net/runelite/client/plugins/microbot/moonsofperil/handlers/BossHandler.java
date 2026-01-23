@@ -1,18 +1,21 @@
 package net.runelite.client.plugins.microbot.moonsofperil.handlers;
 
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ObjectID;
+import net.runelite.api.widgets.WidgetInfo;
 import net.runelite.client.plugins.microbot.Microbot;
+import net.runelite.client.plugins.microbot.globval.enums.InterfaceTab;
 import net.runelite.client.plugins.microbot.moonsofperil.enums.Widgets;
 import net.runelite.client.plugins.microbot.moonsofperil.MoonsOfPerilConfig;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
-import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.npc.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
+import net.runelite.client.plugins.microbot.util.tabs.Rs2Tab;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
@@ -25,6 +28,7 @@ import java.util.*;
 import static net.runelite.client.plugins.microbot.util.Global.sleep;
 import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 
+@Slf4j
 public final class BossHandler {
 
     private final int healthPercentage;
@@ -132,10 +136,12 @@ public final class BossHandler {
      * Eats food if hitpoints below percentage threshold
      */
     public void eatIfNeeded(int percentage) {
-        while (Rs2Player.getHealthPercentage() < percentage && Rs2Inventory.contains("Cooked bream")) {
+        log.info("Health percentage: {}", Rs2Player.getHealthPercentage());
+        Rs2Player.eatAt(percentage);
+        /* while (Rs2Player.getHealthPercentage() < percentage && Rs2Inventory.contains("Cooked bream")) {
             Rs2Player.eatAt(percentage);
             sleep(2400);
-        }
+        } */
     }
 
     /**
@@ -148,6 +154,29 @@ public final class BossHandler {
             Rs2Player.drinkPrayerPotion();
         }
         Rs2Player.drinkPrayerPotionAt(minimumPrayerPoint);
+    }
+
+    public void changeAttackStyle(String preferredStyle) {
+        log.info("Equipped weapon type {}", Microbot.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE));
+        WeaponAttackType weaponAttackType = WeaponAttackType.getById(Microbot.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE));
+        log.info("Weapon attack type, {}", weaponAttackType.name());
+        Optional<AttackOption> attackOptionToSwitchTo = weaponAttackType.getAttackOptions().stream().filter(attackOption -> attackOption.getAttackStyle().equals(preferredStyle)).findFirst();
+        log.info("Is present? {}", attackOptionToSwitchTo.isPresent());
+        if (attackOptionToSwitchTo.isPresent()) {
+            int index = weaponAttackType.getAttackOptions().indexOf(attackOptionToSwitchTo.get());
+            log.info("Index: {}", index);
+            List<WidgetInfo> combatStyleWidgets = List.of(WidgetInfo.COMBAT_STYLE_ONE, WidgetInfo.COMBAT_STYLE_TWO, WidgetInfo.COMBAT_STYLE_THREE, WidgetInfo.COMBAT_STYLE_FOUR);
+            changeAttackStyle(combatStyleWidgets.get(index));
+        }
+    }
+
+    private void changeAttackStyle(WidgetInfo attackStyleWidgetInfo) {
+        if (Rs2Tab.getCurrentTab() != InterfaceTab.COMBAT) {
+            Rs2Tab.switchToCombatOptionsTab();
+            sleepUntil(() -> Rs2Tab.getCurrentTab() == InterfaceTab.COMBAT, 2000);
+        }
+        log.info("Setting attack style to {}", attackStyleWidgetInfo.name());
+        Rs2Combat.setAttackStyle(attackStyleWidgetInfo);
     }
 
     /**
@@ -182,13 +211,15 @@ public final class BossHandler {
         WorldPoint currentTarget = null;
         int sigilMoves = 0;
         equipInventorySetup(inventorySetup);
-        eatIfNeeded(40);
+        log.info("Normal sequence?");
         sleep(150);
         meleePrayerOn();
         Rs2Player.toggleRunEnergy(true);
         sleep(150);
 
         while (sigilMoves <= 3 && isNormalAttackSequence(sigilNpcID)) {
+            eatIfNeeded(50);
+
             /* 1 ─ detect a new sigil square */
             Rs2NpcModel sigil = Rs2Npc.getNpc(sigilNpcID);
             if (sigil == null) {

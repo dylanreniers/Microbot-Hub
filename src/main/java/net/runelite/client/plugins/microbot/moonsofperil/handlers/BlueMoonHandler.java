@@ -70,6 +70,7 @@ public class BlueMoonHandler implements BaseHandler {
             BreakHandlerScript.setLockState(true);
             boss.walkToBoss(equipmentNormal, bossName, bossLobbyLocation);
             boss.fightPreparation(equipmentNormal);
+            boss.changeAttackStyle("Crush");
             boss.enterBossArena(bossName, bossStatueObjectID, bossLobbyLocation);
             sleepUntil(() -> Rs2Widget.isWidgetVisible(bossHealthBarWidgetID), 5_000);
         }

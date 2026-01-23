@@ -7,5 +7,6 @@ public enum State {
     BLUE_MOON,
     BLOOD_MOON,
     REWARDS,
-    DEATH
+    DEATH,
+    LOGOUT
 }

@@ -86,6 +86,15 @@ public interface MoonsOfPerilConfig extends Config {
     default int prayerPercentage() { return 70; }
 
     @ConfigItem(
+            keyName  = "numberOfChests",
+            name     = "Number of chests",
+            description = "Number of chests to do before shutting down (leave 0 for continuous)",
+            position = 3,
+            section  = generalSection
+    )
+    default int numberOfChests() { return 0; }
+
+    @ConfigItem(
             keyName = "moonlightPotionsQuantum",
             name = "Moonlight Potions Resupply",
             description = "Choose how many moonlight potions to have in inventory post resupply",

@@ -70,6 +70,7 @@ public class EclipseMoonHandler implements BaseHandler {
             BreakHandlerScript.setLockState(true);
             boss.walkToBoss(equipmentNormal, bossName, bossLobbyLocation);
             boss.fightPreparation(equipmentNormal);
+            boss.changeAttackStyle("Stab");
             boss.enterBossArena(bossName, bossStatueObjectID, bossLobbyLocation);
             sleepUntil(() -> Rs2Widget.isWidgetVisible(bossHealthBarWidgetID), 5_000);
         }
@@ -192,7 +193,7 @@ public class EclipseMoonHandler implements BaseHandler {
         return false;
     }
 
-    public void specialAttack2Sequence() {
+    public void     specialAttack2Sequence() {
         final int CLONE_SPAWN_ANIM = 11019;
         final int CLONE_NPC_ID = NpcID.PMOON_BOSS_ECLIPSE_MOON_VIS;
         final long PHASE_TIMEOUT_MS = 35_000;
