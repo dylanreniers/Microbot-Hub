@@ -25,7 +25,7 @@ import java.time.Instant;
         name = "Donder's Moons of Peril",
         description = "A plugin to farm the Moons of Peril",
         tags = {"bossing", "pvm", "moneymaking", "combat", "microbot"},
-        authors = "The Funk",
+        authors = "Donder",
         version = MoonsOfPerilPlugin.version,
         minClientVersion = "2.0.14",
         iconUrl = "https://chsami.github.io/Microbot-Hub/MoonsOfPerilPlugin/assets/icon.png",
@@ -35,7 +35,9 @@ import java.time.Instant;
 )
 @Slf4j
 public class MoonsOfPerilPlugin extends Plugin {
-    static final String version = "1.0.2";
+
+    static final String version = "2.0.0";
+
     @Inject
     private MoonsOfPerilConfig config;
     @Provides

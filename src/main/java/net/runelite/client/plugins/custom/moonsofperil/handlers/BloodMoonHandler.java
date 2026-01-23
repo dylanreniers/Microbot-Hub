@@ -1,5 +1,6 @@
 package net.runelite.client.plugins.custom.moonsofperil.handlers;
 
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GameObject;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.NpcID;
@@ -30,6 +31,7 @@ import java.util.stream.Collectors;
 import static net.runelite.client.plugins.microbot.util.Global.sleep;
 import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 
+@Slf4j
 public class BloodMoonHandler implements BaseHandler {
 
     private static final String bossName = "Blood Moon";
@@ -40,7 +42,7 @@ public class BloodMoonHandler implements BaseHandler {
     private static final WorldPoint[] ATTACK_TILES = Locations.bloodAttackTiles();
     private final int sigilNpcID = GameObjects.SIGIL_NPC_ID.getID();
     private final boolean enableBoss;
-    private final boolean DisableGroundCancelClick;
+    private final boolean disableGroundCancelClick;
     private final Rs2InventorySetup equipmentNormal;
     private static final WorldPoint afterRainTile = Locations.BLOOD_ATTACK_6.getWorldPoint();
     public boolean arrived = false;
@@ -52,7 +54,7 @@ public class BloodMoonHandler implements BaseHandler {
         this.equipmentNormal = equipmentNormal;
         this.boss = new BossHandler(cfg);
         this.debugLogging = cfg.debugLogging();
-        this.DisableGroundCancelClick = cfg.DisableGroundCancelClick();
+        this.disableGroundCancelClick = cfg.DisableGroundCancelClick();
     }
 
     @Override
@@ -228,10 +230,12 @@ public class BloodMoonHandler implements BaseHandler {
                 sleep(600);
                 break;
             }
-            if (bloodPoolTick == 3) {
+            if (bloodPoolTick == 2) {
                 if (debugLogging) {
                     Microbot.log("EVADE to " + evadeTile);
                 }
+                log.info("Sleeping until evading.");
+                sleep(400);
                 Rs2Walker.walkFastCanvas(evadeTile, true);
             } else if (bloodPoolTick == 5) {
                 if (debugLogging) {
@@ -242,7 +246,7 @@ public class BloodMoonHandler implements BaseHandler {
                 if (debugLogging) {
                     Microbot.log("Clicking on ground to stop attacking");
                 }
-                if (!DisableGroundCancelClick) {
+                if (!disableGroundCancelClick) {
                     Rs2Walker.walkFastCanvas(attackTile, true);
                 }
             }

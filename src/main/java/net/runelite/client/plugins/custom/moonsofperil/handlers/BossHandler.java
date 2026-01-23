@@ -138,12 +138,7 @@ public final class BossHandler {
      * Eats food if hitpoints below percentage threshold
      */
     public void eatIfNeeded(int percentage) {
-        log.info("Health percentage: {}", Rs2Player.getHealthPercentage());
         Rs2Player.eatAt(percentage);
-        /* while (Rs2Player.getHealthPercentage() < percentage && Rs2Inventory.contains("Cooked bream")) {
-            Rs2Player.eatAt(percentage);
-            sleep(2400);
-        } */
     }
 
     /**

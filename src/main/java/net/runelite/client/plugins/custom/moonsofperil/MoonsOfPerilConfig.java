@@ -7,7 +7,7 @@ import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 
-@ConfigGroup("perilousMoons")
+@ConfigGroup("donderPerilousMoons")
 @ConfigInformation("Check Guide on Discord \n-QoL plugin required \n-Start with empty Inventory besides gear")
 public interface MoonsOfPerilConfig extends Config {
 
