@@ -17,6 +17,7 @@ import javax.inject.Inject;
 import java.util.concurrent.TimeUnit;
 
 import static net.runelite.client.plugins.microbot.glassmake.GabulhasGlassMakeInfo.states.*;
+import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.MODERATE;
 
 
 @Slf4j
@@ -30,8 +31,27 @@ public class GabulhasGlassMakeScript extends Script {
 
     public boolean run(GabulhasGlassMakeConfig config) {
         oneTimeSpellBookCheck = false;
-        Rs2Antiban.antibanSetupTemplates.applyUniversalAntibanSetup();
-        Rs2AntibanSettings.actionCooldownChance = 0.2;
+
+            Microbot.enableAutoRunOn = false;
+            Rs2Antiban.activateAntiban();
+            Rs2Antiban.resetAntibanSettings();
+            Rs2Antiban.antibanSetupTemplates.applyUniversalAntibanSetup();
+
+            Rs2AntibanSettings.usePlayStyle = true;
+            Rs2AntibanSettings.simulateFatigue = true;
+            Rs2AntibanSettings.simulateAttentionSpan = true;
+            Rs2AntibanSettings.behavioralVariability = true;
+            Rs2AntibanSettings.nonLinearIntervals = true;
+            Rs2AntibanSettings.dynamicActivity = true;
+            Rs2AntibanSettings.profileSwitching = true;
+            Rs2AntibanSettings.naturalMouse = true;
+            Rs2AntibanSettings.simulateMistakes = true;
+            Rs2AntibanSettings.moveMouseOffScreen = true;
+            Rs2AntibanSettings.moveMouseRandomly = true;
+            Rs2AntibanSettings.moveMouseRandomlyChance = 0.04;
+            Rs2AntibanSettings.actionCooldownChance = 0.2;
+            Rs2Antiban.setActivityIntensity(MODERATE);
+
         currentItem = config.ITEM();
         Microbot.enableAutoRunOn = false;
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {

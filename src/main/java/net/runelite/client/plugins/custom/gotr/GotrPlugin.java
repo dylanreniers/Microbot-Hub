@@ -33,7 +33,7 @@ import java.time.Instant;
 import java.util.regex.Matcher;
 
 @PluginDescriptor(
-        name = PluginDescriptor.Mocrosoft + "GuardiansOfTheRift",
+        name = "Donder's GuardiansOfTheRift",
         description = "Guardians of the rift plugin",
         tags = {"runecrafting", "guardians of the rift", "gotr", "microbot"},
         version = GotrPlugin.version,
