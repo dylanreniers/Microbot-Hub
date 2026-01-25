@@ -55,7 +55,9 @@ public class HouseTabScript extends Script {
     }
 
     private boolean hasLawRune() {
-        if (Rs2Inventory.hasRunePouch()) {Rs2RunePouch.fullUpdate();}
+        if (Rs2Inventory.hasRunePouch()) {
+            Rs2RunePouch.fullUpdate();
+        }
         return Rs2Inventory.hasItem(ItemID.LAWRUNE) || (Rs2Inventory.hasRunePouch() && Rs2RunePouch.contains(Runes.LAW));
     }
 

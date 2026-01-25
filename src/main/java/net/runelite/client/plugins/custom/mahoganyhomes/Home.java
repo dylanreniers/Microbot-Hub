@@ -1,16 +1,16 @@
 package net.runelite.client.plugins.custom.mahoganyhomes;
 
-import com.google.common.collect.ImmutableSet;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.NpcID;
 import net.runelite.api.coords.WorldArea;
 import net.runelite.api.coords.WorldPoint;
 import org.apache.commons.text.WordUtils;
 
-import java.util.Objects;
 import java.util.Set;
 
 @Getter
+@Slf4j
 enum Home {
     // area is based on bounds of house not area at which stuff loads in for the homes
     // Ardy
@@ -91,6 +91,13 @@ enum Home {
     private static final Set<Integer> LADDERS = Set.of(17026, 16685, 15645, 15648, 16683, 16679, 24075, 24076, 24082, 24085, 11794, 11802, 11797, 11799, 11789, 11793);
 
     static boolean isLadder(final int objID) {
+        return isLadder(objID, false);
+    }
+
+    static boolean isLadder(final int objID, boolean withLog) {
+        if (withLog && objID > 11000) {
+            log.info("Looking for objID {}", objID);
+        }
         return LADDERS.contains(objID);
     }
 

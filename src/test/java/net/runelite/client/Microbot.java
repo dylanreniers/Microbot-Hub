@@ -6,7 +6,6 @@ import java.util.stream.Collectors;
 
 import net.runelite.client.plugins.agility.AgilityPlugin;
 import net.runelite.client.plugins.microbot.aiofighter.AIOFighterPlugin;
-import net.runelite.client.plugins.microbot.mahoganyhomez.MahoganyHomesPlugin;
 import net.runelite.client.plugins.microbot.moonsofperil.MoonsOfPerilPlugin;
 import net.runelite.client.plugins.microbot.plankrunner.PlankRunnerPlugin;
 
@@ -14,7 +13,7 @@ public class Microbot
 {
 
 	private static final Class<?>[] debugPlugins = {
-            AIOFighterPlugin.class, MahoganyHomesPlugin.class, AgilityPlugin.class, PlankRunnerPlugin.class, MoonsOfPerilPlugin.class
+            AIOFighterPlugin.class, AgilityPlugin.class, PlankRunnerPlugin.class, MoonsOfPerilPlugin.class
 	};
 
     public static void main(String[] args) throws Exception

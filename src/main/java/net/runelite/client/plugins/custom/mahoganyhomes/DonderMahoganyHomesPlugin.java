@@ -460,71 +460,11 @@ public class DonderMahoganyHomesPlugin extends Plugin {
     }
 
     @Subscribe
-    public void onItemContainerChanged(ItemContainerChanged event) {
-        if (event.getContainerId() != InventoryID.INVENTORY.getId()) {
-            return;
-        }
-
-        plankSackManager.processInventoryChange(event.getItemContainer());
-    }
-
-    @Subscribe
     public void onMenuOptionClicked(MenuOptionClicked event) {
-        if (event.getWidget() != null) {
-            // Interact in inventory
-            // Right click use in bank
-            if (isPlankSackAction(event)) {
-                plankSackManager.markForUpdate(plankSackManager.createInventorySnapshot());
-            }
-            // Use plank on sack or sack on plank
-            else if (event.getMenuOption().equals("Use")
-                    && event.getMenuAction() == MenuAction.WIDGET_TARGET_ON_WIDGET
-                    && client.getSelectedWidget() != null) {
-                int firstSelectedItemID = client.getSelectedWidget().getItemId();
-                int secondSelectedItemID = event.getWidget().getItemId();
-
-                if (isPlankSackInteraction(firstSelectedItemID, secondSelectedItemID)) {
-                    plankSackManager.markForUpdate(plankSackManager.createInventorySnapshot());
-                }
-            }
-        } else if (isRepairOrBuildAction(event) && !watchForAnimations) {
+        if (isRepairOrBuildAction(event) && !watchForAnimations) {
             watchForAnimations = true;
             buildCost = MAHOGANY_HOMES_REPAIRS.get(event.getId());
-            plankSackManager.markForUpdate(plankSackManager.createInventorySnapshot());
-        } else if (isHallowedSepulchreFixAction(event)) {
-            plankSackManager.markForUpdate(plankSackManager.createInventorySnapshot());
         }
-    }
-
-    @Subscribe
-    public void onScriptPreFired(ScriptPreFired event) {
-        // Construction menu option selected
-        // Construction menu option selected with keybind
-        if (event.getScriptId() != SCRIPT_CONSTRUCTION_OPTION_CLICKED
-                && event.getScriptId() != SCRIPT_CONSTRUCTION_OPTION_KEYBIND) {
-            return;
-        }
-
-        Widget widget = event.getScriptEvent().getSource();
-        int idx = TO_CHILD(widget.getId()) - CONSTRUCTION_WIDGET_BUILD_IDX_START;
-        if (idx >= buildMenuItems.size()) {
-            return;
-        }
-        BuildMenuItem item = buildMenuItems.get(idx);
-        if (item != null && item.canBuild) {
-            var snapshot = plankSackManager.createInventorySnapshot();
-            if (snapshot != null) {
-                for (Item i : item.planks) {
-                    if (!snapshot.contains(i.getId())) {
-                        plankSackManager.processPlankUsageFromSack(i.getQuantity());
-                    } else if (snapshot.count(i.getId()) < i.getQuantity()) {
-                        plankSackManager.processPlankUsageFromSack(i.getQuantity() - snapshot.count(i.getId()));
-                    }
-                }
-            }
-        }
-
-        buildMenuItems.clear();
     }
 
     @Subscribe
@@ -549,13 +489,6 @@ public class DonderMahoganyHomesPlugin extends Plugin {
                                          lastAnimation == AnimationID.CONSTRUCTION_IMCANDO);
 
         if (isConstructionAnimation && currentAnimation != lastAnimation) {
-            // Calculate planks used from sack during construction
-            int planksUsedFromSack = Math.max(0, buildCost);
-
-            if (planksUsedFromSack > 0) {
-                plankSackManager.processPlankUsageFromSack(planksUsedFromSack);
-            }
-
             resetAnimationTracking();
         } else {
             lastAnimation = currentAnimation;

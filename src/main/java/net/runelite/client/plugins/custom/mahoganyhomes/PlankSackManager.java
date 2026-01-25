@@ -42,9 +42,6 @@ public class PlankSackManager {
     @Getter
     private int plankCount = -1;
 
-    private Multiset<Integer> inventorySnapshot;
-    private boolean checkForUpdate = false;
-
     @Inject
     public PlankSackManager(Client client) {
         this.client = client;
@@ -55,66 +52,22 @@ public class PlankSackManager {
         log.info("New plank count: {}", this.plankCount);
     }
 
-    public void markForUpdate(Multiset<Integer> snapshot) {
-        this.inventorySnapshot = snapshot;
-        this.checkForUpdate = true;
-    }
-
-    public void processInventoryChange(ItemContainer itemContainer) {
-        if (!checkForUpdate) {
-            return;
-        }
-
-        checkForUpdate = false;
-        Multiset<Integer> currentInventory = createSnapshot(itemContainer);
-
-        if (inventorySnapshot != null) {
-            updatePlankCountFromInventoryDiff(currentInventory, inventorySnapshot);
-        }
-    }
-
     public void processChatMessage(String message) {
         final String cleanMessage = Text.removeTags(message);
 
-        log.info("Processing message...");
         if (cleanMessage.contains("planks:")) {
             log.info("Parsing");
             parsePlankCountFromMessage(cleanMessage);
-        } else if (cleanMessage.equals("You haven't got any planks that can go in the sack.")) {
-            checkForUpdate = false;
         } else if (cleanMessage.equals("Your sack is full.")) {
             setPlankCount(28);
-            checkForUpdate = false;
-        } else if (cleanMessage.equals("Your sack is empty.")) {
+        } else if (cleanMessage.equals("Your sack is currently empty.")) {
             setPlankCount(0);
-            checkForUpdate = false;
-        }
-    }
-
-    public void processPlankUsageFromSack(int planksUsed) {
-        if (planksUsed > 0 && plankCount >= 0) {
-            setPlankCount(plankCount - planksUsed);
         }
     }
 
     public Multiset<Integer> createInventorySnapshot() {
         ItemContainer container = client.getItemContainer(InventoryID.INVENTORY);
         return createSnapshot(container);
-    }
-
-    private void updatePlankCountFromInventoryDiff(Multiset<Integer> current, Multiset<Integer> previous) {
-        current.entrySet().forEach(entry -> {
-            int id = entry.getElement();
-            int currentCount = entry.getCount();
-            int previousCount = previous.count(id);
-            int diff = currentCount - previousCount;
-
-            if (diff != 0) {
-                plankCount += diff;
-            }
-        });
-
-        setPlankCount(plankCount);
     }
 
     private void parsePlankCountFromMessage(String message) {

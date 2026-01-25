@@ -127,7 +127,7 @@ public class MahoganyHomesScript extends Script {
         log("Walker missing transport, trying to find ladder manually.");
         int plane = Rs2Player.getWorldLocation().getPlane();
         Rs2TileObjectModel objectModel = rs2TileObjectCache.query()
-                .where(obj -> Home.isLadder(obj.getId()))
+                .where(obj -> Home.isLadder(obj.getId(), true))
                 .nearestOnClientThread();
         Microbot.getClientThread().invoke(() -> objectModel.click());
         sleepUntil(() -> Rs2Player.getWorldLocation().getPlane() != plane, 5000);

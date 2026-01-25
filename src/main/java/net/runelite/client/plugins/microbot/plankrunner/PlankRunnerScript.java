@@ -78,33 +78,33 @@ public class PlankRunnerScript extends Script {
                         if (plugin.isUseEnergyRestorePotions() && Rs2Player.getRunEnergy() <= plugin.getDrinkAtPercent()) {
                             boolean hasStaminaPotion = Rs2Bank.hasItem(Rs2Potion.getStaminaPotion());
                             boolean hasEnergyRestorePotion = Rs2Bank.hasItem(Rs2Potion.getRestoreEnergyPotionsVariants());
-                            
+
                             if ((Rs2Player.hasStaminaBuffActive() && hasEnergyRestorePotion) || (!hasStaminaPotion && hasEnergyRestorePotion)) {
                                 Rs2ItemModel energyRestoreItem = Rs2Bank.bankItems().stream()
                                         .filter(rs2Item -> Rs2Potion.getRestoreEnergyPotionsVariants().stream()
                                                 .anyMatch(variant -> rs2Item.getName().toLowerCase().contains(variant.toLowerCase())))
                                         .min(Comparator.comparingInt(rs2Item -> getDoseFromName(rs2Item.getName())))
                                         .orElse(null);
-                                
+
                                 if (energyRestoreItem == null) {
                                     Microbot.showMessage("Unable to find Restore Energy Potion but hasItem?");
                                     shutdown();
                                     return;
                                 }
-                                
+
                                 withdrawAndDrink(energyRestoreItem.getName());
                             } else if (hasStaminaPotion) {
                                 Rs2ItemModel staminaPotionItem = Rs2Bank.bankItems().stream()
                                         .filter(rs2Item -> rs2Item.getName().toLowerCase().contains(Rs2Potion.getStaminaPotion().toLowerCase()))
                                         .min(Comparator.comparingInt(rs2Item -> getDoseFromName(rs2Item.getName())))
                                         .orElse(null);
-                                
+
                                 if (staminaPotionItem == null) {
                                     Microbot.showMessage("Unable to find Stamina Potion but hasItem?");
                                     shutdown();
                                     return;
                                 }
-                                
+
                                 withdrawAndDrink(staminaPotionItem.getName());
                             } else {
                                 Microbot.showMessage("Unable to find Stamina Potion OR Energy Restore Potions");
@@ -128,7 +128,7 @@ public class PlankRunnerScript extends Script {
                         boolean isNearSawmill = Rs2Walker.getTotalTiles(plugin.getSawmillLocation().getWorldPoint()) < 15;
                         if (!isNearSawmill) {
                             Microbot.status = "Running to Sawmill";
-                            Rs2Walker.walkTo(plugin.getSawmillLocation().getWorldPoint());
+                            Rs2Walker.walkFastCanvas(plugin.getSawmillLocation().getWorldPoint(), true);
                             return;
                         }
 
