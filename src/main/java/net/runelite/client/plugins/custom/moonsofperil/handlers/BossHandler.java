@@ -7,6 +7,7 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.widgets.WidgetInfo;
 import net.runelite.client.plugins.custom.moonsofperil.MoonsOfPerilConfig;
+import net.runelite.client.plugins.custom.moonsofperil.MoonsOfPerilScript;
 import net.runelite.client.plugins.custom.moonsofperil.enums.Widgets;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.globval.enums.InterfaceTab;
@@ -154,14 +155,10 @@ public final class BossHandler {
     }
 
     public void changeAttackStyle(String preferredStyle) {
-        log.info("Equipped weapon type {}", Microbot.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE));
         WeaponAttackType weaponAttackType = WeaponAttackType.getById(Microbot.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE));
-        log.info("Weapon attack type, {}", weaponAttackType.name());
         Optional<AttackOption> attackOptionToSwitchTo = weaponAttackType.getAttackOptions().stream().filter(attackOption -> attackOption.getAttackStyle().equals(preferredStyle)).findFirst();
-        log.info("Is present? {}", attackOptionToSwitchTo.isPresent());
         if (attackOptionToSwitchTo.isPresent()) {
             int index = weaponAttackType.getAttackOptions().indexOf(attackOptionToSwitchTo.get());
-            log.info("Index: {}", index);
             List<WidgetInfo> combatStyleWidgets = List.of(WidgetInfo.COMBAT_STYLE_ONE, WidgetInfo.COMBAT_STYLE_TWO, WidgetInfo.COMBAT_STYLE_THREE, WidgetInfo.COMBAT_STYLE_FOUR);
             changeAttackStyle(combatStyleWidgets.get(index));
         }
@@ -172,7 +169,6 @@ public final class BossHandler {
             Rs2Tab.switchToCombatOptionsTab();
             sleepUntil(() -> Rs2Tab.getCurrentTab() == InterfaceTab.COMBAT, 2000);
         }
-        log.info("Setting attack style to {}", attackStyleWidgetInfo.name());
         Rs2Combat.setAttackStyle(attackStyleWidgetInfo);
     }
 
@@ -186,19 +182,18 @@ public final class BossHandler {
     /**
      * Returns true if the sigil NPC (the highlighted attack tile) is present
      */
-    public static boolean isNormalAttackSequence(int sigilNpcID) {
-        return Rs2Npc.getNpc(sigilNpcID) != null;
+    public static boolean isNormalAttackSequence() { //TODO remove this if this approach works
+        return Objects.nonNull(MoonsOfPerilScript.sigilNpc.get());
     }
 
     /**
      * “Normal” attack phase: follow ≤ 3 sigil squares, stand on the
      * matching attack tile, and keep attacking the boss.
      *
-     * @param sigilNpcID  NPC ID of the 2×2 sigil marker
      * @param bossNpcID   NPC ID of the Eclipse boss
      * @param attackTiles WorldPoints from Locations enum
      */
-    public void normalAttackSequence(int sigilNpcID,
+    public void normalAttackSequence(
                                      int bossNpcID,
                                      WorldPoint[] attackTiles, Rs2InventorySetup inventorySetup) {
         if (debugLogging) {
@@ -214,11 +209,11 @@ public final class BossHandler {
         Rs2Player.toggleRunEnergy(true);
         sleep(150);
 
-        while (sigilMoves <= 3 && isNormalAttackSequence(sigilNpcID)) {
+        while (sigilMoves <= 3 && isNormalAttackSequence()) {
             eatIfNeeded(50);
 
             /* 1 ─ detect a new sigil square */
-            Rs2NpcModel sigil = Rs2Npc.getNpc(sigilNpcID);
+            var sigil = MoonsOfPerilScript.sigilNpc.get();
             if (sigil == null) {
                 sleep(300);
                 if (debugLogging) {

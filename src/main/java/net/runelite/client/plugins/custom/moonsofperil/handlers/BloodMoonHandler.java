@@ -7,6 +7,7 @@ import net.runelite.api.gameval.NpcID;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.client.plugins.custom.moonsofperil.MoonsOfPerilConfig;
 import net.runelite.client.plugins.custom.moonsofperil.MoonsOfPerilPlugin;
+import net.runelite.client.plugins.custom.moonsofperil.MoonsOfPerilScript;
 import net.runelite.client.plugins.custom.moonsofperil.enums.GameObjects;
 import net.runelite.client.plugins.custom.moonsofperil.enums.Locations;
 import net.runelite.client.plugins.custom.moonsofperil.enums.State;
@@ -40,7 +41,6 @@ public class BloodMoonHandler implements BaseHandler {
     private static final int bossStatueObjectID = GameObjects.BLOOD_MOON_STATUE_ID.getID();
     private static final WorldPoint bossLobbyLocation = Locations.BLOOD_LOBBY.getWorldPoint();
     private static final WorldPoint[] ATTACK_TILES = Locations.bloodAttackTiles();
-    private final int sigilNpcID = GameObjects.SIGIL_NPC_ID.getID();
     private final boolean enableBoss;
     private final boolean disableGroundCancelClick;
     private final Rs2InventorySetup equipmentNormal;
@@ -82,8 +82,8 @@ public class BloodMoonHandler implements BaseHandler {
                 specialAttack1Sequence();
             } else if (isSpecialAttack2Sequence()) {
                 specialAttack2Sequence();
-            } else if (BossHandler.isNormalAttackSequence(sigilNpcID)) {
-                boss.normalAttackSequence(sigilNpcID, bossNpcID, ATTACK_TILES, equipmentNormal);
+            } else if (BossHandler.isNormalAttackSequence()) {
+                boss.normalAttackSequence(bossNpcID, ATTACK_TILES, equipmentNormal);
             }
             sleep(300);
         }
@@ -110,7 +110,7 @@ public class BloodMoonHandler implements BaseHandler {
      * Returns True if the Moonfire gameobject is found and the boss is not attackable.
      */
     public boolean isSpecialAttack2Sequence() {
-        return Rs2GameObject.exists(ObjectID.PMOON_BOSS_BLOOD_FIRE) && Rs2Npc.getNpc(sigilNpcID) == null && Rs2Widget.isWidgetVisible(bossHealthBarWidgetID);
+        return Rs2GameObject.exists(ObjectID.PMOON_BOSS_BLOOD_FIRE) && MoonsOfPerilScript.sigilNpc.get() == null && Rs2Widget.isWidgetVisible(bossHealthBarWidgetID);
     }
 
     /**
@@ -160,7 +160,7 @@ public class BloodMoonHandler implements BaseHandler {
         final long startMs = System.currentTimeMillis();
 
         /* 1  find the sigil NPC (2×2, SW tile = sigilLoc) */
-        Rs2NpcModel sigilNpc = Rs2Npc.getNpcs(n -> n.getId() == sigilNpcID).findFirst().orElse(null);
+        var sigilNpc = MoonsOfPerilScript.sigilNpc.get();
         if (sigilNpc == null) {
             if (debugLogging) {
                 Microbot.log("no sigil NPC – bail");

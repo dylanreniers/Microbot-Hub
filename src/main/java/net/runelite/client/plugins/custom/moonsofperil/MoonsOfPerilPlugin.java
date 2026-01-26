@@ -4,16 +4,21 @@ import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GameObject;
 import net.runelite.api.GraphicsObject;
+import net.runelite.api.NPC;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GraphicsObjectCreated;
+import net.runelite.api.events.NpcDespawned;
+import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.SpotanimID;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.custom.moonsofperil.enums.GameObjects;
 import net.runelite.client.plugins.microbot.PluginConstants;
+import net.runelite.client.plugins.microbot.gotr.GotrScript;
 import net.runelite.client.plugins.microbot.util.tile.Rs2Tile;
 import net.runelite.client.ui.overlay.OverlayManager;
 
@@ -87,15 +92,30 @@ public class MoonsOfPerilPlugin extends Plugin {
         overlayManager.remove(moonsOfPerilOverlay);
     }
 
-    int ticks = 10;
+    @Subscribe
+    public void onNpcSpawned(NpcSpawned npcSpawned) {
+        NPC npc = npcSpawned.getNpc();
+        if (npc.getId() == GameObjects.SIGIL_NPC_ID.getID()) {
+            log.info("Spawned sigil.");
+            log.info("Location: {}", npc.getWorldLocation());
+            MoonsOfPerilScript.sigilNpc.set(npc);
+        }
+    }
+
+    @Subscribe
+    public void onNpcDespawned(NpcDespawned npcDespawned) {
+        NPC npc = npcDespawned.getNpc();
+        if (npc.getId() == GameObjects.SIGIL_NPC_ID.getID()) {
+            log.info("Despawned sigil.");
+            if (npc.getIndex() == MoonsOfPerilScript.sigilNpc.get().getIndex()) {
+                log.info("Despawned and no other sigil was previously set.");
+                MoonsOfPerilScript.sigilNpc.set(null);
+            }
+        }
+    }
+
     @Subscribe
     public void onGameTick(GameTick tick) {
-        bloodPoolTick ++;
-        if (ticks > 0) {
-            ticks--;
-        } else {
-            ticks = 10;
-        }
-
+        bloodPoolTick++;
     }
 }

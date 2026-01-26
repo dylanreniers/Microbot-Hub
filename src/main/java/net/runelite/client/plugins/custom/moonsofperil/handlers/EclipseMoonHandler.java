@@ -4,6 +4,7 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.AnimationID;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.client.plugins.custom.moonsofperil.MoonsOfPerilConfig;
+import net.runelite.client.plugins.custom.moonsofperil.MoonsOfPerilScript;
 import net.runelite.client.plugins.custom.moonsofperil.enums.GameObjects;
 import net.runelite.client.plugins.custom.moonsofperil.enums.Locations;
 import net.runelite.client.plugins.custom.moonsofperil.enums.State;
@@ -38,7 +39,6 @@ public class EclipseMoonHandler implements BaseHandler {
     private static final WorldPoint shieldSpawnTile = Locations.ECLIPSE_SHIELD_SPAWN_TILE.getWorldPoint();
     private static final WorldPoint cloneAttackTile = bossArenaCenter;
     private static final WorldPoint[] ATTACK_TILES = Locations.eclipseAttackTiles();
-    private final int sigilNpcID = GameObjects.SIGIL_NPC_ID.getID();
     private final Rs2InventorySetup equipmentNormal;
     private final Rs2InventorySetup equipmentClones;
     private final boolean enableBoss;
@@ -82,8 +82,8 @@ public class EclipseMoonHandler implements BaseHandler {
             else if (isSpecialAttack2Sequence()) {
                 specialAttack2Sequence();
             }
-            else if (BossHandler.isNormalAttackSequence(sigilNpcID)) {
-                boss.normalAttackSequence(sigilNpcID, bossNpcID, ATTACK_TILES, equipmentNormal);
+            else if (BossHandler.isNormalAttackSequence()) {
+                boss.normalAttackSequence(bossNpcID, ATTACK_TILES, equipmentNormal);
             }
             sleep(300);
         }
@@ -100,7 +100,7 @@ public class EclipseMoonHandler implements BaseHandler {
      */
     public boolean isSpecialAttack1Sequence() {
         Rs2NpcModel eclipseMoonShield = Rs2Npc.getNpc(NpcID.PMOON_BOSS_ECLIPSE_MOON_SHIELD);
-        return eclipseMoonShield != null && Rs2Npc.getNpc(sigilNpcID) == null;
+        return eclipseMoonShield != null && MoonsOfPerilScript.sigilNpc.get() == null;
     }
 
     /**  Eclipse – Moon Shield Special-Attack Handler */
@@ -153,7 +153,7 @@ public class EclipseMoonHandler implements BaseHandler {
         if (debugLogging) {Microbot.log("Running to the normal attack sequence tile");}
         Rs2Walker.walkFastCanvas(fin, true);
         if (debugLogging) {Microbot.log("Sleeping until the Sigil tile spawns");}
-        sleepUntil(() -> Rs2Npc.getNpc(sigilNpcID) != null, 4_000);
+        sleepUntil(() -> MoonsOfPerilScript.sigilNpc.get() != null, 4_000);
         if (debugLogging) {Microbot.log("Searing Rays phase finished");}
 
     }
@@ -184,7 +184,7 @@ public class EclipseMoonHandler implements BaseHandler {
         }
 
         // 2. Captures the conditions required if we spawn into the arena midway through the special attack phase.
-        if (playerTile.equals(center) && bossNPC != null && Rs2Npc.getNpc(sigilNpcID) == null && !bossNPC.getLocalLocation().equals(Rs2LocalPoint.fromWorldInstance(center))) {
+        if (playerTile.equals(center) && bossNPC != null && MoonsOfPerilScript.sigilNpc.get() == null && !bossNPC.getLocalLocation().equals(Rs2LocalPoint.fromWorldInstance(center))) {
             boss.equipInventorySetup(equipmentClones);
             BossHandler.meleePrayerOn();
             return true;

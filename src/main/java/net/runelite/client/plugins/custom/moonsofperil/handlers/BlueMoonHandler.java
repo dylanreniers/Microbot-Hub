@@ -4,6 +4,7 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.AnimationID;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.client.plugins.custom.moonsofperil.MoonsOfPerilConfig;
+import net.runelite.client.plugins.custom.moonsofperil.MoonsOfPerilScript;
 import net.runelite.client.plugins.custom.moonsofperil.enums.GameObjects;
 import net.runelite.client.plugins.custom.moonsofperil.enums.Locations;
 import net.runelite.client.plugins.custom.moonsofperil.enums.State;
@@ -38,7 +39,6 @@ public class BlueMoonHandler implements BaseHandler {
     private static final WorldPoint[] ATTACK_TILES = Locations.blueAttackTiles();
     private static final WorldPoint AFTER_TORNADO = Locations.BLUE_ATTACK_1.getWorldPoint();
     private static final WorldPoint AFTER_GLACIER = Locations.BLUE_ICESHARD_SAFEPOT.getWorldPoint();
-    private final int sigilNpcID = GameObjects.SIGIL_NPC_ID.getID();
     private final Rs2InventorySetup equipmentNormal;
     private final MoonsOfPerilConfig cfg;
     private final boolean enableBoss;
@@ -84,8 +84,8 @@ public class BlueMoonHandler implements BaseHandler {
                 } else {
                     specialAttack2IdleSequence();
                 }
-            } else if (BossHandler.isNormalAttackSequence(sigilNpcID)) {
-                boss.normalAttackSequence(sigilNpcID, bossNpcID, ATTACK_TILES, equipmentNormal);
+            } else if (BossHandler.isNormalAttackSequence()) {
+                boss.normalAttackSequence(bossNpcID, ATTACK_TILES, equipmentNormal);
             }
             sleep(300);
         }
@@ -104,7 +104,7 @@ public class BlueMoonHandler implements BaseHandler {
      * Returns True if the tornado NPC is found.
      */
     public boolean isSpecialAttack1Sequence() {
-        return (Rs2Npc.getNpc(NpcID.PMOON_BOSS_WINTER_STORM) != null && Rs2Widget.isWidgetVisible(bossHealthBarWidgetID) && Rs2Npc.getNpc(sigilNpcID) == null);
+        return (Rs2Npc.getNpc(NpcID.PMOON_BOSS_WINTER_STORM) != null && Rs2Widget.isWidgetVisible(bossHealthBarWidgetID) && MoonsOfPerilScript.sigilNpc.get() == null);
     }
 
     public void specialAttack1Sequence() {
@@ -119,7 +119,7 @@ public class BlueMoonHandler implements BaseHandler {
         if (debugLogging) {
             Microbot.log("Sleeping until the special attack sequence is over");
         }
-        sleepUntil(() -> Rs2Npc.getNpc(sigilNpcID) != null || !Rs2Widget.isWidgetVisible(bossHealthBarWidgetID), 35_000);
+        sleepUntil(() -> MoonsOfPerilScript.sigilNpc.get() != null || !Rs2Widget.isWidgetVisible(bossHealthBarWidgetID), 35_000);
     }
 
     public void specialAttack2IdleSequence() {
@@ -134,7 +134,7 @@ public class BlueMoonHandler implements BaseHandler {
         if (debugLogging) {
             Microbot.log("Sleeping until the special attack sequence is over");
         }
-        sleepUntil(() -> Rs2Npc.getNpc(sigilNpcID) != null || !Rs2Widget.isWidgetVisible(bossHealthBarWidgetID), 35_000);
+        sleepUntil(() -> MoonsOfPerilScript.sigilNpc.get() != null || !Rs2Widget.isWidgetVisible(bossHealthBarWidgetID), 35_000);
     }
 
 
@@ -143,7 +143,7 @@ public class BlueMoonHandler implements BaseHandler {
      */
     public boolean isSpecialAttack2Sequence() {
         Rs2NpcModel icicle = Rs2Npc.getNpc(NpcID.PMOON_BOSS_ICICLE_UNCRACKED);
-        Rs2NpcModel sigil = Rs2Npc.getNpc(sigilNpcID);
+        var sigil = MoonsOfPerilScript.sigilNpc.get();
         if (icicle != null && sigil == null) {
             if (debugLogging) {
                 Microbot.log("An icicle has spawned – We've entered Special Attack 2 Sequence");

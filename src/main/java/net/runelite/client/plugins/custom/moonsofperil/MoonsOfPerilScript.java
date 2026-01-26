@@ -1,6 +1,7 @@
 package net.runelite.client.plugins.custom.moonsofperil;
 
 import lombok.Getter;
+import net.runelite.api.NPC;
 import net.runelite.client.plugins.custom.moonsofperil.enums.State;
 import net.runelite.client.plugins.custom.moonsofperil.handlers.BaseHandler;
 import net.runelite.client.plugins.custom.moonsofperil.handlers.BloodMoonHandler;
@@ -18,7 +19,9 @@ import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import javax.inject.Inject;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class MoonsOfPerilScript extends Script {
 
@@ -32,6 +35,9 @@ public class MoonsOfPerilScript extends Script {
     private Rs2InventorySetup eclipseClones;
     @Getter
     private State state = State.IDLE;
+
+    public static AtomicReference<NPC> sigilNpc = new AtomicReference<>();
+
 
     @Inject
     public MoonsOfPerilScript(MoonsOfPerilConfig config) {
