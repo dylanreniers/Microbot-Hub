@@ -119,7 +119,7 @@ public class BankService {
 
     private void checkRingOfDueling() {
         if (Rs2Equipment.get(EquipmentInventorySlot.RING) == null) {
-            if (Rs2Bank.count(ItemID.RING_OF_DUELING_8) <= 0) {
+                if (Rs2Bank.count(ItemID.RING_OF_DUELING_8) <= 0) {
                 throw new BarrowsScriptException("No ring of dueling found in bank.");
             }
 

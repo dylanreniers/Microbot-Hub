@@ -15,8 +15,8 @@ import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import javax.inject.Inject;
 import java.util.concurrent.TimeUnit;
 
-import static net.runelite.client.plugins.microbot.karambwans.GabulhasKarambwansInfo.botStatus;
-import static net.runelite.client.plugins.microbot.karambwans.GabulhasKarambwansInfo.states;
+import static net.runelite.client.plugins.custom.karambwans.GabulhasKarambwansInfo.botStatus;
+import static net.runelite.client.plugins.custom.karambwans.GabulhasKarambwansInfo.states;
 
 @Slf4j
 public class GabulhasKarambwansScript extends Script {
@@ -35,6 +35,7 @@ public class GabulhasKarambwansScript extends Script {
             try {
                 if (!Microbot.isLoggedIn()) return;
                 if (!super.run()) return;
+
 
                 switch (botStatus) {
                     case FISHING:

@@ -51,6 +51,7 @@ public class GabulhasKarambwansPlugin extends Plugin {
         }
         gabulhasKarambwansScript.run(config);
         GabulhasKarambwansInfo.botStatus = config.STARTING_STATE();
+        log.info("bot status {}", GabulhasKarambwansInfo.botStatus);
     }
 
     protected void shutDown() {

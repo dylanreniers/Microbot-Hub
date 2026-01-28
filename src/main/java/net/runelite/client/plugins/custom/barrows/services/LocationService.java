@@ -67,7 +67,7 @@ public class LocationService {
     }
 
     public void teleportToFerox() {
-        if (!isNearFerox()) {
+        if (!isNearFerox() && Rs2Equipment.isWearing("Ring of dueling", false)) {
             Rs2Equipment.interact(EquipmentInventorySlot.RING, FEROX_ENCLAVE);
             sleepUntil(() -> !Rs2Player.isAnimating());
             sleepUntil(LocationService::isNearFerox);

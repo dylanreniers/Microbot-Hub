@@ -2,25 +2,28 @@ package net.runelite.client.plugins.microbot.sulphurnaguafigther;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldArea;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.npc.Rs2NpcCache;
+import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
+import net.runelite.client.plugins.microbot.api.tileitem.Rs2TileItemCache;
+import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetupsItem;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
-import net.runelite.client.plugins.microbot.util.antiban.Rs2AntibanSettings;
 import net.runelite.client.plugins.microbot.util.antiban.enums.Activity;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
+import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
-import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
-import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
+import net.runelite.client.plugins.microbot.util.inventory.InteractOrder;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
-import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
@@ -28,10 +31,22 @@ import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 
 import javax.inject.Inject;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
+@Slf4j
 public class SulphurNaguaScript extends Script {
+
+    @Inject
+    private Rs2NpcCache rs2NpcCache;
+
+    @Inject
+    private Rs2TileItemCache rs2TileItemCache;
+
+    @Inject
+    private Rs2TileObjectCache rs2TileObjectCache;
 
     @Getter
     @RequiredArgsConstructor
@@ -41,7 +56,7 @@ public class SulphurNaguaScript extends Script {
                 new WorldPoint(1376, 9712, 0)),
 
         CIVITAS_ILLA_FORTIS_EAST("East",
-                new WorldArea(1371, 9557, 10, 10, 0),
+                new WorldArea(1371, 9557, 16, 16, 0),
                 new WorldPoint(1376, 9712, 0));
 
         private final String name;
@@ -85,32 +100,27 @@ public class SulphurNaguaScript extends Script {
     @Inject
     private Client client;
 
-    private WorldPoint dropLocation = null;
-    private int potionsToPickup = 0;
-    private boolean pickupReady = false;
+    private static final int SUPPLY_CRATE_ID = 51371;
+    private static final int PESTLE_AND_MORTAR_ID = 233;
+    private static final int VIAL_OF_WATER_ID = 227;
+    private static final int SULPHUR_BLADE_ID = 29084;
 
-    private final int PESTLE_AND_MORTAR_ID = 233;
-    private final int VIAL_OF_WATER_ID = 227;
-    private final int SULPHUR_BLADE_ID = 29084;
-
-    private final int SULPHUROUS_ESSENCE_ID = 29087;
-    private final int EYTALLALI_ID = 12870;
-
-    private final WorldPoint EYTALLALI_LOCATION = new WorldPoint(1521, 9577, 0);
+    private static final int SULPHUROUS_ESSENCE_ID = 29087;
+    private static final int EYTALLALI_ID = 12870;
+    private static final WorldPoint EYTALLALI_LOCATION = new WorldPoint(1521, 9577, 0);
 
     private Set<Integer> dynamicLootIds = new HashSet<>();
 
-
-    private final int MOONLIGHT_GRUB_ID = 29078;
-    private final int MOONLIGHT_GRUB_PASTE_ID = 29079;
-    private final Set<Integer> MOONLIGHT_POTION_IDS = Set.of(29080, 29081, 29082, 29083);
+    private static final int MOONLIGHT_GRUB_ID = 29078;
+    private static final int MOONLIGHT_GRUB_PASTE_ID = 29079;
+    private static final Set<Integer> MOONLIGHT_POTION_IDS = Set.of(29080, 29081, 29082, 29083);
+    private static final int GRUB_SAPLING_ID = 51365;
 
     private NaguaLocation selectedLocation;
 
     public WorldArea getNaguaCombatArea() {
         return (selectedLocation != null) ? selectedLocation.getCombatArea() : null;
     }
-
 
     private void updateDynamicLootIds(SulphurNaguaConfig config) {
         dynamicLootIds.clear();
@@ -134,7 +144,7 @@ public class SulphurNaguaScript extends Script {
         selectedLocation = config.naguaLocation();
 
         applyAntiBanSettings();
-        Rs2Antiban.setActivity(Activity.GENERAL_COMBAT);
+        updateDynamicLootIds(config);
 
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
@@ -160,9 +170,6 @@ public class SulphurNaguaScript extends Script {
                     case PREPARATION:
                         handlePreparation(config);
                         break;
-                    case PICKUP:
-                        pickupDroppedPotions();
-                        break;
                     case WALKING_TO_FIGHT:
                         Rs2Walker.walkTo(selectedLocation.getFightAreaCenter());
                         break;
@@ -181,7 +188,7 @@ public class SulphurNaguaScript extends Script {
             } catch (Exception ex) {
                 Microbot.logStackTrace(this.getClass().getSimpleName(), ex);
             }
-        }, 0, 300, TimeUnit.MILLISECONDS);
+        }, 0, 600, TimeUnit.MILLISECONDS);
         return true;
     }
 
@@ -194,55 +201,35 @@ public class SulphurNaguaScript extends Script {
 
     private void determineState(SulphurNaguaConfig config) {
 
-        updateDynamicLootIds(config);
-
-        int fixedItems = countFixedItems();
-        int maxPossiblePotions = 28 - fixedItems;
-        int targetPotions = Math.min(config.moonlightPotionsMinimum(), maxPossiblePotions);
-
         boolean hasPotionsInInventory = countMoonlightPotions() > 0;
-        int totalOwnedPotions = countMoonlightPotions() + potionsToPickup;
+        int totalOwnedPotions = countMoonlightPotions();
 
         if (!Rs2Inventory.hasItem(PESTLE_AND_MORTAR_ID)) {
-            resetPreparationState();
             currentState = Rs2Bank.isNearBank(10) ? SulphurNaguaState.BANKING : SulphurNaguaState.WALKING_TO_BANK;
             return;
         }
+
         boolean inCombatZone = isAtLocation(selectedLocation.getFightAreaCenter());
 
-        if (potionsToPickup > 0 && pickupReady) {
-            if (Rs2Inventory.isFull()) {
-                Microbot.log("Inventory is full, cannot pick up remaining potions. Starting to fight.");
+        var interacting = Rs2Player.getInteracting();
+        boolean isAvailableForAction = !Rs2Player.isInCombat() || interacting == null || interacting.isDead();
 
-                resetPreparationState();
-                currentState = inCombatZone ? SulphurNaguaState.FIGHTING : SulphurNaguaState.WALKING_TO_FIGHT;
-            } else {
-
-                currentState = SulphurNaguaState.PICKUP;
-            }
-            return;
-        }
-
-        boolean isAvailableForAction = !Rs2Player.isInCombat() || Rs2Player.getInteracting() == null || Rs2Player.getInteracting().isDead();
-
-        if (!dynamicLootIds.isEmpty() && isAvailableForAction && !Rs2Inventory.isFull() && isStackableLootNearby()) {
+        if (!dynamicLootIds.isEmpty() && isAvailableForAction && (isStackableLootNearby() || (isSulphurBladeNearby() && !Rs2Inventory.isFull()))) {
             currentState = SulphurNaguaState.LOOTING;
             return;
         }
 
-        if (config.lootSulphurousBlades() && isAvailableForAction && !Rs2Inventory.isFull() && isSulphurBladeNearby()) {
-            currentState = SulphurNaguaState.LOOTING;
+        if (((currentState == SulphurNaguaState.IDLE && inCombatZone) || currentState == SulphurNaguaState.LOOTING) && hasPotionsInInventory) {
+            currentState = SulphurNaguaState.FIGHTING;
             return;
         }
 
-
-        if ((currentState == SulphurNaguaState.FIGHTING || currentState == SulphurNaguaState.WALKING_TO_FIGHT || (currentState == SulphurNaguaState.IDLE && inCombatZone) || currentState == SulphurNaguaState.LOOTING) && hasPotionsInInventory) {
-            currentState = inCombatZone ? SulphurNaguaState.FIGHTING : SulphurNaguaState.WALKING_TO_FIGHT;
+        if (Rs2Inventory.emptySlotCount() > 3 && isAtLocation(selectedLocation.getPrepArea())) {
+            currentState = SulphurNaguaState.PREPARATION;
             return;
         }
 
-        boolean hasIntermediateIngredients = hasIngredientsToProcess();
-        if (totalOwnedPotions < targetPotions || hasIntermediateIngredients) {
+        if (!hasPotionsInInventory) {
             if (currentState == SulphurNaguaState.FIGHTING) {
                 Rs2Prayer.disableAllPrayers();
                 Microbot.log("All potions used. Starting preparation for a new batch.");
@@ -261,71 +248,18 @@ public class SulphurNaguaScript extends Script {
     }
 
     private void handlePreparation(SulphurNaguaConfig config) {
-        if (hasIngredientsToProcess()) {
-            processAllIngredients();
-            return;
-        }
-
-        int targetPotions = config.moonlightPotionsMinimum();
-        int currentPotions = countMoonlightPotions();
-        int totalOwnedPotions = currentPotions + potionsToPickup;
-
-        if (totalOwnedPotions >= targetPotions) {
-            cleanupLeftoverIngredients();
-            if (potionsToPickup > 0) {
-                pickupReady = true;
-            }
-            return;
-        }
-
-        int neededPotionsTotal = targetPotions - totalOwnedPotions;
         int freeSlots = Rs2Inventory.emptySlotCount();
-        int vialsInInv = Rs2Inventory.count(VIAL_OF_WATER_ID);
-        int grubsInInv = Rs2Inventory.count(MOONLIGHT_GRUB_ID);
-
-
-        if (vialsInInv > 0) {
-            int grubsToGet = vialsInInv;
-
-            if (freeSlots >= grubsToGet) {
-                getSupplies(MOONLIGHT_GRUB_ID, grubsInInv + grubsToGet);
-            } else {
-                if (freeSlots > 0) {
-                    getSupplies(MOONLIGHT_GRUB_ID, grubsInInv + freeSlots);
-                } else {
-
-                    int potionsToDrop = Math.min(grubsToGet, currentPotions);
-                    if (potionsToDrop <= 0) {
-                        Microbot.log("Stuck: 0 free slots, 0 potions to drop, but need grubs.");
-                        return;
-                    }
-                    Microbot.log("Dropping " + potionsToDrop + " potions to make space for grubs.");
-                    dropPotions(potionsToDrop);
-                }
-            }
-            return;
-        }
-
-
-        if (freeSlots > 0) {
-            int vialsToGet = Math.min(neededPotionsTotal, freeSlots);
-            getSupplies(VIAL_OF_WATER_ID, vialsInInv + vialsToGet);
-        } else {
-            int potionsToDrop = Math.min(neededPotionsTotal, currentPotions);
-            if (potionsToDrop <= 0 && neededPotionsTotal > 0) {
-                Microbot.log("Stuck: 0 free slots, 0 vials, 0 potions to drop, but need more potions.");
-                return;
-            }
-
-            Microbot.log("Dropping " + potionsToDrop + " potions to make space for vials.");
-            dropPotions(potionsToDrop);
-        }
+        int potionsToMake = freeSlots / 2;
+        log.info("Number of potions to make: {}", potionsToMake);
+        takeVials(potionsToMake);
+        sleepUntil(() -> !Rs2Player.isAnimating());
+        takeGrubs(potionsToMake);
+        sleepUntil(() -> !Rs2Player.isAnimating());
+        processAllIngredients();
+        currentState = SulphurNaguaState.WALKING_TO_FIGHT;
     }
 
     private void processAllIngredients() {
-        if (Rs2Player.isAnimating() || Microbot.isGainingExp) {
-            return;
-        }
         if (Rs2Inventory.hasItem(MOONLIGHT_GRUB_ID)) {
             Microbot.log("Grinding all available grubs...");
             Rs2Inventory.use(PESTLE_AND_MORTAR_ID);
@@ -333,7 +267,6 @@ public class SulphurNaguaScript extends Script {
             Rs2Inventory.use(MOONLIGHT_GRUB_ID);
             sleepUntil(() -> !Rs2Inventory.hasItem(MOONLIGHT_GRUB_ID) || Rs2Dialogue.isInDialogue(), 18000);
             sleep(600, 1000);
-            return;
         }
         if (Rs2Inventory.hasItem(MOONLIGHT_GRUB_PASTE_ID) && Rs2Inventory.hasItem(VIAL_OF_WATER_ID)) {
             Microbot.log("Mixing all available paste...");
@@ -343,134 +276,59 @@ public class SulphurNaguaScript extends Script {
             sleepUntil(() -> !Rs2Inventory.hasItem(MOONLIGHT_GRUB_PASTE_ID) || Rs2Dialogue.isInDialogue(), 18000);
             sleep(600, 1000);
         }
+    }
 
-        if (!hasIngredientsToProcess()) {
-            pickupReady = true;
+    private boolean interactWithObject(int objectId, String action) {
+        var object = rs2TileObjectCache.query()
+                .withId(objectId)
+                .nearestOnClientThread(12);
+
+        if (Objects.nonNull(object)) {
+            return Microbot.getClientThread().invoke((Supplier<Boolean>) () -> object.click(action));
+        }
+
+        return false;
+    }
+
+    private void takeVials(int amount) {
+        while (Rs2Inventory.count(VIAL_OF_WATER_ID) < amount) {
+            log.info("Currently in inventory: {}. Needed: {}", Rs2Inventory.count(VIAL_OF_WATER_ID), amount);
+            if (Rs2Dialogue.hasDialogueOption("Take herblore supplies.")) {
+                Rs2Dialogue.clickOption("Take herblore supplies.");
+            } else if (!Rs2Player.isAnimating()) {
+                interactWithObject(SUPPLY_CRATE_ID, "Take-from herblore supplies");
+            }
+            sleep(300, 500);
+        }
+
+        if (Rs2Inventory.count(VIAL_OF_WATER_ID) > amount) {
+            log.info("Got too many. Got {} and need {}, dropping {}", Rs2Inventory.count(VIAL_OF_WATER_ID), amount, Rs2Inventory.count(VIAL_OF_WATER_ID) - amount);
+            Rs2Inventory.dropAmount(VIAL_OF_WATER_ID, Rs2Inventory.count(VIAL_OF_WATER_ID) - amount, InteractOrder.STANDARD);
         }
     }
 
-    private void getSupplies(int itemID, int requiredAmount) {
-        if (Rs2Inventory.count(itemID) >= requiredAmount) return;
-
-        if (itemID == VIAL_OF_WATER_ID) {
-            long startTime = System.currentTimeMillis();
-            while (Rs2Inventory.count(itemID) < requiredAmount && System.currentTimeMillis() - startTime < 20000) {
-                if (Rs2Inventory.isFull()) break;
-
-                if (Rs2Dialogue.hasDialogueOption("Take herblore supplies.")) {
-                    Rs2Dialogue.clickOption("Take herblore supplies.");
-                } else if (!Rs2Player.isAnimating()) {
-                    int SUPPLY_CRATE_ID = 51371;
-                    Rs2GameObject.interact(SUPPLY_CRATE_ID, "Take herblore supplies");
-                }
-                sleep(300, 500);
-            }
-        } else {
-            if (Rs2Player.isAnimating()) return;
-            int GRUB_SAPLING_ID = 51365;
-            if (Rs2GameObject.interact(GRUB_SAPLING_ID, "Collect-from")) {
-                sleepUntil(() -> Rs2Inventory.count(itemID) >= requiredAmount || Rs2Inventory.isFull(), 15000);
-                if (Rs2Player.isAnimating() && Rs2Inventory.count(itemID) >= requiredAmount) {
-                    Rs2Walker.walkTo(Rs2Player.getWorldLocation());
-                }
+    private void takeGrubs(int requiredAmount) {
+        if (interactWithObject(GRUB_SAPLING_ID, "Collect-from")) {
+            sleepUntil(() -> Rs2Inventory.count(MOONLIGHT_GRUB_ID) > requiredAmount || Rs2Inventory.isFull(), 15000);
+            if (Rs2Inventory.count(MOONLIGHT_GRUB_ID) > requiredAmount) {
+                log.info("Got too many. Got {} and need {}, dropping {}", Rs2Inventory.count(MOONLIGHT_GRUB_ID), requiredAmount, Rs2Inventory.count(MOONLIGHT_GRUB_ID) - requiredAmount);
+                Rs2Inventory.dropAmount(MOONLIGHT_GRUB_ID, Rs2Inventory.count(MOONLIGHT_GRUB_ID) - requiredAmount, InteractOrder.STANDARD);
             }
         }
     }
-
-
-    private void dropPotions(int count) {
-        if (count <= 0) return;
-        if (dropLocation == null) dropLocation = Rs2Player.getWorldLocation();
-        this.potionsToPickup = count;
-        this.pickupReady = false;
-
-        int dropped = 0;
-        while (true) {
-            boolean droppedThisRound = false;
-            for (int potionId : MOONLIGHT_POTION_IDS) {
-                if (Rs2Inventory.hasItem(potionId)) {
-                    Rs2Inventory.drop(potionId);
-                    sleep(250, 450);
-                    dropped++;
-                    droppedThisRound = true;
-                    if (dropped >= count) break;
-                }
-            }
-            if (!droppedThisRound || dropped >= count) break;
-        }
-        Microbot.log("Dropped " + dropped + " potions at " + dropLocation);
-    }
-
-    private void pickupDroppedPotions() {
-        if (Rs2Inventory.isFull()) {
-            Microbot.log("Inventory is full, cannot pick up.");
-            return;
-        }
-        if (potionsToPickup <= 0) {
-            resetPreparationState();
-            return;
-        }
-
-        boolean foundPotion = false;
-        for (int potionId : MOONLIGHT_POTION_IDS) {
-            if (Rs2GroundItem.exists(potionId, 8)) {
-                foundPotion = true;
-                int potionsBefore = countMoonlightPotions();
-                if (Rs2GroundItem.interact(potionId, "Take", 8)) {
-                    if (sleepUntil(() -> countMoonlightPotions() > potionsBefore, 3000)) {
-                        potionsToPickup--;
-                    }
-                }
-                break;
-            }
-        }
-
-        if (potionsToPickup <= 0) {
-            Microbot.log("Finished picking up all potions.");
-            resetPreparationState();
-        } else if (!foundPotion) {
-            Microbot.log("Could not find any more dropped potions. Resetting.");
-            resetPreparationState();
-        }
-    }
-
 
     private int countMoonlightPotions() {
         return MOONLIGHT_POTION_IDS.stream().mapToInt(Rs2Inventory::count).sum();
     }
 
-    private boolean hasIngredientsToProcess() {
-        return Rs2Inventory.hasItem(MOONLIGHT_GRUB_ID) ||
-                (Rs2Inventory.hasItem(MOONLIGHT_GRUB_PASTE_ID) && Rs2Inventory.hasItem(VIAL_OF_WATER_ID));
-    }
-
-    private void cleanupLeftoverIngredients() {
-        Microbot.log("Cleaning up leftover ingredients...");
-        if (Rs2Inventory.hasItem("Vial")) Rs2Inventory.dropAll("Vial");
-        sleep(400, 600);
-        if (Rs2Inventory.hasItem(VIAL_OF_WATER_ID)) Rs2Inventory.dropAll(VIAL_OF_WATER_ID);
-        sleep(400, 600);
-        if (Rs2Inventory.hasItem(MOONLIGHT_GRUB_PASTE_ID)) Rs2Inventory.dropAll(MOONLIGHT_GRUB_PASTE_ID);
-        sleep(400, 600);
-        if (Rs2Inventory.hasItem(MOONLIGHT_GRUB_ID)) Rs2Inventory.dropAll(MOONLIGHT_GRUB_ID);
-    }
-
-    private void resetPreparationState() {
-        dropLocation = null;
-        potionsToPickup = 0;
-        pickupReady = false;
-    }
-
     private void handleGettingRunecraftingXp(SulphurNaguaConfig config) {
         if (Rs2Dialogue.isInDialogue()) {
-            Microbot.log("Handling dialogue...");
             Rs2Dialogue.clickContinue();
             sleepUntil(() -> !Rs2Dialogue.isInDialogue() || !Rs2Inventory.hasItem(SULPHUROUS_ESSENCE_ID), 3000);
             return;
         }
 
         if (!Rs2Inventory.hasItem(SULPHUROUS_ESSENCE_ID)) {
-            Microbot.log("No essence to exchange. Returning to preparation.");
             currentState = isAtLocation(selectedLocation.getPrepArea()) ? SulphurNaguaState.PREPARATION : SulphurNaguaState.WALKING_TO_PREP;
             return;
         }
@@ -481,9 +339,8 @@ public class SulphurNaguaScript extends Script {
             return;
         }
 
-        var eytallali = Rs2Npc.getNpc(EYTALLALI_ID);
+        var eytallali = rs2NpcCache.query().withId(EYTALLALI_ID).firstOnClientThread();
         if (eytallali == null) {
-            Microbot.log("Waiting for Eytallali to appear...");
             sleep(600, 1000);
             return;
         }
@@ -493,10 +350,9 @@ public class SulphurNaguaScript extends Script {
             return;
         }
 
-        if (Rs2Inventory.useItemOnNpc(SULPHUROUS_ESSENCE_ID, eytallali)) {
-            Microbot.log("Exchanging essence...");
-            sleepUntil(Rs2Dialogue::isInDialogue, 5000);
-        }
+        Rs2Inventory.use(SULPHUROUS_ESSENCE_ID);
+        Microbot.getClientThread().invoke(() -> eytallali.click());
+        sleepUntil(Rs2Dialogue::isInDialogue, 5000);
     }
 
     private void handleFighting(SulphurNaguaConfig config) {
@@ -507,32 +363,41 @@ public class SulphurNaguaScript extends Script {
         int herbloreBasedRestore = (int) Math.floor(currentHerbloreLevel * 0.3) + 7;
         int dynamicThreshold = Math.max(prayerBasedRestore, herbloreBasedRestore);
 
-        Rs2Player.drinkPrayerPotionAt(dynamicThreshold);
-        sleep(300, 600);
+        if (Rs2Player.drinkPrayerPotionAt(dynamicThreshold)) {
+            sleep(300, 600);
+        }
 
-        Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MELEE, true);
+        if (!Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_MELEE)) {
+            Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MELEE, true);
+        }
 
         if (config.useOffensivePrayers()) {
             var bestMeleePrayer = Rs2Prayer.getBestMeleePrayer();
-            if (bestMeleePrayer != null) {
+            if (bestMeleePrayer != null && !Rs2Prayer.isPrayerActive(bestMeleePrayer)) {
                 Rs2Prayer.toggle(bestMeleePrayer, true);
             }
         }
 
-        boolean needsNewTarget = !Rs2Player.isInCombat() || Rs2Player.getInteracting() == null;
+        var npcAttackingPlayer = rs2NpcCache.query()
+                .where(Rs2NpcModel::isInteractingWithPlayer)
+                .nearestOnClientThread(12);
 
-        if (needsNewTarget) {
+        boolean needsNewTarget = !Rs2Player.isInCombat() && npcAttackingPlayer == null;
+
+        if (Rs2Player.getInteracting() == null && npcAttackingPlayer != null) {
+            log.info("Attacking nagua that is attacking us");
+            Microbot.getClientThread().invoke(() -> npcAttackingPlayer.click("Attack"));
+        } else if (needsNewTarget) {
             if (getNaguaCombatArea() != null && getNaguaCombatArea().contains(Rs2Player.getWorldLocation())) {
-                var nagua = Rs2Npc.getNpcs("Sulphur Nagua")
-                        .filter(n -> !n.isDead())
-                        .findFirst()
-                        .orElse(null);
-
+                var nagua = rs2NpcCache.query()
+                        .withName("Sulphur Nagua")
+                        .where((npc) -> !npc.isDead())
+                        .nearestOnClientThread(12);
                 if (nagua != null) {
-                    if (Rs2Npc.attack(nagua)) {
-                        sleepUntil(Rs2Player::isInCombat, 3000);
-                        totalNaguaKills++;
-                    }
+                    log.info("Attacking new nagua");
+                    Microbot.getClientThread().invoke(() -> nagua.click("Attack"));
+                    sleepUntil(Rs2Player::isInCombat);
+                    totalNaguaKills++;
                 }
             } else {
                 Microbot.log("Outside combat zone, walking back to center...");
@@ -542,40 +407,16 @@ public class SulphurNaguaScript extends Script {
         }
     }
 
-
     private void applyAntiBanSettings() {
-        Rs2AntibanSettings.actionCooldownActive = true;
-        Rs2AntibanSettings.antibanEnabled = true;
-        Rs2AntibanSettings.usePlayStyle = true;
-        Rs2AntibanSettings.randomIntervals = true;
-        Rs2AntibanSettings.simulateFatigue = true;
-        Rs2AntibanSettings.simulateAttentionSpan = true;
-        Rs2AntibanSettings.behavioralVariability = true;
-        Rs2AntibanSettings.nonLinearIntervals = true;
-        Rs2AntibanSettings.simulateMistakes = false;
-        Rs2AntibanSettings.naturalMouse = true;
-        Rs2AntibanSettings.moveMouseOffScreen = true;
-        Rs2AntibanSettings.moveMouseRandomly = true;
-        Rs2AntibanSettings.dynamicIntensity = true;
-        Rs2AntibanSettings.takeMicroBreaks = true;
-        Rs2AntibanSettings.microBreakDurationLow = 2;
-        Rs2AntibanSettings.microBreakDurationHigh = 5;
-        Rs2AntibanSettings.actionCooldownChance = 0.05;
-        Rs2AntibanSettings.microBreakChance = 0.08;
-        Rs2AntibanSettings.moveMouseRandomlyChance = 0.08;
-        Rs2AntibanSettings.moveMouseOffScreenChance = 0.05;
-
-
+        Rs2Antiban.antibanSetupTemplates.applyCombatSetup();
+        Rs2Antiban.setActivity(Activity.GENERAL_COMBAT);
     }
 
     private void handleBanking(SulphurNaguaConfig config) {
         try {
-            if (!Rs2Bank.isOpen()) {
-                Rs2Bank.openBank();
-                if (!sleepUntil(Rs2Bank::isOpen, 5000)) {
-                    return;
-                }
-            }
+            Rs2Bank.walkToBank(BankLocation.CAM_TORUM);
+            Rs2Bank.openBank();
+            sleepUntil(Rs2Bank::isOpen, 5000);
 
             InventorySetup setupData = config.useInventorySetup() ? config.inventorySetup() : null;
 
@@ -626,8 +467,6 @@ public class SulphurNaguaScript extends Script {
             if (setupData != null) {
                 new Rs2InventorySetup(setupData, mainScheduledFuture).wearEquipment();
             }
-
-            resetPreparationState();
         } finally {
             if (Rs2Bank.isOpen()) {
                 Rs2Bank.closeBank();
@@ -641,13 +480,34 @@ public class SulphurNaguaScript extends Script {
 
 
     private boolean isSulphurBladeNearby() {
-        return Rs2GroundItem.exists(SULPHUR_BLADE_ID, 8);
+        return itemExists(SULPHUR_BLADE_ID);
+    }
+
+    private boolean itemExists(int itemId) {
+        return rs2TileItemCache.query()
+                .withId(itemId)
+                .nearestOnClientThread(8) != null;
+    }
+
+    private void takeItem(int itemId) {
+        var item = rs2TileItemCache.query()
+                .withId(itemId)
+                .nearestOnClientThread(8);
+
+        if (Objects.nonNull(item)) {
+            int itemsBefore = Rs2Inventory.itemQuantity(itemId);
+            var time = System.currentTimeMillis();
+            log.info("Item count before: {}", itemsBefore);
+            Microbot.getClientThread().invoke(() -> item.click("Take"));
+            sleepUntil(() -> Rs2Inventory.itemQuantity(itemId) > itemsBefore);
+            log.info("Time taken: {}", System.currentTimeMillis() - time);
+        }
     }
 
     private boolean isStackableLootNearby() {
         for (int itemId : dynamicLootIds) {
-            if (Rs2GroundItem.exists(itemId, 8)) {
-                return true;
+            if (itemExists(itemId)) {
+                return Rs2Inventory.contains(itemId) || !Rs2Inventory.isFull();
             }
         }
         return false;
@@ -658,40 +518,16 @@ public class SulphurNaguaScript extends Script {
         Microbot.log("Looting items...");
 
         if (isSulphurBladeNearby()) {
-            int itemsBefore = Rs2Inventory.count(SULPHUR_BLADE_ID);
-            if (Rs2GroundItem.interact(SULPHUR_BLADE_ID, "Take", 8)) {
-                sleepUntil(() -> Rs2Inventory.count(SULPHUR_BLADE_ID) > itemsBefore, 3000);
-            }
+            takeItem(SULPHUR_BLADE_ID);
             return;
         }
 
 
         for (int itemId : dynamicLootIds) {
-            if (Rs2GroundItem.exists(itemId, 8)) {
-                int itemsBefore = Rs2Inventory.count(itemId);
-                if (Rs2GroundItem.interact(itemId, "Take", 8)) {
-                    sleepUntil(() -> Rs2Inventory.count(itemId) > itemsBefore, 3000);
-                }
+            if (itemExists(itemId)) {
+                takeItem(itemId);
                 return;
             }
         }
-    }
-
-    private int countFixedItems() {
-        int fixedItemCount = 0;
-
-        if (Rs2Inventory.hasItem(PESTLE_AND_MORTAR_ID)) {
-            fixedItemCount++;
-        }
-
-        for (int lootId : dynamicLootIds) {
-            if (Rs2Inventory.hasItem(lootId)) {
-                fixedItemCount++;
-            }
-        }
-
-        fixedItemCount += Rs2Inventory.count(SULPHUR_BLADE_ID);
-
-        return fixedItemCount;
     }
 }
