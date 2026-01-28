@@ -15,12 +15,12 @@ import javax.inject.Singleton;
 import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 
-import static net.runelite.client.plugins.microbot.RoyalTitans.RoyalTitansShared.FIRE_TITAN_DEAD_ID;
-import static net.runelite.client.plugins.microbot.RoyalTitans.RoyalTitansShared.FIRE_TITAN_ID;
-import static net.runelite.client.plugins.microbot.RoyalTitans.RoyalTitansShared.ICE_TITAN_DEAD_ID;
-import static net.runelite.client.plugins.microbot.RoyalTitans.RoyalTitansShared.ICE_TITAN_ID;
-import static net.runelite.client.plugins.microbot.RoyalTitans.RoyalTitansShared.isInBossRegion;
-import static net.runelite.client.plugins.microbot.RoyalTitans.RoyalTitansShared.lootedTitanLastIteration;
+import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.FIRE_TITAN_DEAD_ID;
+import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.FIRE_TITAN_ID;
+import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.ICE_TITAN_DEAD_ID;
+import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.ICE_TITAN_ID;
+import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.isInBossRegion;
+import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.lootedTitanLastIteration;
 
 @Singleton
 public class RoyalTitansLooterScript extends Script {
