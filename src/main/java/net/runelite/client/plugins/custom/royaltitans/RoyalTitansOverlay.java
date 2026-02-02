@@ -9,11 +9,11 @@ import javax.inject.Inject;
 import java.awt.*;
 
 public class RoyalTitansOverlay extends OverlayPanel {
-    private final RoyalTitansPlugin plugin;
+    private final CustomRoyalTitansPlugin plugin;
     private final RoyalTitansConfig config;
 
     @Inject
-    public RoyalTitansOverlay(RoyalTitansPlugin plugin, RoyalTitansConfig config) {
+    public RoyalTitansOverlay(CustomRoyalTitansPlugin plugin, RoyalTitansConfig config) {
         super(plugin);
         this.plugin = plugin;
         this.config = config;
@@ -26,7 +26,7 @@ public class RoyalTitansOverlay extends OverlayPanel {
         try {
             panelComponent.setPreferredSize(new Dimension(200, 300));
             panelComponent.getChildren().add(TitleComponent.builder()
-                    .text("TaF's Royal Titan Plugin v" + RoyalTitansPlugin.version)
+                    .text("TaF's Royal Titan Plugin v" + CustomRoyalTitansPlugin.version)
                     .color(Color.decode("#a4ffff"))
                     .build());
             panelComponent.getChildren().add(LineComponent.builder()

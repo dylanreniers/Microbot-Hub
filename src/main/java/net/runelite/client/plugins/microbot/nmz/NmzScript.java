@@ -2,6 +2,7 @@ package net.runelite.client.plugins.microbot.nmz;
 
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
@@ -31,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import static net.runelite.api.ObjectID.OVERLOAD_POTION;
 import static net.runelite.api.Varbits.NMZ_ABSORPTION;
 
+@Slf4j
 public class NmzScript extends Script {
 
     private NmzConfig config;
@@ -249,7 +251,7 @@ public class NmzScript extends Script {
             }
 
             if (currentHP == 1) {
-                maxHealth = Rs2Random.between(2, 4);
+                maxHealth = Rs2Random.between(2, 3);
             }
         }
 
@@ -340,7 +342,9 @@ public class NmzScript extends Script {
             return;
 
         if (!Rs2Inventory.isFull()) {
-            if ((absorptionAmt < (config.absorptionPotionAmount() * 4) || overloadAmt < config.overloadPotionAmount() * 4) && nmzPoints < 100000) {
+            log.info("Absorption amount: {}", absorptionAmt);
+            log.info("overloadAmt amount: {}", overloadAmt);
+            if ((absorptionAmt < (config.absorptionPotionAmount() * 4) || overloadAmt < config.overloadPotionAmount() * 4)) {
                 Microbot.showMessage("BOT SHUTDOWN: Not enough points to buy potions");
                 Microbot.stopPlugin(plugin);
                 return;

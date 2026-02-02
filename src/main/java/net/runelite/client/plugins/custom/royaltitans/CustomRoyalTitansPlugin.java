@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit;
         name = "Donder's Royal Titans",
         description = "Kills the Royal Titans boss with another bot",
         tags = {"Combat", "bossing", "TaF", "Royal Titans", "Ice giant", "Fire giant", "Duo"},
-        version = RoyalTitansPlugin.version,
+        version = CustomRoyalTitansPlugin.version,
         minClientVersion = "2.0.13",
         cardUrl = "",
         iconUrl = "",
@@ -41,7 +41,7 @@ import java.util.concurrent.TimeUnit;
         isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
-public class RoyalTitansPlugin extends Plugin {
+public class CustomRoyalTitansPlugin extends Plugin {
     public final static String version = "2.0.0";
     private static final Integer GRAPHICS_OBJECT_FIRE = 3218;
     private static final Integer GRAPHICS_OBJECT_ICE = 3221;

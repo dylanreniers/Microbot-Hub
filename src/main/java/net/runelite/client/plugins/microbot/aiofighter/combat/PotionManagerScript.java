@@ -1,5 +1,6 @@
 package net.runelite.client.plugins.microbot.aiofighter.combat;
 
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Skill;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.client.plugins.microbot.Microbot;
@@ -9,10 +10,15 @@ import net.runelite.client.plugins.microbot.aiofighter.AIOFighterPlugin;
 import net.runelite.client.plugins.microbot.aiofighter.enums.State;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
+import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
+import net.runelite.client.plugins.microbot.util.math.Rs2Random;
+import net.runelite.client.plugins.microbot.util.misc.Rs2Potion;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
+import net.runelite.http.api.worlds.WorldType;
 
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 public class PotionManagerScript extends Script {
     public boolean run(AIOFighterConfig config) {
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
@@ -31,10 +37,14 @@ public class PotionManagerScript extends Script {
                     Rs2Player.waitForAnimation();
                 }
 
+                log.info("Drinking prayer potion?");
                 // Always attempt to drink prayer potion
                 if (Rs2Player.drinkPrayerPotion()) {
+                    log.info("Drank prayer potion");
                     Rs2Player.waitForAnimation();
                 }
+
+                drinkPrayerPot();
 
                 // Only drink combat potions when in combat
                 if (Rs2Combat.inCombat()) {
@@ -77,6 +87,23 @@ public class PotionManagerScript extends Script {
         return true;
     }
 
+    public void drinkPrayerPot() {
+        if (Rs2Player.getBoostedSkillLevel(Skill.PRAYER) <= Rs2Random.between(8, 15)) {
+            if (Rs2Inventory.contains(it -> it != null && it.getName().contains("Prayer potion") || it.getName().contains("Moonlight moth"))) {
+                Rs2ItemModel prayerpotion = Rs2Inventory.get(it -> it != null && it.getName().contains("Prayer potion") || it.getName().contains("Moonlight moth"));
+                String action = "Drink";
+                if (prayerpotion.getName().equals("Moonlight moth")) {
+                    action = "Release";
+                }
+
+                if (Rs2Inventory.interact(prayerpotion, action)) {
+                    sleep(0, 750);
+                }
+
+                Rs2Inventory.dropAll("Butterfly jar");
+            }
+        }
+    }
 
     // shutdown
     @Override

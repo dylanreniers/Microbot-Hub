@@ -12,6 +12,7 @@ import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.api.npc.Rs2NpcCache;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.api.tileitem.Rs2TileItemCache;
+import net.runelite.client.plugins.microbot.api.tileitem.models.Rs2TileItemModel;
 import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetupsItem;
@@ -256,6 +257,7 @@ public class SulphurNaguaScript extends Script {
         takeGrubs(potionsToMake);
         sleepUntil(() -> !Rs2Player.isAnimating());
         processAllIngredients();
+        cleanupLeftoverIngredients();
         currentState = SulphurNaguaState.WALKING_TO_FIGHT;
     }
 
@@ -412,6 +414,17 @@ public class SulphurNaguaScript extends Script {
         Rs2Antiban.setActivity(Activity.GENERAL_COMBAT);
     }
 
+    private void cleanupLeftoverIngredients() {
+        Microbot.log("Cleaning up leftover ingredients...");
+        if (Rs2Inventory.hasItem("Vial")) Rs2Inventory.dropAll("Vial");
+        sleep(400, 600);
+        if (Rs2Inventory.hasItem(VIAL_OF_WATER_ID)) Rs2Inventory.dropAll(VIAL_OF_WATER_ID);
+        sleep(400, 600);
+        if (Rs2Inventory.hasItem(MOONLIGHT_GRUB_PASTE_ID)) Rs2Inventory.dropAll(MOONLIGHT_GRUB_PASTE_ID);
+        sleep(400, 600);
+        if (Rs2Inventory.hasItem(MOONLIGHT_GRUB_ID)) Rs2Inventory.dropAll(MOONLIGHT_GRUB_ID);
+    }
+
     private void handleBanking(SulphurNaguaConfig config) {
         try {
             Rs2Bank.walkToBank(BankLocation.CAM_TORUM);
@@ -492,6 +505,7 @@ public class SulphurNaguaScript extends Script {
     private void takeItem(int itemId) {
         var item = rs2TileItemCache.query()
                 .withId(itemId)
+                .where(Rs2TileItemModel::isOwned)
                 .nearestOnClientThread(8);
 
         if (Objects.nonNull(item)) {
