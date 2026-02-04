@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 import net.runelite.client.plugins.agility.AgilityPlugin;
 import net.runelite.client.plugins.microbot.RoyalTitans.RoyalTitansPlugin;
 import net.runelite.client.plugins.microbot.aiofighter.AIOFighterPlugin;
+import net.runelite.client.plugins.microbot.cannonballsmelter.CannonballSmelterPlugin;
 import net.runelite.client.plugins.microbot.nmz.NmzPlugin;
 import net.runelite.client.plugins.microbot.plankrunner.PlankRunnerPlugin;
 import net.runelite.client.plugins.microbot.sulphurnaguafigther.SulphurNaguaPlugin;
@@ -14,7 +15,7 @@ import net.runelite.client.plugins.microbot.sulphurnaguafigther.SulphurNaguaPlug
 public class Microbot {
 
 	private static final Class<?>[] debugPlugins = {
-            AIOFighterPlugin.class, AgilityPlugin.class, PlankRunnerPlugin.class, SulphurNaguaPlugin.class, NmzPlugin.class
+            AIOFighterPlugin.class, AgilityPlugin.class, PlankRunnerPlugin.class, SulphurNaguaPlugin.class, NmzPlugin.class, CannonballSmelterPlugin.class
 	};
 
     public static void main(String[] args) throws Exception {

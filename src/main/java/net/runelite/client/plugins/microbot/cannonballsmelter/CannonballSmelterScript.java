@@ -25,7 +25,6 @@ import java.awt.event.KeyEvent;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
-
 public class CannonballSmelterScript extends Script {
 
     private static CannonballSmelterConfig config;
@@ -130,10 +129,10 @@ public class CannonballSmelterScript extends Script {
 
     public void bank() {
         if (!hasBalls() || hasBars()) return;
-    
+
         Microbot.status = "Banking...";
         int attempts = 0;
-    
+
         while (!Rs2Bank.isOpen() && attempts++ < 10) {
             if (!isRunning()) break;
 
@@ -146,17 +145,17 @@ public class CannonballSmelterScript extends Script {
 
             sleep(300, 600);
         }
-    
+
         if (Rs2Bank.isOpen() && !Rs2Bank.hasItem(ItemID.STEEL_BAR)) {
             Microbot.showMessage("No steel bars in bank. Halting.");
             sleep(3000, 5000);
             shutdown();
             return;
         }
-    
+
         Rs2Bank.withdrawAll(ItemID.STEEL_BAR);
         sleepUntil(this::hasBars);
-    
+
         if (hasBars()) {
             Rs2Keyboard.keyPress(KeyEvent.VK_ESCAPE);
         } else {
@@ -164,7 +163,7 @@ public class CannonballSmelterScript extends Script {
             shutdown();
         }
     }
-    
+
 
     public void getMould() {
         if(!Rs2Inventory.hasItem("ammo mould") && !Rs2Inventory.hasItem("double ammo mould")) {
@@ -227,7 +226,7 @@ public class CannonballSmelterScript extends Script {
         Rs2AntibanSettings.dynamicIntensity = true;
         Rs2AntibanSettings.dynamicActivity = false;
         Rs2AntibanSettings.devDebug = false;
-        Rs2AntibanSettings.takeMicroBreaks = true;
+        //Rs2AntibanSettings.takeMicroBreaks = true;
         Rs2AntibanSettings.playSchedule = false;
         Rs2AntibanSettings.universalAntiban = false;
         Rs2AntibanSettings.microBreakDurationLow = 2;
