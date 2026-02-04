@@ -4,5 +4,6 @@ public enum RoyalTitansBotStatus {
     BANKING,
     WAITING,
     TRAVELLING,
-    FIGHTING
+    FIGHTING,
+    LOOTING
 }

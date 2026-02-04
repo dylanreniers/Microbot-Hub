@@ -2,9 +2,11 @@ package net.runelite.client.plugins.custom.royaltitans;
 
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.GraphicsObject;
 import net.runelite.api.GroundObject;
 import net.runelite.api.Tile;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GraphicsObjectCreated;
 import net.runelite.api.events.GroundObjectDespawned;
 import net.runelite.api.events.GroundObjectSpawned;
@@ -31,8 +33,8 @@ import java.util.concurrent.TimeUnit;
 
 @PluginDescriptor(
         name = "Donder's Royal Titans",
-        description = "Kills the Royal Titans boss with another bot",
-        tags = {"Combat", "bossing", "TaF", "Royal Titans", "Ice giant", "Fire giant", "Duo"},
+        description = "Kills the Royal Titans boss solo or with another bot",
+        tags = {"Combat", "bossing", "Royal Titans", "Ice giant", "Fire giant", "Duo"},
         version = CustomRoyalTitansPlugin.version,
         minClientVersion = "2.0.13",
         cardUrl = "",
@@ -56,8 +58,6 @@ public class CustomRoyalTitansPlugin extends Plugin {
     private OverlayManager overlayManager;
     @Inject
     private RoyalTitansOverlay royalTitansOverlay;
-    @Inject
-    private RoyalTitansLooterScript royalTitansLooterScript;
 
     private Instant scriptStartTime;
 
@@ -76,14 +76,12 @@ public class CustomRoyalTitansPlugin extends Plugin {
             overlayManager.add(royalTitansOverlay);
         }
         royalTitansScript.run(config);
-        royalTitansLooterScript.run(config, royalTitansScript);
         Rs2Tile.init();
     }
 
     @Override
     protected void shutDown() {
         royalTitansScript.shutdown();
-        royalTitansLooterScript.shutdown();
         scriptStartTime = null;
         overlayManager.remove(royalTitansOverlay);
         if (scheduledExecutorService != null && !scheduledExecutorService.isShutdown()) {
@@ -99,7 +97,7 @@ public class CustomRoyalTitansPlugin extends Plugin {
     public void onGraphicsObjectCreated(GraphicsObjectCreated event) {
         final GraphicsObject graphicsObject = event.getGraphicsObject();
         if (graphicsObject.getId() == GRAPHICS_OBJECT_ICE || graphicsObject.getId() == GRAPHICS_OBJECT_FIRE) {
-            Rs2Tile.addDangerousGraphicsObjectTile(graphicsObject, 600 * 5);
+            royalTitansScript.addDangerousTile(graphicsObject.getLocation());
         }
     }
 
@@ -112,6 +110,17 @@ public class CustomRoyalTitansPlugin extends Plugin {
                 log.info("Cancelling walking to enrage tile.");
                 walkToEnrageTileFuture.cancel(true);
             }
+        }
+    }
+
+    @Subscribe
+    public void onChatMessage(ChatMessage event) {
+        if (event.getType() != ChatMessageType.GAMEMESSAGE) return;
+
+        String msg = event.getMessage();
+        String lootMsg = "You are eligible";
+        if (msg.contains(lootMsg)) {
+            royalTitansScript.setState(RoyalTitansBotStatus.LOOTING);
         }
     }
 
@@ -133,7 +142,6 @@ public class CustomRoyalTitansPlugin extends Plugin {
                 scheduledExecutorService.schedule(() -> { //This is faster than waiting for the despawning of the tile. DPS increase.
                     log.info("Resetting enraged tile and titan focus.");
                     royalTitansScript.resetEnragedTile();
-                    royalTitansScript.resetTitanToFocusOn();
                 }, Rs2Random.between(6300, 6600), TimeUnit.MILLISECONDS);
             } catch (Exception e) {
                 Microbot.log("Error while walking to enrage tile: " + e.getMessage());

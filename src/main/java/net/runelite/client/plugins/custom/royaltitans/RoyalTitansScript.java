@@ -3,11 +3,14 @@ package net.runelite.client.plugins.custom.royaltitans;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
 import net.runelite.api.NPC;
 import net.runelite.api.Skill;
 import net.runelite.api.Tile;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldArea;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.api.npc.Rs2NpcCache;
@@ -21,16 +24,19 @@ import net.runelite.client.plugins.microbot.util.antiban.Rs2AntibanSettings;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
+import net.runelite.client.plugins.microbot.util.grounditem.LootingParameters;
+import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.keyboard.Rs2Keyboard;
+import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
 import net.runelite.client.plugins.microbot.util.misc.Rs2Potion;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
-import net.runelite.client.plugins.microbot.util.tile.Rs2Tile;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 import net.runelite.client.plugins.shared.FeroxService;
+import net.runelite.client.plugins.skillcalculator.skills.MagicAction;
 
 import javax.annotation.Nonnull;
 import javax.inject.Inject;
@@ -49,27 +55,28 @@ import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.F
 import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.FIRE_TITAN_ID;
 import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.ICE_TITAN_DEAD_ID;
 import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.ICE_TITAN_ID;
+import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.ITEMS_TO_LOOT;
 import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.evaluateAndConsumePotions;
-import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.lootedTitanLastIteration;
+import static net.runelite.client.plugins.custom.royaltitans.RoyalTitansShared.isInBossRegion;
 import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.EXTREME;
 import static net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer.disableAllPrayers;
 
 @Slf4j
 public class RoyalTitansScript extends Script {
 
-    private static final Integer MELEE_TITAN_ICE_REGION_X = 34;
+    private static final Integer MELEE_TITAN_ICE_REGION_X = 35;
     private static final Integer MELEE_TITAN_FIRE_REGION_X = 26;
     private static final Integer FIRE_MINION_ID = 14150;
     private static final Integer ICE_MINION_ID = 14151;
     private static final Integer FIRE_WALL = 14152;
     private static final Integer ICE_WALL = 14153;
     private static final Integer TUNNEL_ID = 55986;
-    private static final Integer TUNNEL_ID_ESCAPE = 55987;
     private static final Integer WIDGET_START_A_FIGHT = 14352385;
     private static final WorldPoint BOSS_LOCATION = new WorldPoint(2951, 9574, 0);
     private static final WorldArea FIGHT_AREA = new WorldArea(new WorldPoint(2909, 9561, 0), 12, 4);
 
     @Getter
+    @Setter
     private RoyalTitansBotStatus state = RoyalTitansBotStatus.TRAVELLING;
     @Getter
     @Setter
@@ -89,6 +96,9 @@ public class RoyalTitansScript extends Script {
     @Inject
     private Rs2PlayerCache rs2PlayerCache;
 
+    @Inject
+    private Client client;
+
     private Rs2InventorySetup inventorySetup = null;
     private Rs2InventorySetup magicInventorySetup = null;
     private Rs2InventorySetup meleeInventorySetup = null;
@@ -98,12 +108,13 @@ public class RoyalTitansScript extends Script {
     private Instant waitingTimeStart = null;
     private boolean waitedLastIteration = false;
     private boolean isRunning;
-    private boolean isAtSecondPhase = false;
     private double fireTitanHealthPercentage = 100;
     private double iceTitanHealthPercentage = 100;
-
+    private RoyalTitansConfig config;
     private final AtomicReference<Tile> enrageTile = new AtomicReference<>(null);
-    private final AtomicReference<Rs2NpcModel> titanToFocusOn = new AtomicReference<>(null);
+    private final List<WorldPoint> dangerousTiles = new ArrayList<>();
+    private int minFreeSlots = 0;
+    private RoyalTitansConfig.RoyalTitan lootedTitan = null;
 
     static {
         Microbot.enableAutoRunOn = false;
@@ -124,8 +135,9 @@ public class RoyalTitansScript extends Script {
     }
 
     public boolean run(RoyalTitansConfig config) {
+        this.config = config;
         isRunning = true;
-        enrageTile.set(null);
+        resetEnragedTile();
         waitingTimeStart = null;
         travelStatus = RoyalTitansTravelStatus.TO_BANK;
         state = RoyalTitansBotStatus.TRAVELLING;
@@ -134,10 +146,6 @@ public class RoyalTitansScript extends Script {
         if (config.overrideState()) {
             state = config.startState();
         }
-
-        log.info("Running as solo? {}", config.soloMode());
-        log.info("Titan to focus on? {}", config.royalTitanToFocus());
-        log.info("Minions to focus on? {}", config.minionResponsibility());
 
         meleeInventorySetup = new Rs2InventorySetup(config.meleeEquipment(), mainScheduledFuture);
         magicInventorySetup = new Rs2InventorySetup(config.magicEquipment(), mainScheduledFuture);
@@ -153,16 +161,19 @@ public class RoyalTitansScript extends Script {
 
                 switch (state) {
                     case BANKING:
-                        handleBanking(config);
+                        handleBanking();
                         break;
                     case TRAVELLING:
-                        handleTravelling(config);
+                        handleTravelling();
                         break;
                     case WAITING:
-                        handleWaiting(config);
+                        handleWaiting();
                         break;
                     case FIGHTING:
-                        handleFighting(config);
+                        handleFighting();
+                        break;
+                    case LOOTING:
+                        handleLooting();
                         break;
                 }
             } catch (Exception e) {
@@ -176,17 +187,13 @@ public class RoyalTitansScript extends Script {
                     return;
                 }
 
-                detectState(config);
+                detectState();
             } catch (Exception e) {
                 log.error("Error detecting state", e);
             }
         }, 10000, 10000, TimeUnit.MILLISECONDS);
 
         return true;
-    }
-
-    public void resetTitanToFocusOn() {
-        this.titanToFocusOn.set(null);
     }
 
     public void resetEnragedTile() {
@@ -205,12 +212,16 @@ public class RoyalTitansScript extends Script {
         return enrageTile.get();
     }
 
+    public void addDangerousTile(LocalPoint localPoint) {
+        WorldPoint worldPoint = WorldPoint.fromLocalInstance(client, localPoint);
+        dangerousTiles.add(worldPoint);
+    }
+
     /**
      * Handles edgecases where the bot get stuck due to the other players actions
      *
-     * @param config
      */
-    private void detectState(RoyalTitansConfig config) {
+    private void detectState() {
         if (RoyalTitansShared.isInBossRegion() && state != RoyalTitansBotStatus.FIGHTING) {
             state = RoyalTitansBotStatus.FIGHTING;
         }
@@ -224,10 +235,9 @@ public class RoyalTitansScript extends Script {
         inventorySetup.wearEquipment();
     }
 
-    private void handleWaiting(RoyalTitansConfig config) {
-        isAtSecondPhase = false;
+    private void handleWaiting() {
         resetEnragedTile();
-        resetTitanToFocusOn();
+
         if (config.soloMode()) {
             state = RoyalTitansBotStatus.TRAVELLING;
             travelStatus = RoyalTitansTravelStatus.TO_INSTANCE;
@@ -235,12 +245,15 @@ public class RoyalTitansScript extends Script {
             sleep(1200, 2400);
             return;
         }
+
         var teammate = rs2PlayerCache.query().withName(config.teammateName()).nearestOnClientThread();
+
         if (waitingTimeStart == null && teammate == null && !waitedLastIteration) {
             waitingTimeStart = Instant.now();
             waitedLastIteration = true;
             return;
         }
+
         if (teammate != null) {
             if (teammate.getWorldLocation().distanceTo(Rs2Player.getWorldLocation()) < 5) {
                 waitedLastIteration = false;
@@ -251,7 +264,6 @@ public class RoyalTitansScript extends Script {
                 sleep(1200, 2400);
                 return;
             }
-
         }
 
         if (waitingTimeStart != null && teammate == null && Instant.now().isAfter(waitingTimeStart.plusSeconds(config.waitingTimeForTeammate()))) {
@@ -260,69 +272,42 @@ public class RoyalTitansScript extends Script {
         }
     }
 
-    private void handleFighting(RoyalTitansConfig config) {
+    private void handleFighting() {
+        handleEscaping();
         findSafeTile();
-        handleEscaping(config);
-        handleEating(config);
-        handlePrayers(config);
-        handleMinions(config);
-        handleWalls(config);
-        attackBoss(config);
+        handleEating();
+        handlePrayers();
+        handleMinions();
+        handleWalls();
+        attackBoss();
     }
 
-    private void handleEating(RoyalTitansConfig config) {
-        subState = "Handling eating";
+    private void handleEating() {
         Rs2Player.eatAt(config.minEatPercent());
         Rs2Player.drinkPrayerPotionAt(config.minPrayerPercent());
     }
 
-    private void handleEscaping(RoyalTitansConfig config) {
-        var shouldLeave = false;
+    private void handleEscaping() {
         int currentHealth = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
         int currentPrayer = Microbot.getClient().getBoostedSkillLevel(Skill.PRAYER);
+
         boolean noFood = Rs2Inventory.getInventoryFood().isEmpty();
         boolean noPrayerPotions = Rs2Inventory.items()
-                .noneMatch(item -> item != null && item.getName() != null && !Rs2Potion.getPrayerPotionsVariants().contains(item.getName()));
-        var teammate = rs2PlayerCache.query().withName(config.teammateName()).nearestOnClientThread();
-        if (teammate != null) {
-            waitingTimeStart = null;
-        }
-        if (teammate == null && waitingTimeStart == null && config.resupplyWithTeammate()) {
-            waitingTimeStart = Instant.now();
-        } else if (config.resupplyWithTeammate() && teammate == null && Instant.now().isAfter(waitingTimeStart.plusSeconds(60))) {
-            shouldLeave = true;
-        }
-        if ((noFood && currentHealth <= config.healthThreshold()) || (noPrayerPotions && currentPrayer < 10)) {
-            shouldLeave = true;
-        }
+                .noneMatch(item -> item != null && item.getName() != null && Rs2Potion.getPrayerPotionsVariants().contains(item.getName()));
 
-        var iceTitanDead = rs2NpcCache.query().withId(ICE_TITAN_DEAD_ID).nearestOnClientThread(20);
-        var fireTitanDead = rs2NpcCache.query().withId(FIRE_TITAN_DEAD_ID).nearestOnClientThread(20);
-        if (shouldLeave && iceTitanDead != null && fireTitanDead != null && !lootedTitanLastIteration) {
-            log.info("We want to escape, but Titans are dead, lets loot first");
-        }
-        if (shouldLeave) {
-            if (config.emergencyTeleport() != 0) {
-                enrageTile.set(null);
-                feroxService.restoreAtFerox();
-            } else {
-                enrageTile.set(null);
-                var tunnel = rs2TileObjectCache.query().withId(TUNNEL_ID_ESCAPE).nearestOnClientThread(20);
-                if (tunnel != null) {
-                    tunnel.click("Quick-escape");
-                    //Microbot.getClientThread().invoke(() -> tunnel.click("Quick-escape"));
-                }
-                Rs2Bank.walkToBank();
-            }
+        if ((noFood && currentHealth <= config.healthThreshold()) || (noPrayerPotions && currentPrayer <= 60)) {
+            resetEnragedTile();
+            feroxService.restoreAtFerox();
             state = RoyalTitansBotStatus.TRAVELLING;
             travelStatus = RoyalTitansTravelStatus.TO_BANK;
             Rs2Prayer.disableAllPrayers();
         }
     }
 
-    private void handlePrayers(RoyalTitansConfig config) {
-        subState = "Handling prayers";
-        handleOffensivePrayers(config);
+    private void handlePrayers() {
+        if (config.enableOffensivePrayer()) {
+            handleOffensivePrayers();
+        }
         if (Rs2Combat.inCombat()) {
             Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MELEE, true);
             return;
@@ -334,52 +319,70 @@ public class RoyalTitansScript extends Script {
         Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MELEE, false);
     }
 
-    private void handleOffensivePrayers(RoyalTitansConfig config) {
+    private void handleOffensivePrayers() {
         var bestMeleePrayer = Rs2Prayer.getBestMeleePrayer();
         var bestRangedPrayer = Rs2Prayer.getBestRangePrayer();
 
         if (getEnrageTile() != null) {
             Rs2Prayer.toggle(bestMeleePrayer, false);
-            Rs2Prayer.toggle(bestRangedPrayer, false);
-        } else if (config.enableOffensivePrayer() && Rs2Player.isInCombat()) {
-            if (titanToFocusOn.get() != null) {
-                if (titanIsWithinMeleeDistance()) {
-                    if (!titanToFocusOn.get().isReachable()) {
-                        destroyWalls(config);
-                    } else if (bestMeleePrayer != null) {
-                        if (!Rs2Prayer.isPrayerActive(bestMeleePrayer)) {
-                            Rs2Prayer.toggle(bestMeleePrayer, true);
-                        }
-                    }
-                } else if (bestRangedPrayer != null) {
-                    if (!Rs2Prayer.isPrayerActive(bestRangedPrayer)) {
-                        Rs2Prayer.toggle(bestRangedPrayer, true);
-                    }
+            Rs2Prayer.toggle(bestRangedPrayer, true);
+        } else if (Rs2Player.isInCombat()) {
+            var titanToAttack = getTitanToAttack();
+            if (titanIsWithinMeleeDistance(titanToAttack)) {
+                if (bestMeleePrayer != null && !Rs2Prayer.isPrayerActive(bestMeleePrayer)) {
+                    Rs2Prayer.toggle(bestMeleePrayer, true);
                 }
+            } else if (bestRangedPrayer != null && !Rs2Prayer.isPrayerActive(bestRangedPrayer)) {
+                Rs2Prayer.toggle(bestRangedPrayer, true);
             }
         }
     }
 
-    private void attackBoss(RoyalTitansConfig config) {
+    private Rs2NpcModel getTitanToAttack() {
         var iceTitan = rs2NpcCache.query().withId(ICE_TITAN_ID).nearestOnClientThread(20);
         var fireTitan = rs2NpcCache.query().withId(FIRE_TITAN_ID).nearestOnClientThread(20);
+
+        if (config.soloMode()) {
+            return selectTitanForSoloMode(iceTitan, fireTitan);
+        } else if (fireTitanShouldBeAttacked(fireTitan, iceTitan)) {
+            return fireTitan;
+        } else {
+            return iceTitan;
+        }
+    }
+
+    private void attackBoss() {
+        var iceTitan = rs2NpcCache.query().withId(ICE_TITAN_ID).nearestOnClientThread(20);
+        var fireTitan = rs2NpcCache.query().withId(FIRE_TITAN_ID).nearestOnClientThread(20);
+
         if (iceTitan == null && fireTitan == null) {
-            log.info("No titans found");
             iceTitanHealthPercentage = 100;
             fireTitanHealthPercentage = 100;
             return;
         }
-        lootedTitanLastIteration = false;
-        handleBossFocus(config, iceTitan, fireTitan);
+
+        // Handle enrage tile first
+        if (getEnrageTile() != null) {
+            subState = "Handling enrage tile";
+
+            if (Rs2Player.getLocalLocation().equals(getEnrageTile().getLocalLocation()) && isTitanAlive(fireTitan) && isTitanAlive(iceTitan)) {
+                handleBossAttack();
+            }
+            return;
+        } else if (config.soloMode()) {
+            updateHealthPercentages(iceTitan, fireTitan);
+        }
+
+        subState = "Attacking titan";
+        handleBossAttack();
     }
 
-    private boolean isDangerousTile(WorldPoint location) {
-        return Rs2Tile.getDangerousGraphicsObjectTiles().containsKey(location);
+    private boolean isDangerousTile(WorldPoint worldPoint) {
+        return dangerousTiles.contains(worldPoint);
     }
 
     private void findSafeTile() {
         WorldPoint playerLocation = Rs2Player.getWorldLocation();
-
         if (isDangerousTile(playerLocation)) {
             log.info("Finding safe tile");
             List<WorldPoint> nearbyTiles = new ArrayList<>();
@@ -388,215 +391,145 @@ public class RoyalTitansScript extends Script {
             int y = playerLocation.getY();
             int plane = playerLocation.getPlane();
 
-            nearbyTiles.add(playerLocation);
-
-            // Offset X
-            for (int dx : List.of(-2, -1, 1, 2)) {
-                nearbyTiles.add(new WorldPoint(x + dx, y, plane));
-            }
-
             // Offset Y
             for (int dy : List.of(-2, -1, 1, 2)) {
                 nearbyTiles.add(new WorldPoint(x, y + dy, plane));
             }
 
-            // Offset X and Y (diagonal)
-            for (int dx : List.of(-2, -1, 1, 2)) {
-                for (int dy : List.of(-2, -1, 1, 2)) {
-                    nearbyTiles.add(new WorldPoint(x + dx, y + dy, plane));
+            var safeTile = nearbyTiles.stream().filter(tile -> !isDangerousTile(tile)).findFirst();
+            if (safeTile.isPresent()) {
+                Rs2Walker.walkFastCanvas(safeTile.get(), true);
+                sleepUntil(() -> Rs2Player.getWorldLocation().equals(safeTile.get()));
+                dangerousTiles.clear();
+            }
+        }
+    }
+
+    private void handleBossAttack() {
+        var titan = getTitanToAttack();
+        if (!titan.isReachable()) {
+            destroyWalls();
+        }
+
+        var specEnergy = Rs2Combat.getSpecEnergy() / 10;
+        if (isTitanAlive(titan)) {
+            if (titanIsWithinMeleeDistance(titan)) {
+                if (specialAttackPossible(specEnergy, titan, RoyalTitansConfig.SpecialAttackWeaponStyle.MELEE)) {
+                    specialAttackInventorySetup.wearEquipment();
+                    Rs2Combat.setSpecState(true, config.specEnergyConsumed() * 10);
+                    sleepUntil(Rs2Combat::getSpecState);
+                    titan.click("attack");
+                } else {
+                    equipArmor(meleeInventorySetup);
+                }
+            } else {
+                if (specialAttackPossible(specEnergy, titan, RoyalTitansConfig.SpecialAttackWeaponStyle.RANGED)) {
+                    specialAttackInventorySetup.wearEquipment();
+                    Rs2Combat.setSpecState(true, config.specEnergyConsumed() * 10);
+                    sleepUntil(Rs2Combat::getSpecState);
+                    titan.click("attack");
+                } else {
+                    equipArmor(rangedInventorySetup);
                 }
             }
 
-            var safeTile = nearbyTiles.stream().filter(tile -> FIGHT_AREA.contains(tile) && !isDangerousTile(tile)).findFirst();
-            if (safeTile.isPresent()) {
-                Rs2Walker.walkFastCanvas(safeTile.get());
-                sleepUntil(() -> Rs2Player.getWorldLocation().equals(safeTile.get()));
+            NPC attackingNpc = (NPC) Microbot.getClientThread().invoke(() -> Microbot.getClient().getLocalPlayer().getInteracting());
+            if (attackingNpc == null || titan.getIndex() != attackingNpc.getIndex()) {
+                log.info("Attacking titan: {}", titan.getId());
+                titan.click("attack");
             }
         }
-
     }
 
-
-    private void handleSpecialAttacks(RoyalTitansConfig config, Rs2NpcModel titan) {
-        if (!config.useSpecialAttacks()) {
-            return;
-        }
-        var specEnergy = Rs2Combat.getSpecEnergy() / 10;
-        if (specEnergy < config.specEnergyConsumed()) {
-            return;
-        }
-        if (!isTitanAlive(titan)) {
-            return;
-        }
-        // Failsafe to handle special attack weapons that require to unequip 2 items
-        if (Rs2Inventory.isFull()) {
-            return;
-        }
-        if (getEnrageTile() != null) {
-            return;
-        }
-
-        // We assume that if we are currently wearing melee armor, it's okay to use a melee special attack weapon. This avoids all of the other targeting logic being duplicated
-        if (meleeInventorySetup.doesEquipmentMatch() && config.specialAttackWeaponStyle() == RoyalTitansConfig.SpecialAttackWeaponStyle.MELEE) {
-            specialAttackInventorySetup.wearEquipment();
-            Rs2Combat.setSpecState(true, config.specEnergyConsumed() * 10);
-            sleepUntil(Rs2Combat::getSpecState);
-            titan.click("attack");
-            Rs2Player.waitForAnimation(600);
-            return;
-        }
-        if ((magicInventorySetup.doesEquipmentMatch() || rangedInventorySetup.doesEquipmentMatch()) && config.specialAttackWeaponStyle() == RoyalTitansConfig.SpecialAttackWeaponStyle.RANGED) {
-            specialAttackInventorySetup.wearEquipment();
-            Rs2Combat.setSpecState(true, config.specEnergyConsumed() * 10);
-            sleepUntil(Rs2Combat::getSpecState);
-            titan.click("attack");
-            Rs2Player.waitForAnimation(600);
-        }
+    private boolean specialAttackPossible(int specEnergy, Rs2NpcModel titan, RoyalTitansConfig.SpecialAttackWeaponStyle specialAttackWeaponStyle) {
+        return config.useSpecialAttacks()
+                && config.specialAttackWeaponStyle() == specialAttackWeaponStyle
+                && specEnergy >= config.specEnergyConsumed()
+                && isTitanAlive(titan)
+                && !Rs2Inventory.isFull()
+                && getEnrageTile() == null;
     }
 
-    private boolean isTitanAlive(Rs2NpcModel titan) {
+    public static boolean isTitanAlive(Rs2NpcModel titan) {
         return titan != null && !titan.isDead();
     }
 
-    private void handleBossFocus(RoyalTitansConfig config, Rs2NpcModel iceTitan, Rs2NpcModel fireTitan) {
-        // Handle enrage tile first
-        if (getEnrageTile() != null) {
-            log.info("Enraged tile is present.");
-            subState = "Handling enrage tile";
-
-            if (Rs2Player.getLocalLocation().equals(getEnrageTile().getLocalLocation()) && isTitanAlive(fireTitan) && isTitanAlive(iceTitan)) {
-                equipArmor(rangedInventorySetup);
-                titanToFocusOn.get().click("attack");
-            }
-        } else {
-            // Solo mode - balance titan health
-            if (config.soloMode()) {
-                subState = "Solo mode - balancing titan health";
-                updateHealthPercentages(iceTitan, fireTitan);
-                if (!isTitanAlive(titanToFocusOn.get())) {
-                    log.info("No titan selected. Selecting titan to focus on.");
-                    var titan = selectTitanForSoloMode(iceTitan, fireTitan);
-                    if (titan != null) {
-                        titanToFocusOn.set(titan); //This is to prevent the player from swapping between titans in a single phase, so you don't lose too much DPS
-                    }
-                }
-                if (isTitanAlive(titanToFocusOn.get())) {
-                    // Select appropriate gear based on titan position
-                    if (titanIsWithinMeleeDistance()) {
-                        log.info("Titan is in melee distance. Equipping melee gear.");
-                        equipArmor(meleeInventorySetup);
-                    } else {
-                        log.info("Titan is not in melee distance. Equipping ranging gear.");
-                        equipArmor(rangedInventorySetup);
-                    }
-
-                    NPC attackingNpc = (NPC) Microbot.getClientThread().invoke(() -> Microbot.getClient().getLocalPlayer().getInteracting());
-                    if (attackingNpc == null || titanToFocusOn.get().getIndex() != attackingNpc.getIndex()) {
-                        if (attackingNpc != null) {
-                            log.info("Attacking NPC? {}, {}", attackingNpc.getId(), attackingNpc.getIndex());
-                        } else {
-                            log.info("Attacking NPC is null.");
-                        }
-                        log.info("Titan: {}", titanToFocusOn.get());
-                        titanToFocusOn.get().click("attack");
-                    }
-                }
-            } else {
-                if (fireTitanShouldBeAttacked(config, fireTitan, iceTitan)) {
-                    subState = "Attacking fire titan";
-                    if (fireTitanCanBeAttackedWithMelee(fireTitan)) {
-                        equipArmor(meleeInventorySetup);
-                    } else {
-                        equipArmor(rangedInventorySetup);
-                    }
-                    fireTitan.click("attack");
-                } else if (iceTitanShouldBeAttacked(config, iceTitan, fireTitan)) {
-                    subState = "Attacking ice titan";
-                    if (iceTitanCanBeAttackedWithMelee(iceTitan)) {
-                        equipArmor(meleeInventorySetup);
-                    } else {
-                        equipArmor(rangedInventorySetup);
-                    }
-                    iceTitan.click("attack");
-                }
-            }
-
-        }
-    }
-
-    private boolean iceTitanShouldBeAttacked(RoyalTitansConfig config, Rs2NpcModel iceTitan, Rs2NpcModel fireTitan) {
-        return (config.royalTitanToFocus() == RoyalTitansConfig.RoyalTitan.ICE_TITAN && isTitanAlive(iceTitan)) || !isTitanAlive(fireTitan);
-    }
-
-    private boolean fireTitanShouldBeAttacked(RoyalTitansConfig config, Rs2NpcModel fireTitan, Rs2NpcModel iceTitan) {
+    private boolean fireTitanShouldBeAttacked(Rs2NpcModel fireTitan, Rs2NpcModel iceTitan) {
         return (config.royalTitanToFocus() == RoyalTitansConfig.RoyalTitan.FIRE_TITAN && isTitanAlive(fireTitan)) || !isTitanAlive(iceTitan);
     }
 
-    private boolean fireTitanCanBeAttackedWithMelee(Rs2NpcModel fireTitan) {
-        int fireX = fireTitan.getWorldLocation().getRegionX();
-        return fireX == MELEE_TITAN_FIRE_REGION_X ||
-                (fireX > MELEE_TITAN_FIRE_REGION_X && fireX < MELEE_TITAN_ICE_REGION_X);
+    private boolean titanIsWithinMeleeDistance(Rs2NpcModel titan) {
+        if (enrageTile.get() != null) {
+            return false;
+        }
+        int titanX = titan.getWorldLocation().getRegionX();
+        log.info("TitanX: {}", titanX);
+        return (titan.getId() == FIRE_TITAN_ID && titanX >= MELEE_TITAN_FIRE_REGION_X) ||
+                (titan.getId() == ICE_TITAN_ID && titanX <= MELEE_TITAN_ICE_REGION_X);
     }
 
-    private boolean iceTitanCanBeAttackedWithMelee(Rs2NpcModel iceTitan) {
-        int iceX = iceTitan.getWorldLocation().getRegionX();
-        return iceX == MELEE_TITAN_ICE_REGION_X ||
-                (iceX > MELEE_TITAN_FIRE_REGION_X && iceX < MELEE_TITAN_ICE_REGION_X);
-    }
-
-    private boolean titanIsWithinMeleeDistance() {
-        int titanX = titanToFocusOn.get().getWorldLocation().getRegionX();
-        return (titanToFocusOn.get().getId() == FIRE_TITAN_ID && titanX >= 26) ||
-                (titanToFocusOn.get().getId() == ICE_TITAN_ID && titanX <= 36);
-    }
-
-    private void handleWalls(RoyalTitansConfig config) {
-        if (config.minionResponsibility() == RoyalTitansConfig.Minions.NONE) {
+    private void handleWalls() {
+        if (config.soloMode() || config.minionResponsibility() == RoyalTitansConfig.Minions.NONE) {
             return;
         }
         subState = "Handling walls";
 
-        destroyWalls(config);
+        destroyWalls();
     }
 
-    private void destroyWalls(RoyalTitansConfig config) {
+    private void destroyWalls() {
         // For solo mode, handle both types of walls
-        List<Rs2NpcModel> walls;
+        List<Rs2NpcModel> walls = new ArrayList<>();
         if (config.soloMode() || config.minionResponsibility() == RoyalTitansConfig.Minions.ALL) {
-            List<Rs2NpcModel> fireWalls = rs2NpcCache.query().withId(FIRE_WALL).where(npcInCenterOfArena()).toListOnClientThread();
-            List<Rs2NpcModel> iceWalls = rs2NpcCache.query().withId(ICE_WALL).where(npcInCenterOfArena()).toListOnClientThread();
-            walls = new ArrayList<>();
+            List<Rs2NpcModel> fireWalls = rs2NpcCache.query().withId(FIRE_WALL).where(npcInCenterOfArena()).within(6).toListOnClientThread();
+            List<Rs2NpcModel> iceWalls = rs2NpcCache.query().withId(ICE_WALL).where(npcInCenterOfArena()).within(6).toListOnClientThread();
             walls.addAll(fireWalls);
             walls.addAll(iceWalls);
         } else {
-            walls = rs2NpcCache.query().withId(config.minionResponsibility() == RoyalTitansConfig.Minions.FIRE_MINIONS ? FIRE_WALL : ICE_WALL).where(npcInCenterOfArena()).toListOnClientThread();
+            walls.addAll(rs2NpcCache.query().withId(config.minionResponsibility() == RoyalTitansConfig.Minions.FIRE_MINIONS ? FIRE_WALL : ICE_WALL).where(npcInCenterOfArena()).toListOnClientThread());
         }
 
-        if (walls.isEmpty() || walls.size() < 8) {
-            log.info("No walls to get rid of.");
+        if (walls.isEmpty() || walls.size() < 2) {
+            log.info("No/not enough walls to get rid of.");
             return;
         }
 
         log.info("Equipping magic armour to get rid of walls.");
         equipArmor(magicInventorySetup);
+        sleep(600);
+        boolean isWearingTwinflame = Rs2Equipment.isWearing(ItemID.TWINFLAME_STAFF);
 
         for (var wall : walls) {
             if (wall != null && wall.getId() != -1 && !wall.isDead()) {
-                String action = wall.getId() == FIRE_WALL ? "Douse" : "Melt";
                 log.info("Getting rid of wall.");
-                wall.click(action);
+                if (isWearingTwinflame) {
+                    wall.click();
+                    sleep(600);
+                } else {
+                    if (wall.getId() == FIRE_WALL) {
+                        Rs2Magic.cast(MagicAction.WATER_WAVE);
+                        wall.click();
+                    } else {
+                        Rs2Magic.cast(MagicAction.FIRE_WAVE);
+                        wall.click();
+                    }
+                    sleep(1800);
+                }
             }
         }
 
-        sleep(600);
+
     }
 
     @Nonnull
     private static Predicate<Rs2NpcModel> npcInCenterOfArena() {
-        return npc -> npc.getWorldLocation().getRegionX() == 31;
+        return npc -> {
+            log.info("RegionX: {}", npc.getWorldLocation().getRegionX());
+            return npc.getWorldLocation().getRegionX() == 31;
+        };
     }
 
-    private void handleMinions(RoyalTitansConfig config) {
+    private void handleMinions() {
         if (config.minionResponsibility() == RoyalTitansConfig.Minions.NONE) {
             return;
         }
@@ -605,8 +538,15 @@ public class RoyalTitansScript extends Script {
         // For solo mode, handle both types of minions
         List<Rs2NpcModel> minions = new ArrayList<>();
         if (config.soloMode()) {
-            var fireMinion = rs2NpcCache.query().withId(FIRE_MINION_ID).nearestOnClientThread(2);
-            var iceMinion = rs2NpcCache.query().withId(ICE_MINION_ID).nearestOnClientThread(2);
+            var fireMinion = rs2NpcCache.query()
+                    .withId(FIRE_MINION_ID)
+                    .where(npc -> !npc.isDead())
+                    .nearestOnClientThread(6);
+            var iceMinion = rs2NpcCache.query()
+                    .withId(ICE_MINION_ID)
+                    .where(npc -> !npc.isDead())
+                    .nearestOnClientThread(6);
+
             if (fireMinion != null) {
                 minions.add(fireMinion);
             }
@@ -615,7 +555,11 @@ public class RoyalTitansScript extends Script {
                 minions.add(iceMinion);
             }
         } else {
-            var minion = rs2NpcCache.query().withId(config.minionResponsibility() == RoyalTitansConfig.Minions.FIRE_MINIONS ? FIRE_MINION_ID : ICE_MINION_ID).nearestOnClientThread(12);
+            var minion = rs2NpcCache
+                    .query()
+                    .withId(config.minionResponsibility() == RoyalTitansConfig.Minions.FIRE_MINIONS ? FIRE_MINION_ID : ICE_MINION_ID)
+                    .where(npc -> !npc.isDead())
+                    .nearestOnClientThread(6);
             if (minion != null) {
                 minions.add(minion);
             }
@@ -626,22 +570,30 @@ public class RoyalTitansScript extends Script {
             return;
         }
 
-        if (!magicInventorySetup.doesEquipmentMatch()) {
-            equipArmor(magicInventorySetup);
-        }
+        equipArmor(magicInventorySetup);
+        sleep(600);
+
+        boolean isWearingTwinflame = Rs2Equipment.isWearing(ItemID.TWINFLAME_STAFF);
 
         for (var minion : minions) {
-            if (minion != null && !minion.isDead()) {
-                log.info("Attacking minion");
-                minion.click("attack");
-                //Microbot.getClientThread().invoke(() -> minion.click("attack"));
-                sleep(600);
+            log.info("Attacking minion");
+            if (isWearingTwinflame) {
+                minion.click();
+            } else {
+                if (minion.getId() == FIRE_MINION_ID) {
+                    Rs2Magic.cast(MagicAction.WATER_WAVE);
+                    minion.click();
+                } else {
+                    Rs2Magic.cast(MagicAction.FIRE_WAVE);
+                    minion.click();
+                }
             }
+            sleep(600);
         }
     }
 
     private void updateHealthPercentages(Rs2NpcModel iceTitan, Rs2NpcModel fireTitan) {
-        if (lootedTitanLastIteration || (!isTitanAlive(iceTitan) && !isTitanAlive(fireTitan))) {
+        if (!isTitanAlive(iceTitan) && !isTitanAlive(fireTitan)) {
             iceTitanHealthPercentage = 100;
             fireTitanHealthPercentage = 100;
             return;
@@ -689,24 +641,14 @@ public class RoyalTitansScript extends Script {
             return iceTitan;
         }
 
-        if (!isAtSecondPhase && fireTitanHealthPercentage > 33) {
-            log.info("Still bringing down the fire giant to lower HP to trigger second phase.");
+        if (fireTitanHealthPercentage > 15) {
             return fireTitan;
         }
 
-        isAtSecondPhase = true;
-
-        if (iceTitanHealthPercentage > fireTitanHealthPercentage + 15) {
-            log.info("Ice titan is too healthy, take ice titan");
-            return iceTitan;
-        } else {
-            log.info("Fire titan is too healthy, take fire titan");
-            return fireTitan;
-        }
+        return iceTitan;
     }
 
-    private void handleTravelling(RoyalTitansConfig config) {
-        isAtSecondPhase = false;
+    private void handleTravelling() {
         Rs2Prayer.disableAllPrayers();
         switch (travelStatus) {
             case TO_BANK:
@@ -770,8 +712,7 @@ public class RoyalTitansScript extends Script {
         }
     }
 
-    private void handleBanking(RoyalTitansConfig config) {
-        isAtSecondPhase = false;
+    private void handleBanking() {
         subState = "Equipping gear";
         equipArmor(inventorySetup);
         if (!Rs2Bank.isOpen()) {
@@ -779,15 +720,28 @@ public class RoyalTitansScript extends Script {
             Rs2Bank.openBank();
             sleepUntil(Rs2Bank::isOpen);
         }
+
         Rs2Bank.depositAll();
         var items = inventorySetup.getEquipmentItems();
         var inventory = inventorySetup.getInventoryItems();
+
         for (var item : items) {
             if (item != null && item.getId() != -1) {
-                if (!item.isFuzzy() || !Rs2Equipment.isWearing(item.getName(), false)) {
-                    Rs2Bank.wearItem(item.getName(), true);
+                log.info("Wearing {}? {}", item.getName(), Rs2Equipment.isWearing(item.getName(), false));
+                if (!Rs2Equipment.isWearing(item.getName(), false)) {
+                    log.info("Item ID: {}", item.getId());
+                    if (item.getName().equals("Ring of dueling")) {
+                        Rs2Bank.withdrawAndEquip(ItemID.RING_OF_DUELING_8);
+                    } else {
+                        if (item.getQuantity() == 1) {
+                            log.info("Withdrawing one");
+                            Rs2Bank.withdrawAndEquip(item.getId());
+                        } else {
+                            log.info("Withdrawing many");
+                            Rs2Bank.withdrawXAndEquip(item.getId(), item.getQuantity());
+                        }
+                    }
                 }
-
             }
         }
 
@@ -831,13 +785,128 @@ public class RoyalTitansScript extends Script {
         state = RoyalTitansBotStatus.TRAVELLING;
     }
 
+    private static void lootTitan(Rs2NpcModel iceTitanDead) {
+        iceTitanDead.click("Loot");
+        Rs2Inventory.waitForInventoryChanges(5000);
+    }
+
+    private void lootUntradeableItems() {
+        LootingParameters untradeableItemsParams = new LootingParameters(
+                15,
+                1,
+                1,
+                minFreeSlots,
+                false,
+                false,
+                "untradeable"
+        );
+        if (Rs2GroundItem.lootUntradables(untradeableItemsParams)) {
+            Microbot.pauseAllScripts.compareAndSet(true, false);
+        }
+    }
+
+    private void lootRunes() {
+        LootingParameters runesParams = new LootingParameters(
+                15,
+                1,
+                1,
+                minFreeSlots,
+                false,
+                false,
+                " rune"
+        );
+        if (Rs2GroundItem.lootItemsBasedOnNames(runesParams)) {
+            Microbot.pauseAllScripts.compareAndSet(true, false);
+        }
+    }
+
+    private void lootCoins() {
+        LootingParameters coinsParams = new LootingParameters(
+                15,
+                1,
+                1,
+                minFreeSlots,
+                false,
+                false,
+                "coins"
+        );
+        if (Rs2GroundItem.lootCoins(coinsParams)) {
+            Microbot.pauseAllScripts.compareAndSet(true, false);
+        }
+    }
+
+    private void lootItemsOnName() {
+        LootingParameters valueParams = new LootingParameters(
+                15,
+                1,
+                1,
+                minFreeSlots,
+                false,
+                false,
+                ITEMS_TO_LOOT
+        );
+        if (Rs2GroundItem.lootItemsBasedOnNames(valueParams)) {
+            Microbot.pauseAllScripts.compareAndSet(true, false);
+        }
+    }
+
+    private void handleLooting() {
+        log.info("Handling looting...");
+        if (!isInBossRegion()) {
+            return;
+        }
+
+        var iceTitanDead = rs2NpcCache.query().withId(ICE_TITAN_DEAD_ID).nearestOnClientThread(20);
+        var fireTitanDead = rs2NpcCache.query().withId(FIRE_TITAN_DEAD_ID).nearestOnClientThread(20);
+
+        Rs2Prayer.disableAllPrayers();
+        if (fireTitanDead != null && iceTitanDead != null) {
+            setSubState("Looting ground items");
+            lootItemsOnName();
+            lootRunes();
+            lootCoins();
+            lootUntradeableItems();
+
+            setSubState("Handling looting from Titans");
+            switch (config.loot()) {
+                case ICE_TITAN:
+                    lootTitan(iceTitanDead);
+                    break;
+                case FIRE_TITAN:
+                    lootTitan(fireTitanDead);
+                    break;
+                case ALTERNATE:
+                    if (lootedTitan == null || lootedTitan == RoyalTitansConfig.RoyalTitan.FIRE_TITAN) {
+                        lootedTitan = RoyalTitansConfig.RoyalTitan.ICE_TITAN;
+                        lootTitan(iceTitanDead);
+                    } else {
+                        lootedTitan = RoyalTitansConfig.RoyalTitan.FIRE_TITAN;
+                        lootTitan(fireTitanDead);
+                    }
+                    break;
+                case RANDOM:
+                    if (Math.random() < 0.5) {
+                        lootTitan(iceTitanDead);
+                    } else {
+                        lootTitan(fireTitanDead);
+                    }
+                    break;
+            }
+
+
+            increaseKillCount();
+            RoyalTitansShared.evaluateAndConsumePotions(config);
+            state = RoyalTitansBotStatus.FIGHTING;
+        }
+    }
+
     @Override
     public void shutdown() {
         super.shutdown();
         isRunning = false;
         state = RoyalTitansBotStatus.BANKING;
         travelStatus = RoyalTitansTravelStatus.TO_BANK;
-        enrageTile.set(null);
+        resetEnragedTile();
         kills = 0;
         disableAllPrayers();
         if (mainScheduledFuture != null && !mainScheduledFuture.isCancelled()) {
