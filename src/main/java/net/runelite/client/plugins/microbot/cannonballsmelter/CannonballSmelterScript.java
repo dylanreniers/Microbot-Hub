@@ -25,6 +25,7 @@ import java.awt.event.KeyEvent;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
+
 public class CannonballSmelterScript extends Script {
 
     private static CannonballSmelterConfig config;
