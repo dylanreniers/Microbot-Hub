@@ -307,18 +307,30 @@ public class EnchantingProcessor implements BankStandingProcessor {
 
     private String getRuneName(int runeId) {
         switch (runeId) {
-            case ItemID.AIRRUNE: return "Air rune";
-            case ItemID.WATERRUNE: return "Water rune";
-            case ItemID.EARTHRUNE: return "Earth rune";
-            case ItemID.FIRERUNE: return "Fire rune";
-            case ItemID.MINDRUNE: return "Mind rune";
-            case ItemID.COSMICRUNE: return "Cosmic rune";
-            case ItemID.NATURERUNE: return "Nature rune";
-            case ItemID.BLOODRUNE: return "Blood rune";
-            case ItemID.LAWRUNE: return "Law rune";
-            case ItemID.SOULRUNE: return "Soul rune";
-            case ItemID.DEATHRUNE: return "Death rune";
-            default: return "Unknown rune (" + runeId + ")";
+            case ItemID.AIRRUNE:
+                return "Air rune";
+            case ItemID.WATERRUNE:
+                return "Water rune";
+            case ItemID.EARTHRUNE:
+                return "Earth rune";
+            case ItemID.FIRERUNE:
+                return "Fire rune";
+            case ItemID.MINDRUNE:
+                return "Mind rune";
+            case ItemID.COSMICRUNE:
+                return "Cosmic rune";
+            case ItemID.NATURERUNE:
+                return "Nature rune";
+            case ItemID.BLOODRUNE:
+                return "Blood rune";
+            case ItemID.LAWRUNE:
+                return "Law rune";
+            case ItemID.SOULRUNE:
+                return "Soul rune";
+            case ItemID.DEATHRUNE:
+                return "Death rune";
+            default:
+                return "Unknown rune (" + runeId + ")";
         }
     }
 

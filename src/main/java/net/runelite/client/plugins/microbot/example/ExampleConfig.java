@@ -7,24 +7,23 @@ import net.runelite.client.config.ConfigSection;
 
 @ConfigGroup(ExampleConfig.configGroup)
 public interface ExampleConfig extends Config {
-	String configGroup = "micro-example";
+    String configGroup = "micro-example";
 
-	@ConfigSection(
-		name = "General",
-		description = "General Plugin Settings",
-		position = 0
-	)
-	String generalSection = "general";
+    @ConfigSection(
+            name = "General",
+            description = "General Plugin Settings",
+            position = 0
+    )
+    String generalSection = "general";
 
-	@ConfigItem(
-		keyName = "exampleSetting",
-		name = "Example Setting",
-		description = "Enable this option to use the example feature.",
-		position = 0,
-		section = generalSection
-	)
-	default boolean exampleSetting()
-	{
-		return false;
-	}
+    @ConfigItem(
+            keyName = "exampleSetting",
+            name = "Example Setting",
+            description = "Enable this option to use the example feature.",
+            position = 0,
+            section = generalSection
+    )
+    default boolean exampleSetting() {
+        return false;
+    }
 }

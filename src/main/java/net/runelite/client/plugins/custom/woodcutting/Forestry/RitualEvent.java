@@ -31,12 +31,13 @@ public class RitualEvent implements BlockingEvent {
 
     @Override
     public boolean validate() {
-        try{
+        try {
             if (plugin == null || !Microbot.isPluginEnabled(plugin)) return false;
             if (Microbot.getClient() == null || !Microbot.isLoggedIn()) return false;
             Optional<Rs2NpcModel> dryadCache = Rs2Npc
                     .getNpcs(NpcID.GATHERING_EVENT_ENCHANTED_RITUAL_DRYAD)
-                    .min(Comparator.comparingInt(Rs2NpcModel::getDistanceFromPlayer));;
+                    .min(Comparator.comparingInt(Rs2NpcModel::getDistanceFromPlayer));
+            ;
             //var dryad = Rs2Npc.getNpc(NpcID.GATHERING_EVENT_ENCHANTED_RITUAL_DRYAD);
             return dryadCache.isPresent();
         } catch (Exception e) {

@@ -6,10 +6,9 @@ import net.runelite.api.gameval.ItemID;
 
 @Getter
 @RequiredArgsConstructor
-public enum Essence
-{
-	PURE_ESSENCE(ItemID.BLANKRUNE_HIGH),
-	DAEYALT_ESSENCE(ItemID.BLANKRUNE_DAEYALT);
+public enum Essence {
+    PURE_ESSENCE(ItemID.BLANKRUNE_HIGH),
+    DAEYALT_ESSENCE(ItemID.BLANKRUNE_DAEYALT);
 
-	private final int itemId;
+    private final int itemId;
 }

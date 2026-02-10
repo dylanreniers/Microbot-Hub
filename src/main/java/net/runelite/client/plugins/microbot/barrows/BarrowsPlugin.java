@@ -9,11 +9,10 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.microbot.Microbot;
+import net.runelite.client.plugins.microbot.PluginConstants;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
 import net.runelite.client.plugins.microbot.util.antiban.enums.Activity;
 import net.runelite.client.ui.overlay.OverlayManager;
-import net.runelite.client.plugins.microbot.PluginConstants;
 
 import javax.inject.Inject;
 import java.awt.*;
@@ -22,7 +21,7 @@ import java.awt.*;
         name = PluginConstants.GAGE + "Barrows", // Field to define the plugin name (required)
         description = "Completes the Barrows Brothers mini-game", // A brief description of the plugin (optional, default is '')
         tags = {"combat", "mm", "barrows"}, // Tags to categorize the plugin (optional, default is '')
-        authors = { "Gage" }, // Author(s) of the plugin (optional, default is "Unknown Author")
+        authors = {"Gage"}, // Author(s) of the plugin (optional, default is "Unknown Author")
         version = BarrowsPlugin.version, // Version of the plugin (required)
         minClientVersion = "2.1.0", // Minimum client version required to run the plugin (required)
         iconUrl = "https://chsami.github.io/Microbot-Hub/BarrowsPlugin/assets/icon.png", // URL to plugin icon shown in client (optional)
@@ -31,24 +30,22 @@ import java.awt.*;
         isExternal = PluginConstants.IS_EXTERNAL // Whether the plugin is external
 )
 @Slf4j
-public class BarrowsPlugin extends Plugin  {
+public class BarrowsPlugin extends Plugin {
     public static final String version = "2.0.2";
-
+    @Inject
+    BarrowsScript barrowsScript;
+    int ticks = 10;
     @Inject
     private BarrowsConfig config;
-    @Provides
-    BarrowsConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(BarrowsConfig.class);
-    }
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private BarrowsOverlay barrowsOverlay;
 
-    @Inject
-    BarrowsScript barrowsScript;
-
+    @Provides
+    BarrowsConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(BarrowsConfig.class);
+    }
 
     @Override
     protected void startUp() throws AWTException {
@@ -91,10 +88,8 @@ public class BarrowsPlugin extends Plugin  {
 
     }
 
-    int ticks = 10;
     @Subscribe
-    public void onGameTick(GameTick tick)
-    {
+    public void onGameTick(GameTick tick) {
         //System.out.println(getName().chars().mapToObj(i -> (char)(i + 3)).map(String::valueOf).collect(Collectors.joining()));
 
         if (ticks > 0) {

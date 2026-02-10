@@ -8,8 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-public enum HotspotObjects
-{
+public enum HotspotObjects {
     // East Ardy
     JESS(new HotspotObject(40171, HotspotType.B2),
             new HotspotObject(40172, HotspotType.B2),
@@ -105,33 +104,39 @@ public enum HotspotObjects
             new HotspotObject(39999, HotspotType.B2),
             new HotspotObject(40000, HotspotType.B2),
             new HotspotObject(40286, HotspotType.SB),
-            new HotspotObject(40001, HotspotType.B2))
-    ;
+            new HotspotObject(40001, HotspotType.B2));
 
     public final HotspotObject[] objects;
 
-    HotspotObjects(HotspotObject... objects)
-    {
+    HotspotObjects(HotspotObject... objects) {
         this.objects = objects;
     }
 
-    RequiredMaterials getRequiredMaterialsForVarbs(Set<Integer> repairableVarbs)
-    {
+    /**
+     * Creates a map of object IDs to their material requirements
+     */
+    public static Map<Integer, Integer> getAllRepairObjectIds() {
+        return Arrays.stream(values())
+                .flatMap(hotspotObjects -> Arrays.stream(hotspotObjects.objects))
+                .collect(Collectors.toMap(
+                        HotspotObject::getObjectId,
+                        hotspotObject -> hotspotObject.getType().getNumOfMaterial()
+                ));
+    }
+
+    RequiredMaterials getRequiredMaterialsForVarbs(Set<Integer> repairableVarbs) {
         int planks = 0;
         int steelBars = 0;
 
         final int startingVarb = Hotspot.MAHOGANY_HOMES_HOTSPOT_1.getVarb();
-        for (int i = 0; i < this.objects.length; i++)
-        {
+        for (int i = 0; i < this.objects.length; i++) {
             // hotspotObjects are added in order where it's index in the array is the offset from the starting varb
-            if (!repairableVarbs.contains(startingVarb + i))
-            {
+            if (!repairableVarbs.contains(startingVarb + i)) {
                 continue;
             }
 
             final HotspotType type = this.objects[i].getType();
-            switch (type.getMaterial())
-            {
+            switch (type.getMaterial()) {
                 case PLANK:
                     planks += type.getNumOfMaterial();
                     break;
@@ -143,37 +148,15 @@ public enum HotspotObjects
 
         return new RequiredMaterials(planks, planks, steelBars, steelBars);
     }
-    
-    /**
-     * Creates a map of object IDs to their material requirements
-     */
-    public static Map<Integer, Integer> getAllRepairObjectIds() {
-        return Arrays.stream(values())
-            .flatMap(hotspotObjects -> Arrays.stream(hotspotObjects.objects))
-            .collect(Collectors.toMap(
-                HotspotObject::getObjectId, 
-                hotspotObject -> hotspotObject.getType().getNumOfMaterial()
-            ));
-    }
 
-    @AllArgsConstructor
-    @Getter
-    public static class HotspotObject
-    {
-        private final int objectId;
-        private final HotspotType type;
-    }
-
-    public enum MaterialType
-    {
+    public enum MaterialType {
         PLANK,
         STEEL_BAR
     }
 
     @AllArgsConstructor
     @Getter
-    public enum HotspotType
-    {
+    public enum HotspotType {
         //Remove & Build Furniture (1 plank)
         B1(MaterialType.PLANK, 1),
         //Remove & Build Furniture (2 plank)
@@ -189,5 +172,12 @@ public enum HotspotObjects
 
         private final MaterialType material;
         private final int numOfMaterial;
+    }
+
+    @AllArgsConstructor
+    @Getter
+    public static class HotspotObject {
+        private final int objectId;
+        private final HotspotType type;
     }
 }

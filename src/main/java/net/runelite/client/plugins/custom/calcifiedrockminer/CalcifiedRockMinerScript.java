@@ -9,8 +9,6 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
-import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
-import net.runelite.client.plugins.microbot.api.tileobject.models.TileObjectType;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2AntibanSettings;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
@@ -29,8 +27,6 @@ import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
 import javax.inject.Inject;
 import java.awt.event.KeyEvent;
-import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.VERY_LOW;
@@ -190,20 +186,19 @@ public class CalcifiedRockMinerScript extends Script {
             if (Rs2Player.getWorldLocation().distanceTo(ANVIL) < 1) {
                 Rs2Inventory.interact(29088, "use");
                 Rs2GameObject.interact("Anvil");
-                sleep(400,600);
+                sleep(400, 600);
                 Rs2Widget.sleepUntilHasWidget("How many would you like to smash?");
-                sleep(200,400);
+                sleep(200, 400);
                 Rs2Keyboard.keyPress(KeyEvent.VK_SPACE);
-                sleep(200,400);
+                sleep(200, 400);
                 while (Rs2Inventory.hasItem(29088)) {
                     if (!this.isRunning()) {
                         break;
                     }
-                    sleep(1200,1600);
+                    sleep(1200, 1600);
                 }
                 BOT_STATUS = CalcifiedRockMinerState.BANKING;
-            }
-            else {
+            } else {
                 Rs2Walker.walkTo(ANVIL);
                 Rs2Walker.walkFastCanvas(ANVIL);
             }

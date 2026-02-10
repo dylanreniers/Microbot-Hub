@@ -38,7 +38,7 @@ public class NatureRuneChestScript extends Script {
                 if (Rs2AntibanSettings.actionCooldownActive) return;
                 long startTime = System.currentTimeMillis();
 
-                if(init){
+                if (init) {
                     getState(config);
                 }
 
@@ -51,11 +51,11 @@ public class NatureRuneChestScript extends Script {
                             return;
                         }
                         Optional<GameObject> natureRuneChest = Rs2GameObject.getGameObjects().stream()
-                                        .filter(obj -> obj.getId() == config.natureRuneChestLocation().getObjectID())
-                                        .sorted(Comparator.comparingInt(obj -> Rs2Player.getWorldLocation().distanceTo(obj.getWorldLocation())))
-                                        .findFirst();
+                                .filter(obj -> obj.getId() == config.natureRuneChestLocation().getObjectID())
+                                .sorted(Comparator.comparingInt(obj -> Rs2Player.getWorldLocation().distanceTo(obj.getWorldLocation())))
+                                .findFirst();
                         if (natureRuneChest.isPresent()) {
-                            if(Rs2GameObject.interact(natureRuneChest.get(), "Search for traps")){
+                            if (Rs2GameObject.interact(natureRuneChest.get(), "Search for traps")) {
                                 Rs2Antiban.actionCooldown();
                                 sleepUntilTrue(() -> !Rs2Player.isInteracting(), 500, 8000);
                                 sleep(Rs2Random.between(18000, 20000));
@@ -82,7 +82,7 @@ public class NatureRuneChestScript extends Script {
     }
 
     @Override
-    public void shutdown(){
+    public void shutdown() {
         super.shutdown();
         Rs2Antiban.resetAntibanSettings();
     }

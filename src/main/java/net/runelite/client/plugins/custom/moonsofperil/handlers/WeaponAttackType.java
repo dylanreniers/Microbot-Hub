@@ -173,14 +173,6 @@ public enum WeaponAttackType {
         this.attackOptions = attackOptions;
     }
 
-    public int getTypeId() {
-        return typeId;
-    }
-
-    public List<AttackOption> getAttackOptions() {
-        return attackOptions;
-    }
-
     public static WeaponAttackType getById(int id) {
         for (WeaponAttackType type : values()) {
             if (type.typeId == id) {
@@ -188,5 +180,13 @@ public enum WeaponAttackType {
             }
         }
         return null; // or throw an exception
+    }
+
+    public int getTypeId() {
+        return typeId;
+    }
+
+    public List<AttackOption> getAttackOptions() {
+        return attackOptions;
     }
 }

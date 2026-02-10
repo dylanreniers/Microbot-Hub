@@ -2,7 +2,6 @@ package net.runelite.client.plugins.custom.jewelleryenchant;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ObjectID;
-import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.client.plugins.custom.jewelleryenchant.util.ElementalStaff;
@@ -33,13 +32,9 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.LOW;
-import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.MODERATE;
 
 @Slf4j
 public class JewelleryEnchantScript extends Script {
-
-    @Inject
-    private Rs2TileObjectCache rs2TileObjectCache;
 
     static {
         Microbot.enableAutoRunOn = false;
@@ -58,6 +53,45 @@ public class JewelleryEnchantScript extends Script {
         Rs2AntibanSettings.moveMouseRandomly = true;
         Rs2AntibanSettings.moveMouseRandomlyChance = 0.04;
         Rs2Antiban.setActivityIntensity(LOW);
+    }
+
+    @Inject
+    private Rs2TileObjectCache rs2TileObjectCache;
+
+    private static void smeltJewellery(Jewellery jewellery) {
+        sleepUntil(() -> Rs2Widget.isGoldCraftingWidgetOpen() || Rs2Widget.isSilverCraftingWidgetOpen());
+        Rs2Widget.clickWidget(jewellery.getName());
+        sleepUntil(() -> !Rs2Inventory.contains(jewellery.getBarId()) && !Rs2Inventory.contains(jewellery.getGemId()), 30000);
+        log.info("Done creating jewellery. Adding random sleep.");
+        sleep(200, 10000);
+        log.info("Done waiting.");
+    }
+
+    private static void performEnchantment(Jewellery jewellery) {
+        while (Rs2Inventory.hasItem(jewellery.getUnenchantedId())) {
+            log.info("Enchanting jewellery.");
+            Rs2Magic.cast(jewellery.getMagicAction());
+            log.info("Opening enchantment menu and clicking on spell. Adding random sleep.");
+            sleep(200, 400);
+            List<Rs2ItemModel> items = Rs2Inventory.all(model -> model.getId() == jewellery.getUnenchantedId());
+            if (items.size() == 1) {
+                Rs2Inventory.interact(items.get(0));
+            } else if (items.size() > 1) {
+                Rs2Inventory.interact(items.get(Rs2Random.between(0, items.size()))); //randomize which one to enchant
+            }
+            log.info("Enchantment done. {} left to enchant. Adding sleep until next one can be enchanted", Rs2Inventory.count(jewellery.getUnenchantedId()));
+            sleep(2000, 2400);
+        }
+
+        log.info("Done enchanting all jewellery");
+    }
+
+    private static void openBank() {
+        if (!Rs2Bank.isOpen()) {
+            log.info("Opening bank.");
+            Rs2Bank.openBank();
+            sleepUntil(Rs2Bank::isOpen);
+        }
     }
 
     @Override
@@ -130,15 +164,6 @@ public class JewelleryEnchantScript extends Script {
         Rs2Camera.turnTo(getFurnace(), Rs2Random.between(30, 60));
     }
 
-    private static void smeltJewellery(Jewellery jewellery) {
-        sleepUntil(() -> Rs2Widget.isGoldCraftingWidgetOpen() || Rs2Widget.isSilverCraftingWidgetOpen());
-        Rs2Widget.clickWidget(jewellery.getName());
-        sleepUntil(() -> !Rs2Inventory.contains(jewellery.getBarId()) && !Rs2Inventory.contains(jewellery.getGemId()), 30000);
-        log.info("Done creating jewellery. Adding random sleep.");
-        sleep(200, 10000);
-        log.info("Done waiting.");
-    }
-
     private void goToFurnace() {
         Rs2TileObjectModel furnaceObject = getFurnace();
         if (furnaceObject == null) {
@@ -162,25 +187,6 @@ public class JewelleryEnchantScript extends Script {
                 .query()
                 .where(rs2TileObjectModel -> rs2TileObjectModel.getId() == ObjectID.FURNACE_16469)
                 .nearestOnClientThread(40);
-    }
-
-    private static void performEnchantment(Jewellery jewellery) {
-        while (Rs2Inventory.hasItem(jewellery.getUnenchantedId())) {
-            log.info("Enchanting jewellery.");
-            Rs2Magic.cast(jewellery.getMagicAction());
-            log.info("Opening enchantment menu and clicking on spell. Adding random sleep.");
-            sleep(200, 400);
-            List<Rs2ItemModel> items = Rs2Inventory.all(model -> model.getId() == jewellery.getUnenchantedId());
-            if (items.size() == 1) {
-                Rs2Inventory.interact(items.get(0));
-            } else if (items.size() > 1) {
-                Rs2Inventory.interact(items.get(Rs2Random.between(0, items.size()))); //randomize which one to enchant
-            }
-            log.info("Enchantment done. {} left to enchant. Adding sleep until next one can be enchanted", Rs2Inventory.count(jewellery.getUnenchantedId()));
-            sleep(2000, 2400);
-        }
-
-        log.info("Done enchanting all jewellery");
     }
 
     private void addBallsOfWoolToAmulets(Jewellery jewellery) {
@@ -307,14 +313,6 @@ public class JewelleryEnchantScript extends Script {
                     return;
                 }
             }
-        }
-    }
-
-    private static void openBank() {
-        if (!Rs2Bank.isOpen()) {
-            log.info("Opening bank.");
-            Rs2Bank.openBank();
-            sleepUntil(Rs2Bank::isOpen);
         }
     }
 

@@ -11,12 +11,12 @@ import java.awt.*;
 
 public class AutoMiningOverlay extends OverlayPanel {
     @Inject
-    AutoMiningOverlay(AutoMiningPlugin plugin)
-    {
+    AutoMiningOverlay(AutoMiningPlugin plugin) {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
         setNaughty();
     }
+
     @Override
     public Dimension render(Graphics2D graphics) {
         try {
@@ -33,7 +33,7 @@ public class AutoMiningOverlay extends OverlayPanel {
                     .build());
 
 
-        } catch(Exception ex) {
+        } catch (Exception ex) {
             System.out.println(ex.getMessage());
         }
         return super.render(graphics);

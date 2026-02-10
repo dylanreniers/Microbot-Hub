@@ -11,12 +11,12 @@ import java.awt.*;
 
 public class NmzOverlay extends OverlayPanel {
     @Inject
-    NmzOverlay(NmzPlugin plugin)
-    {
+    NmzOverlay(NmzPlugin plugin) {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
         setNaughty();
     }
+
     @Override
     public Dimension render(Graphics2D graphics) {
         try {
@@ -40,7 +40,7 @@ public class NmzOverlay extends OverlayPanel {
                     .left("Will drink absorption at: " + NmzScript.minAbsorption)
                     .build());
 
-        } catch(Exception ex) {
+        } catch (Exception ex) {
             System.out.println(ex.getMessage());
         }
         return super.render(graphics);

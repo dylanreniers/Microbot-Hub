@@ -19,23 +19,6 @@ public class PuzzleSolverService {
             InterfaceID.BarrowsPuzzle.PIC_C
     );
 
-    public void solvePuzzle() {
-        log.info("Solving puzzle");
-
-        Optional<Widget> puzzleAnswer = getPuzzleAnswer();
-        if (puzzleAnswer.isPresent()) {
-            log.info("Found answer");
-            Rs2Widget.clickWidget(puzzleAnswer.get().getId());
-        } else {
-            log.info("Couldn't find the answer?");
-        }
-        sleep(200, 600);
-    }
-
-    public boolean isPuzzleOnScreen() {
-        return getPuzzleAnswer().isPresent();
-    }
-
     private static Optional<Widget> getPuzzleAnswer() {
         Widget barrowsPuzzleWidget = Rs2Widget.getWidget(InterfaceID.BarrowsPuzzle._1);
         if (barrowsPuzzleWidget == null) {
@@ -54,5 +37,22 @@ public class PuzzleSolverService {
             }
         }
         return Optional.empty();
+    }
+
+    public void solvePuzzle() {
+        log.info("Solving puzzle");
+
+        Optional<Widget> puzzleAnswer = getPuzzleAnswer();
+        if (puzzleAnswer.isPresent()) {
+            log.info("Found answer");
+            Rs2Widget.clickWidget(puzzleAnswer.get().getId());
+        } else {
+            log.info("Couldn't find the answer?");
+        }
+        sleep(200, 600);
+    }
+
+    public boolean isPuzzleOnScreen() {
+        return getPuzzleAnswer().isPresent();
     }
 }

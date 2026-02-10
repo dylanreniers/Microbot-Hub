@@ -27,24 +27,20 @@ import java.awt.*;
 
 public class HerbrunPlugin extends Plugin {
     public static final String version = "1.1.0";
+    static String status;
+    @Inject
+    HerbrunScript herbrunScript;
     @Inject
     private HerbrunConfig config;
-
-    @Provides
-    HerbrunConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(HerbrunConfig.class);
-    }
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private HerbrunOverlay HerbrunOverlay;
 
-    @Inject
-    HerbrunScript herbrunScript;
-
-    static String status;
-
+    @Provides
+    HerbrunConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(HerbrunConfig.class);
+    }
 
     @Override
     protected void startUp() throws AWTException {

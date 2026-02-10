@@ -20,14 +20,14 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 
 @PluginDescriptor(
-    name = "Donder's Bank Stander",
-    description = "AIO bank standing plugin for various processing activities",
-    tags = {"magic", "skilling", "processing"},
-    authors = {"Donderstone"},
-    version = AutoBankStanderPlugin.version,
-    minClientVersion = "2.1.0",
-    enabledByDefault = PluginConstants.DEFAULT_ENABLED,
-    isExternal = PluginConstants.IS_EXTERNAL
+        name = "Donder's Bank Stander",
+        description = "AIO bank standing plugin for various processing activities",
+        tags = {"magic", "skilling", "processing"},
+        authors = {"Donderstone"},
+        version = AutoBankStanderPlugin.version,
+        minClientVersion = "2.1.0",
+        enabledByDefault = PluginConstants.DEFAULT_ENABLED,
+        isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
 public class AutoBankStanderPlugin extends Plugin {
@@ -135,15 +135,15 @@ public class AutoBankStanderPlugin extends Plugin {
 
             // load the crafting icon from resources
             final BufferedImage icon = ImageUtil.loadImageResource(AutoBankStanderPlugin.class,
-                "icon.png");
+                    "icon.png");
 
             // create navigation button
             navButton = NavigationButton.builder()
-                .tooltip("Auto Bank Stander")
-                .icon(icon)
-                .priority(8)
-                .panel(panel)
-                .build();
+                    .tooltip("Auto Bank Stander")
+                    .icon(icon)
+                    .priority(8)
+                    .panel(panel)
+                    .build();
 
             clientToolbar.addNavigation(navButton);
             log.info("Panel added to sidebar");

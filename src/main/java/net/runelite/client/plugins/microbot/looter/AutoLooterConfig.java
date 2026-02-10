@@ -1,6 +1,10 @@
 package net.runelite.client.plugins.microbot.looter;
 
-import net.runelite.client.config.*;
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigGroup;
+import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Range;
 import net.runelite.client.plugins.microbot.looter.enums.DefaultLooterStyle;
 import net.runelite.client.plugins.microbot.looter.enums.FlaxLocations;
 import net.runelite.client.plugins.microbot.looter.enums.LooterActivity;

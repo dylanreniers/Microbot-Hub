@@ -76,7 +76,7 @@ public class TheMessScript extends Script {
          * To avoid clicking through UI elements like inventory and such.
          */
         Rs2Camera.setZoom(Rs2Random.randomGaussian(200, 20));
-        Rs2Camera.setYaw((Rs2Random.dicePercentage(50)? Rs2Random.randomGaussian(750, 50) : Rs2Random.randomGaussian(1700, 50)));
+        Rs2Camera.setYaw((Rs2Random.dicePercentage(50) ? Rs2Random.randomGaussian(750, 50) : Rs2Random.randomGaussian(1700, 50)));
         Rs2Camera.setPitch(Rs2Random.betweenInclusive(418, 512));
 
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
@@ -272,7 +272,7 @@ public class TheMessScript extends Script {
                 );
 
                 int droppedItemsCount = 0;
-                
+
                 info("Starting inventory cleanup. Total slots to check: 28");
                 debug("Items to drop: " + itemsToDrop.toString());
 
@@ -673,7 +673,7 @@ public class TheMessScript extends Script {
     }
 
     private boolean closeMessShop() {
-        if (!Rs2Settings.isEscCloseInterfaceSettingEnabled()){
+        if (!Rs2Settings.isEscCloseInterfaceSettingEnabled()) {
             closeWithESCKey();
         } else {
             Widget w = Rs2Widget.getWidget(15859713);

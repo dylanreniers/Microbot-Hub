@@ -62,7 +62,7 @@ public class HerbloreProcessor implements BankStandingProcessor {
         if (mode == Mode.FINISHED_POTIONS && finishedPotion != null) {
             if (level < finishedPotion.level) {
                 log.info("Insufficient herblore level for {}: need {}, have {}",
-                    finishedPotion.name(), finishedPotion.level, level);
+                        finishedPotion.name(), finishedPotion.level, level);
                 return false;
             }
         }
@@ -112,18 +112,18 @@ public class HerbloreProcessor implements BankStandingProcessor {
                 log.info("Expecting to have {} and {} in the inventory.", currentHerbForUnfinished.clean, ItemID.VIAL_WATER);
                 log.info("Items found: {}", String.join(",", Rs2Inventory.all().stream().map(Rs2ItemModel::getId).map(String::valueOf).distinct().collect(Collectors.joining(","))));
                 return currentHerbForUnfinished != null &&
-                       Rs2Inventory.hasItem(currentHerbForUnfinished.clean) &&
-                       Rs2Inventory.hasItem(ItemID.VIAL_WATER);
+                        Rs2Inventory.hasItem(currentHerbForUnfinished.clean) &&
+                        Rs2Inventory.hasItem(ItemID.VIAL_WATER);
             case FINISHED_POTIONS:
                 if (currentPotion == null) return false;
                 if (isSuperCombat(currentPotion)) {
                     return Rs2Inventory.hasItem(ItemID.TORSTOL) &&
-                           Rs2Inventory.hasItem(ItemID._4DOSE2ATTACK) &&
-                           Rs2Inventory.hasItem(ItemID._4DOSE2STRENGTH) &&
-                           Rs2Inventory.hasItem(ItemID._4DOSE2DEFENSE);
+                            Rs2Inventory.hasItem(ItemID._4DOSE2ATTACK) &&
+                            Rs2Inventory.hasItem(ItemID._4DOSE2STRENGTH) &&
+                            Rs2Inventory.hasItem(ItemID._4DOSE2DEFENSE);
                 } else {
                     return Rs2Inventory.hasItem(currentPotion.unfinished) &&
-                           Rs2Inventory.hasItem(currentPotion.secondary);
+                            Rs2Inventory.hasItem(currentPotion.secondary);
                 }
         }
         return false;
@@ -188,7 +188,7 @@ public class HerbloreProcessor implements BankStandingProcessor {
                 return (currentHerbForUnfinished != null &&
                         Rs2Inventory.hasItem(currentHerbForUnfinished.clean) &&
                         Rs2Inventory.hasItem(ItemID.VIAL_WATER)) ||
-                       findHerbForUnfinished() != null;
+                        findHerbForUnfinished() != null;
             case FINISHED_POTIONS:
                 // can continue if we have ingredients in inventory OR more in bank
                 return hasRequiredItems() || findPotion() != null;
@@ -248,8 +248,8 @@ public class HerbloreProcessor implements BankStandingProcessor {
         Rs2Bank.withdrawX(ItemID.VIAL_WATER, withdrawnAmount);
 
         boolean withdrawn = sleepUntil(() ->
-            Rs2Inventory.hasItem(currentHerbForUnfinished.clean) &&
-            Rs2Inventory.hasItem(ItemID.VIAL_WATER), 1200);
+                Rs2Inventory.hasItem(currentHerbForUnfinished.clean) &&
+                        Rs2Inventory.hasItem(ItemID.VIAL_WATER), 1200);
 
         if (!withdrawn) {
             log.info("Failed to withdraw unfinished ingredients");
@@ -287,7 +287,7 @@ public class HerbloreProcessor implements BankStandingProcessor {
         int superDefenceCount = Rs2Bank.count(ItemID._4DOSE2DEFENSE);
 
         withdrawnAmount = Math.min(Math.min(Math.min(Math.min(torstolCount, superAttackCount),
-                                                   superStrengthCount), superDefenceCount), 7);
+                superStrengthCount), superDefenceCount), 7);
 
         log.info("Withdrawing {} of each super combat ingredient", withdrawnAmount);
         Rs2Bank.withdrawX(ItemID.TORSTOL, withdrawnAmount);
@@ -296,7 +296,7 @@ public class HerbloreProcessor implements BankStandingProcessor {
         Rs2Bank.withdrawX(ItemID._4DOSE2DEFENSE, withdrawnAmount);
 
         return sleepUntil(() -> Rs2Inventory.hasItem(ItemID.TORSTOL) &&
-                               Rs2Inventory.hasItem(ItemID._4DOSE2ATTACK), 3000);
+                Rs2Inventory.hasItem(ItemID._4DOSE2ATTACK), 3000);
     }
 
     private boolean bankForStackableSecondary() {
@@ -317,7 +317,7 @@ public class HerbloreProcessor implements BankStandingProcessor {
         Rs2Bank.withdrawX(currentPotion.secondary, secondaryNeeded);
 
         return sleepUntil(() -> Rs2Inventory.hasItem(currentPotion.unfinished) &&
-                               Rs2Inventory.hasItem(currentPotion.secondary), 3000);
+                Rs2Inventory.hasItem(currentPotion.secondary), 3000);
     }
 
     private boolean bankForRegularPotion() {
@@ -330,7 +330,7 @@ public class HerbloreProcessor implements BankStandingProcessor {
         Rs2Bank.withdrawX(currentPotion.secondary, withdrawnAmount);
 
         return sleepUntil(() -> Rs2Inventory.hasItem(currentPotion.unfinished) &&
-                               Rs2Inventory.hasItem(currentPotion.secondary), 3000);
+                Rs2Inventory.hasItem(currentPotion.secondary), 3000);
     }
 
     private boolean processCleanHerbs() {
@@ -466,7 +466,7 @@ public class HerbloreProcessor implements BankStandingProcessor {
         } else {
             Herb specificHerb = getHerbFromUnfinishedMode(unfinishedPotionMode);
             if (specificHerb != null && level >= specificHerb.level &&
-                Rs2Bank.hasItem(specificHerb.clean) && Rs2Bank.hasItem(ItemID.VIAL_WATER)) {
+                    Rs2Bank.hasItem(specificHerb.clean) && Rs2Bank.hasItem(ItemID.VIAL_WATER)) {
                 log.info("Found specific herb for unfinished: {}", specificHerb.name());
                 return specificHerb;
             }
@@ -480,16 +480,16 @@ public class HerbloreProcessor implements BankStandingProcessor {
         if (finishedPotion != null && level >= finishedPotion.level) {
             if (isSuperCombat(finishedPotion)) {
                 boolean hasAll = Rs2Bank.hasItem(ItemID.TORSTOL) &&
-                               Rs2Bank.hasItem(ItemID._4DOSE2ATTACK) &&
-                               Rs2Bank.hasItem(ItemID._4DOSE2STRENGTH) &&
-                               Rs2Bank.hasItem(ItemID._4DOSE2DEFENSE);
+                        Rs2Bank.hasItem(ItemID._4DOSE2ATTACK) &&
+                        Rs2Bank.hasItem(ItemID._4DOSE2STRENGTH) &&
+                        Rs2Bank.hasItem(ItemID._4DOSE2DEFENSE);
                 if (hasAll) {
                     log.info("All super combat ingredients available");
                     return finishedPotion;
                 }
             } else {
                 boolean hasIngredients = Rs2Bank.hasItem(finishedPotion.unfinished) &&
-                                       Rs2Bank.hasItem(finishedPotion.secondary);
+                        Rs2Bank.hasItem(finishedPotion.secondary);
                 if (hasIngredients) {
                     log.info("All regular potion ingredients available");
                     return finishedPotion;
@@ -503,7 +503,7 @@ public class HerbloreProcessor implements BankStandingProcessor {
         if (!useAmuletOfChemistry) return;
 
         if (!Rs2Equipment.isWearing(ItemID.AMULET_OF_CHEMISTRY) &&
-            !Rs2Equipment.isWearing(ItemID.AMULET_OF_CHEMISTRY_IMBUED_CHARGED)) {
+                !Rs2Equipment.isWearing(ItemID.AMULET_OF_CHEMISTRY_IMBUED_CHARGED)) {
 
             log.info("No amulet equipped - need to get one from bank");
 
@@ -529,41 +529,71 @@ public class HerbloreProcessor implements BankStandingProcessor {
     // mapping methods
     private Herb getHerbFromMode(CleanHerbMode mode) {
         switch (mode) {
-            case GUAM: return Herb.GUAM;
-            case MARRENTILL: return Herb.MARRENTILL;
-            case TARROMIN: return Herb.TARROMIN;
-            case HARRALANDER: return Herb.HARRALANDER;
-            case RANARR: return Herb.RANARR;
-            case TOADFLAX: return Herb.TOADFLAX;
-            case IRIT: return Herb.IRIT;
-            case AVANTOE: return Herb.AVANTOE;
-            case KWUARM: return Herb.KWUARM;
-            case SNAPDRAGON: return Herb.SNAPDRAGON;
-            case CADANTINE: return Herb.CADANTINE;
-            case LANTADYME: return Herb.LANTADYME;
-            case DWARF: return Herb.DWARF;
-            case TORSTOL: return Herb.TORSTOL;
-            default: return null;
+            case GUAM:
+                return Herb.GUAM;
+            case MARRENTILL:
+                return Herb.MARRENTILL;
+            case TARROMIN:
+                return Herb.TARROMIN;
+            case HARRALANDER:
+                return Herb.HARRALANDER;
+            case RANARR:
+                return Herb.RANARR;
+            case TOADFLAX:
+                return Herb.TOADFLAX;
+            case IRIT:
+                return Herb.IRIT;
+            case AVANTOE:
+                return Herb.AVANTOE;
+            case KWUARM:
+                return Herb.KWUARM;
+            case SNAPDRAGON:
+                return Herb.SNAPDRAGON;
+            case CADANTINE:
+                return Herb.CADANTINE;
+            case LANTADYME:
+                return Herb.LANTADYME;
+            case DWARF:
+                return Herb.DWARF;
+            case TORSTOL:
+                return Herb.TORSTOL;
+            default:
+                return null;
         }
     }
 
     private Herb getHerbFromUnfinishedMode(UnfinishedPotionMode mode) {
         switch (mode) {
-            case GUAM_POTION_UNF: return Herb.GUAM;
-            case MARRENTILL_POTION_UNF: return Herb.MARRENTILL;
-            case TARROMIN_POTION_UNF: return Herb.TARROMIN;
-            case HARRALANDER_POTION_UNF: return Herb.HARRALANDER;
-            case RANARR_POTION_UNF: return Herb.RANARR;
-            case TOADFLAX_POTION_UNF: return Herb.TOADFLAX;
-            case IRIT_POTION_UNF: return Herb.IRIT;
-            case AVANTOE_POTION_UNF: return Herb.AVANTOE;
-            case KWUARM_POTION_UNF: return Herb.KWUARM;
-            case SNAPDRAGON_POTION_UNF: return Herb.SNAPDRAGON;
-            case CADANTINE_POTION_UNF: return Herb.CADANTINE;
-            case LANTADYME_POTION_UNF: return Herb.LANTADYME;
-            case DWARF_WEED_POTION_UNF: return Herb.DWARF;
-            case TORSTOL_POTION_UNF: return Herb.TORSTOL;
-            default: return null;
+            case GUAM_POTION_UNF:
+                return Herb.GUAM;
+            case MARRENTILL_POTION_UNF:
+                return Herb.MARRENTILL;
+            case TARROMIN_POTION_UNF:
+                return Herb.TARROMIN;
+            case HARRALANDER_POTION_UNF:
+                return Herb.HARRALANDER;
+            case RANARR_POTION_UNF:
+                return Herb.RANARR;
+            case TOADFLAX_POTION_UNF:
+                return Herb.TOADFLAX;
+            case IRIT_POTION_UNF:
+                return Herb.IRIT;
+            case AVANTOE_POTION_UNF:
+                return Herb.AVANTOE;
+            case KWUARM_POTION_UNF:
+                return Herb.KWUARM;
+            case SNAPDRAGON_POTION_UNF:
+                return Herb.SNAPDRAGON;
+            case CADANTINE_POTION_UNF:
+                return Herb.CADANTINE;
+            case LANTADYME_POTION_UNF:
+                return Herb.LANTADYME;
+            case DWARF_WEED_POTION_UNF:
+                return Herb.DWARF;
+            case TORSTOL_POTION_UNF:
+                return Herb.TORSTOL;
+            default:
+                return null;
         }
     }
 }

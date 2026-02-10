@@ -28,10 +28,10 @@ public interface ArrowConfig extends Config {
             position = 0,
             section = generalSection
     )
-    default boolean ARROWBool()
-    {
+    default boolean ARROWBool() {
         return false;
     }
+
     @ConfigItem(
             keyName = "ArrowToMake",
             name = "Arrow to Make",
@@ -39,10 +39,10 @@ public interface ArrowConfig extends Config {
             position = 1,
             section = generalSection
     )
-    default Arrows ARROW()
-    {
+    default Arrows ARROW() {
         return Arrows.HEADLESS_ARROW;
     }
+
     @ConfigItem(
             keyName = "ActivateBolts",
             name = "Activate Bolt Making",
@@ -50,10 +50,10 @@ public interface ArrowConfig extends Config {
             position = 2,
             section = generalSection
     )
-    default boolean BOLTBool()
-    {
+    default boolean BOLTBool() {
         return false;
     }
+
     @ConfigItem(
             keyName = "BoltstoMake",
             name = "Bolts to Make",
@@ -61,10 +61,10 @@ public interface ArrowConfig extends Config {
             position = 3,
             section = generalSection
     )
-    default Bolts BOLT()
-    {
+    default Bolts BOLT() {
         return Bolts.BRONZE_BOLT;
     }
+
     @ConfigItem(
             keyName = "ActivateDarts",
             name = "Activate Dart Making",
@@ -72,10 +72,10 @@ public interface ArrowConfig extends Config {
             position = 4,
             section = generalSection
     )
-    default boolean DARTBool()
-    {
+    default boolean DARTBool() {
         return false;
     }
+
     @ConfigItem(
             keyName = "DartsToMake",
             name = "Darts to Make",
@@ -83,10 +83,10 @@ public interface ArrowConfig extends Config {
             position = 5,
             section = generalSection
     )
-    default Darts DART()
-    {
+    default Darts DART() {
         return Darts.BRONZE_DART;
     }
+
     @ConfigItem(
             keyName = "ActivateTipping",
             name = "Activate Tipping",
@@ -94,10 +94,10 @@ public interface ArrowConfig extends Config {
             position = 6,
             section = generalSection
     )
-    default boolean TIPPINGBool()
-    {
+    default boolean TIPPINGBool() {
         return false;
     }
+
     @ConfigItem(
             keyName = "TipsToAdd",
             name = "Tips to Add",
@@ -105,10 +105,10 @@ public interface ArrowConfig extends Config {
             position = 7,
             section = generalSection
     )
-    default Tipping TIP()
-    {
+    default Tipping TIP() {
         return Tipping.OPAL_TIPPED_BRONZE;
     }
+
     @ConfigItem(
             keyName = "ActivateDragonTipping",
             name = "Activate Dragon Tipping",
@@ -116,10 +116,10 @@ public interface ArrowConfig extends Config {
             position = 8,
             section = generalSection
     )
-    default boolean DRAGONTIPPINGBool()
-    {
+    default boolean DRAGONTIPPINGBool() {
         return false;
     }
+
     @ConfigItem(
             keyName = "DragonTipsToAdd",
             name = "Dragon Tips to Add",
@@ -127,8 +127,7 @@ public interface ArrowConfig extends Config {
             position = 9,
             section = generalSection
     )
-    default DragonTipping DragonTIP()
-    {
+    default DragonTipping DragonTIP() {
         return DragonTipping.OPAL_TIPPED_BRONZE;
     }
 }

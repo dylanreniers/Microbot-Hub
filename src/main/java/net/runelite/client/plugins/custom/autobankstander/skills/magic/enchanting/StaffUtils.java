@@ -15,6 +15,7 @@ public class StaffUtils {
 
     /**
      * Get the currently equipped staff if any
+     *
      * @return the equipped Rs2Staff or null if no staff is equipped
      */
     public static Rs2Staff getEquippedStaff() {
@@ -28,6 +29,7 @@ public class StaffUtils {
 
     /**
      * Get all rune IDs that are provided by the equipped staff
+     *
      * @return set of rune IDs that are unlimited due to equipped staff
      */
     public static Set<Integer> getProvidedRunes() {
@@ -44,6 +46,7 @@ public class StaffUtils {
     /**
      * Find the best available staff for the given required runes
      * Priority: 1) Provides all required runes, 2) Provides most required runes, 3) Single rune staff
+     *
      * @param requiredRunes array of rune IDs needed
      * @return the best available Rs2Staff or null if none found
      */
@@ -73,7 +76,8 @@ public class StaffUtils {
     /**
      * Calculate a score for how useful a staff is for the given required runes
      * Higher scores are better
-     * @param staff the staff to evaluate
+     *
+     * @param staff         the staff to evaluate
      * @param requiredRunes array of rune IDs needed
      * @return score indicating usefulness of the staff
      */
@@ -103,6 +107,7 @@ public class StaffUtils {
 
     /**
      * Try to equip the best available staff for the given required runes
+     *
      * @param requiredRunes array of rune IDs needed
      * @return true if a suitable staff was equipped, false otherwise
      */

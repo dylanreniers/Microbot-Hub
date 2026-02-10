@@ -2,11 +2,11 @@ package net.runelite.client.plugins.custom.woodcutting.Forestry;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.gameval.NpcID;
+import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingPlugin;
+import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
 import net.runelite.client.plugins.microbot.BlockingEvent;
 import net.runelite.client.plugins.microbot.BlockingEventPriority;
 import net.runelite.client.plugins.microbot.Microbot;
-import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingPlugin;
-import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
@@ -14,17 +14,30 @@ import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import java.util.stream.Collectors;
 
 import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
+
 @Slf4j
 public class FlowersEvent implements BlockingEvent {
 
     private final AutoWoodcuttingPlugin plugin;
+
     public FlowersEvent(AutoWoodcuttingPlugin plugin) {
         this.plugin = plugin;
     }
 
+    private static boolean isFloweringBush(int npcId) {
+        return npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL01 ||
+                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL02 ||
+                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL03 ||
+                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL04 ||
+                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL05 ||
+                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL06 ||
+                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL07 ||
+                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL08;
+    }
+
     @Override
     public boolean validate() {
-        try{
+        try {
             if (plugin == null || !Microbot.isPluginEnabled(plugin)) return false;
             if (Microbot.getClient() == null || !Microbot.isLoggedIn()) return false;
             var flowers = Rs2Npc.getNpcs(npc ->
@@ -50,7 +63,7 @@ public class FlowersEvent implements BlockingEvent {
         log.info("FlowersEvent: Executing Flowers event");
         while (this.validate()) {
             var flowers = Rs2Npc.getNpcs(npc ->
-                npc.getName() != null && isFloweringBush(npc.getId())
+                    npc.getName() != null && isFloweringBush(npc.getId())
             ).collect(Collectors.toList());
 
             if (flowers.isEmpty()) {
@@ -59,9 +72,9 @@ public class FlowersEvent implements BlockingEvent {
 
             // find a flower that hasn't been pollinated yet
             var availableFlower = flowers.stream()
-                .filter(flower -> flower.getAnimation() == -1)
-                .findFirst()
-                .orElse(null);
+                    .filter(flower -> flower.getAnimation() == -1)
+                    .findFirst()
+                    .orElse(null);
 
             if (availableFlower == null) {
                 // all flowers are being worked on, wait a bit
@@ -82,17 +95,5 @@ public class FlowersEvent implements BlockingEvent {
     @Override
     public BlockingEventPriority priority() {
         return BlockingEventPriority.NORMAL; // Set appropriate priority for this event
-    }
-
-    private static boolean isFloweringBush(int npcId)
-    {
-        return npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL01 ||
-                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL02 ||
-                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL03 ||
-                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL04 ||
-                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL05 ||
-                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL06 ||
-                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL07 ||
-                npcId == NpcID.GATHERING_EVENT_FLOWERING_TREE_BUSH_COL08;
     }
 }

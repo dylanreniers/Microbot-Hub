@@ -29,14 +29,13 @@ import java.awt.*;
 public class ArrowPlugin extends Plugin {
     final static String version = "1.0.1";
     @Inject
+    ArrowScript arrowScript;
+    @Inject
     private ArrowConfig config;
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private ArrowOverlay arrowOverlay;
-
-    @Inject
-    ArrowScript arrowScript;
 
     @Provides
     ArrowConfig provideConfig(ConfigManager configManager) {

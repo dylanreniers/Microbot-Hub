@@ -6,13 +6,11 @@ import net.runelite.client.ui.overlay.worldmap.WorldMapPoint;
 
 import java.awt.image.BufferedImage;
 
-class MahoganyHomesWorldPoint extends WorldMapPoint
-{
+class MahoganyHomesWorldPoint extends WorldMapPoint {
     private final DonderMahoganyHomesPlugin plugin;
     private final Point point;
 
-    MahoganyHomesWorldPoint(final WorldPoint worldPoint, final DonderMahoganyHomesPlugin plugin)
-    {
+    MahoganyHomesWorldPoint(final WorldPoint worldPoint, final DonderMahoganyHomesPlugin plugin) {
         super(worldPoint, null);
         this.plugin = plugin;
 
@@ -27,15 +25,13 @@ class MahoganyHomesWorldPoint extends WorldMapPoint
     }
 
     @Override
-    public void onEdgeSnap()
-    {
+    public void onEdgeSnap() {
         this.setImage(plugin.getMapIcon());
         this.setImagePoint(null);
     }
 
     @Override
-    public void onEdgeUnsnap()
-    {
+    public void onEdgeUnsnap() {
         this.setImage(plugin.getMapArrow());
         this.setImagePoint(point);
     }

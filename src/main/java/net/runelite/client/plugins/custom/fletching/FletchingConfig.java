@@ -4,14 +4,28 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.plugins.custom.fletching.enums.FletchingItem;
 import net.runelite.client.plugins.custom.fletching.enums.FletchingMaterial;
 import net.runelite.client.plugins.custom.fletching.enums.FletchingMode;
-import net.runelite.client.plugins.custom.fletching.enums.FletchingItem;
 
 @ConfigGroup(FletchingConfig.GROUP)
 public interface FletchingConfig extends Config {
 
     String GROUP = "Fletching";
+    @ConfigSection(
+            name = "General",
+            description = "General",
+            position = 0,
+            closedByDefault = false
+    )
+    String generalSection = "general";
+    @ConfigSection(
+            name = "Antiban",
+            description = "Configure antiban measures",
+            position = 1,
+            closedByDefault = false
+    )
+    String antibanSection = "antiban";
 
     @ConfigItem(
             keyName = "guide",
@@ -24,14 +38,6 @@ public interface FletchingConfig extends Config {
                 "Make sure to have a bank and all the logs in your bank";
     }
 
-    @ConfigSection(
-            name = "General",
-            description = "General",
-            position = 0,
-            closedByDefault = false
-    )
-    String generalSection = "general";
-
     @ConfigItem(
             keyName = "Mode",
             name = "Mode",
@@ -39,10 +45,10 @@ public interface FletchingConfig extends Config {
             position = 0,
             section = generalSection
     )
-    default FletchingMode fletchingMode()
-    {
+    default FletchingMode fletchingMode() {
         return FletchingMode.UNSTRUNG;
     }
+
     @ConfigItem(
             keyName = "Material",
             name = "Material",
@@ -50,10 +56,10 @@ public interface FletchingConfig extends Config {
             position = 1,
             section = generalSection
     )
-    default FletchingMaterial fletchingMaterial()
-    {
+    default FletchingMaterial fletchingMaterial() {
         return FletchingMaterial.LOG;
     }
+
     @ConfigItem(
             keyName = "Item",
             name = "Item",
@@ -61,17 +67,10 @@ public interface FletchingConfig extends Config {
             position = 2,
             section = generalSection
     )
-    default FletchingItem fletchingItem()
-    {
+    default FletchingItem fletchingItem() {
         return FletchingItem.SHORT;
     }
-    @ConfigSection(
-            name = "Antiban",
-            description = "Configure antiban measures",
-            position = 1,
-            closedByDefault = false
-    )
-    String antibanSection = "antiban";
+
     @ConfigItem(
             keyName = "Afk",
             name = "Afk randomly",
@@ -79,8 +78,7 @@ public interface FletchingConfig extends Config {
             position = 0,
             section = antibanSection
     )
-    default boolean Afk()
-    {
+    default boolean Afk() {
         return false;
     }
 }

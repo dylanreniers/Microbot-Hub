@@ -37,7 +37,9 @@ public class DeathHandler implements BaseHandler {
 
     @Override
     public State execute() {
-        if (debugLogging) {Microbot.log("Player detected near Lumbridge spawn. Starting death handler sequence");}
+        if (debugLogging) {
+            Microbot.log("Player detected near Lumbridge spawn. Starting death handler sequence");
+        }
         if (shutdownOnDeath) {
             Microbot.showMessage("Script shut down due to player death");
             script.shutdown();
@@ -48,8 +50,8 @@ public class DeathHandler implements BaseHandler {
             if (retrieveDeathItems()) {
                 sleep(1_200);
                 equipDeathItems();
-                }
             }
+        }
         return null;
     }
 
@@ -78,20 +80,26 @@ public class DeathHandler implements BaseHandler {
 
     private boolean retrieveDeathItems() {
         WorldPoint graveLocation = new WorldPoint(1440, 9626, 1);
-        if (debugLogging) {Microbot.log("Attempting to walk back to grave site");}
+        if (debugLogging) {
+            Microbot.log("Attempting to walk back to grave site");
+        }
         Rs2Walker.walkTo(graveLocation, 2);
         sleepUntil(() -> (Rs2Player.getWorldLocation().distanceTo(graveLocation) <= 3), 60_000);
         if (Rs2Npc.interact(NpcID.GRAVESTONE_DEFAULT, "Loot")) {
-            if (debugLogging) {Microbot.log("Successfully looted gravestone");}
+            if (debugLogging) {
+                Microbot.log("Successfully looted gravestone");
+            }
             return true;
         }
         return false;
     }
 
     private void equipDeathItems() {
-        if (debugLogging) {Microbot.log("Attempting to equip items retrieved");}
+        if (debugLogging) {
+            Microbot.log("Attempting to equip items retrieved");
+        }
         List<Rs2ItemModel> items = Rs2Inventory.all();
-        for (Rs2ItemModel i:items) {
+        for (Rs2ItemModel i : items) {
             Rs2Inventory.equip(i.getId());
             sleep(300);
         }

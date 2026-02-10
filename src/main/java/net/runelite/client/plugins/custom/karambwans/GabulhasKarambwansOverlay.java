@@ -10,12 +10,12 @@ import java.awt.*;
 
 public class GabulhasKarambwansOverlay extends OverlayPanel {
     @Inject
-    GabulhasKarambwansOverlay(GabulhasKarambwansPlugin plugin)
-    {
+    GabulhasKarambwansOverlay(GabulhasKarambwansPlugin plugin) {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
         setNaughty();
     }
+
     @Override
     public Dimension render(Graphics2D graphics) {
         try {
@@ -26,7 +26,7 @@ public class GabulhasKarambwansOverlay extends OverlayPanel {
                     .build());
 
 
-        } catch(Exception ex) {
+        } catch (Exception ex) {
             Microbot.logStackTrace(this.getClass().getSimpleName(), ex);
         }
         return super.render(graphics);

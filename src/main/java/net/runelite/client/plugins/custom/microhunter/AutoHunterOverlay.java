@@ -12,12 +12,12 @@ import java.awt.*;
 public class AutoHunterOverlay extends OverlayPanel {
 
     @Inject
-    AutoHunterOverlay(AutoHunterPlugin plugin)
-    {
+    AutoHunterOverlay(AutoHunterPlugin plugin) {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
         setNaughty();
     }
+
     @Override
     public Dimension render(Graphics2D graphics) {
         try {
@@ -34,7 +34,7 @@ public class AutoHunterOverlay extends OverlayPanel {
                     .build());
 
 
-        } catch(Exception ex) {
+        } catch (Exception ex) {
             Microbot.logStackTrace(this.getClass().getSimpleName(), ex);
         }
         return super.render(graphics);

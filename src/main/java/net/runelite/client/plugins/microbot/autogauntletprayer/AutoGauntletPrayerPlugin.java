@@ -288,9 +288,9 @@ public class AutoGauntletPrayerPlugin extends Plugin {
         if (!config.MysticMight()) {
             Rs2Prayer.toggle(Rs2PrayerEnum.RIGOUR, true);
         } else {
-            if (!Rs2Prayer.isPrayerActive(Rs2PrayerEnum.STEEL_SKIN)) {
+            /* if (!Rs2Prayer.isPrayerActive(Rs2PrayerEnum.STEEL_SKIN)) {
                 Rs2Prayer.toggle(Rs2PrayerEnum.STEEL_SKIN, true);
-            }
+            } */
             Rs2Prayer.toggle(Rs2PrayerEnum.EAGLE_EYE, true);
         }
     }
@@ -299,9 +299,9 @@ public class AutoGauntletPrayerPlugin extends Plugin {
         if (!config.MysticMight()) {
             Rs2Prayer.toggle(Rs2PrayerEnum.AUGURY, true);
         } else {
-            if (!Rs2Prayer.isPrayerActive(Rs2PrayerEnum.STEEL_SKIN)) {
+            /* if (!Rs2Prayer.isPrayerActive(Rs2PrayerEnum.STEEL_SKIN)) {
                 Rs2Prayer.toggle(Rs2PrayerEnum.STEEL_SKIN, true);
-            }
+            } */
             Rs2Prayer.toggle(Rs2PrayerEnum.MYSTIC_MIGHT, true);
         }
     }
@@ -310,9 +310,9 @@ public class AutoGauntletPrayerPlugin extends Plugin {
         if (!config.MysticMight()) {
             Rs2Prayer.toggle(Rs2PrayerEnum.PIETY, true);
         } else {
-            if (!Rs2Prayer.isPrayerActive(Rs2PrayerEnum.STEEL_SKIN)) {
+            /* if (!Rs2Prayer.isPrayerActive(Rs2PrayerEnum.STEEL_SKIN)) {
                 Rs2Prayer.toggle(Rs2PrayerEnum.STEEL_SKIN, true);
-            }
+            } */
             Rs2Prayer.toggle(Rs2PrayerEnum.ULTIMATE_STRENGTH, true);
             Rs2Prayer.toggle(Rs2PrayerEnum.INCREDIBLE_REFLEXES, true);
         }

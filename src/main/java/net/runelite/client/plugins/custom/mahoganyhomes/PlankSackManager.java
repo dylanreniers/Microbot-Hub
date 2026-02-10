@@ -23,20 +23,18 @@ import java.util.List;
 @Singleton
 public class PlankSackManager {
 
-    private static final List<Integer> PLANK_IDS = Arrays.asList(
-        ItemID.PLANK,
-        ItemID.OAK_PLANK,
-        ItemID.TEAK_PLANK,
-        ItemID.MAHOGANY_PLANK
-    );
-
     public static final List<String> PLANK_NAMES = Arrays.asList(
-        "Plank",
-        "Oak plank",
-        "Teak plank",
-        "Mahogany plank"
+            "Plank",
+            "Oak plank",
+            "Teak plank",
+            "Mahogany plank"
     );
-
+    private static final List<Integer> PLANK_IDS = Arrays.asList(
+            ItemID.PLANK,
+            ItemID.OAK_PLANK,
+            ItemID.TEAK_PLANK,
+            ItemID.MAHOGANY_PLANK
+    );
     private final Client client;
 
     @Getter
@@ -73,8 +71,8 @@ public class PlankSackManager {
     private void parsePlankCountFromMessage(String message) {
         try {
             int totalPlanks = Arrays.stream(message.split(","))
-                .mapToInt(s -> Integer.parseInt(s.split(":\u00A0")[1]))
-                .sum();
+                    .mapToInt(s -> Integer.parseInt(s.split(":\u00A0")[1]))
+                    .sum();
             setPlankCount(totalPlanks);
         } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
             log.warn("Failed to parse plank count from message: {}", message, e);
@@ -88,8 +86,8 @@ public class PlankSackManager {
 
         Multiset<Integer> snapshot = HashMultiset.create();
         Arrays.stream(container.getItems())
-            .filter(item -> PLANK_IDS.contains(item.getId()))
-            .forEach(item -> snapshot.add(item.getId(), item.getQuantity()));
+                .filter(item -> PLANK_IDS.contains(item.getId()))
+                .forEach(item -> snapshot.add(item.getId(), item.getQuantity()));
 
         return snapshot;
     }

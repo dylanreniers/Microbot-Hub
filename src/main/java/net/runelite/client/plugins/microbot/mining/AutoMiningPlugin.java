@@ -26,20 +26,18 @@ import java.awt.*;
 public class AutoMiningPlugin extends Plugin {
     public static final String version = "1.0.10";
     @Inject
+    AutoMiningScript autoMiningScript;
+    @Inject
     private AutoMiningConfig config;
-    @Provides
-    AutoMiningConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(AutoMiningConfig.class);
-    }
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private AutoMiningOverlay autoMiningOverlay;
 
-    @Inject
-    AutoMiningScript autoMiningScript;
-
+    @Provides
+    AutoMiningConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(AutoMiningConfig.class);
+    }
 
     @Override
     protected void startUp() throws AWTException {

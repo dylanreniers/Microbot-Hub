@@ -20,7 +20,7 @@ import java.awt.*;
 @PluginDescriptor(
         name = PluginConstants.MOCROSOFT + "Nmz",
         description = "Plays the nightmare zone minigame",
-        authors = { "Mocrosoft" },
+        authors = {"Mocrosoft"},
         version = NmzPlugin.version,
         minClientVersion = "2.1.0",
         cardUrl = "https://chsami.github.io/Microbot-Hub/NmzPlugin/assets/card.png",
@@ -33,22 +33,20 @@ import java.awt.*;
 public class NmzPlugin extends Plugin {
     final static String version = "2.3.0";
     @Inject
+    NmzScript nmzScript;
+    @Inject
+    PrayerPotionScript prayerPotionScript;
+    @Inject
     private NmzConfig config;
-
-    @Provides
-    NmzConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(NmzConfig.class);
-    }
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private NmzOverlay nmzOverlay;
 
-    @Inject
-    NmzScript nmzScript;
-    @Inject
-    PrayerPotionScript prayerPotionScript;
+    @Provides
+    NmzConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(NmzConfig.class);
+    }
 
     @Override
     protected void startUp() throws AWTException {

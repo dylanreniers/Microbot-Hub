@@ -1,7 +1,3 @@
-
-
-
-
 package net.runelite.client.plugins.custom.blastoisefurnace;
 
 import net.runelite.client.config.Config;
@@ -21,11 +17,17 @@ public interface BlastoiseFurnaceConfig extends Config {
             closedByDefault = false
     )
     String bFSettingsSection = "bFSettings";
+    @ConfigSection(
+            name = "Credits",
+            description = "Credits",
+            position = 2,
+            closedByDefault = false
+    )
+    String Credits = "Credits";
 
     default boolean useStamina() {
         return true;
     }
-
 
     @ConfigItem(
             keyName = "Bars",
@@ -37,13 +39,7 @@ public interface BlastoiseFurnaceConfig extends Config {
     default Bars getBars() {
         return Bars.STEEL_BAR;
     }
-    @ConfigSection(
-            name = "Credits",
-            description = "Credits",
-            position = 2,
-            closedByDefault = false
-    )
-    String Credits = "Credits";
+
     @ConfigItem(
             keyName = "Credits",
             name = "Credits",

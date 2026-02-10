@@ -1,7 +1,11 @@
 package net.runelite.client.plugins.microbot.barrows;
 
 import net.runelite.api.gameval.ItemID;
-import net.runelite.client.config.*;
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigGroup;
+import net.runelite.client.config.ConfigInformation;
+import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.Range;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 import net.runelite.client.plugins.microbot.util.misc.Rs2Food;
 
@@ -14,17 +18,20 @@ public interface BarrowsConfig extends Config {
             description = "Inventory Setup to use for Barrows",
             position = 0
     )
-    default InventorySetup inventorySetup() { return null; }
+    default InventorySetup inventorySetup() {
+        return null;
+    }
+
     @ConfigItem(
             keyName = "Food",
             name = "Food",
             description = "type of food",
             position = 1
     )
-    default Rs2Food food()
-    {
+    default Rs2Food food() {
         return Rs2Food.POTATO_WITH_CHEESE;
     }
+
     @ConfigItem(
             keyName = "targetFoodAmount",
             name = "Max Food Amount",
@@ -55,30 +62,6 @@ public interface BarrowsConfig extends Config {
     )
     default prayerRestoreType prayerRestoreType() {
         return prayerRestoreType.Prayer_Potion; // Default selection
-    }
-
-    enum prayerRestoreType {
-        Prayer_Potion(ItemID._4DOSEPRAYERRESTORE, "Prayer potion(4)"),
-        MoonlightMothMix(ItemID.HUNTER_MIX_MOONMOTH_2DOSE, "Moonlight moth mix (2)"),
-        MoonlightMoth(ItemID.BUTTERFLY_JAR_MOONMOTH, "Moonlight moth");
-
-        private final int id;
-        private final String name;
-
-        prayerRestoreType(int id, String name) {
-            this.id = id;
-            this.name = name;
-        }
-
-
-        public int getPrayerRestoreTypeID() {
-            return id;
-        }
-
-        public String getPrayerRestoreTypeName() {
-            return name;
-        }
-
     }
 
     @ConfigItem(
@@ -135,29 +118,6 @@ public interface BarrowsConfig extends Config {
         return selectedToBarrowsTPMethod.Tablet; // Default selection
     }
 
-    enum selectedToBarrowsTPMethod {
-        Tablet(ItemID.TELETAB_BARROWS, "Barrows teleport"),
-        POH(ItemID.POH_TABLET_TELEPORTTOHOUSE, "Teleport to house");
-
-        private final int id;
-        private final String name;
-
-        selectedToBarrowsTPMethod(int id, String name) {
-            this.id = id;
-            this.name = name;
-        }
-
-
-        public int getToBarrowsTPMethodItemID() {
-            return id;
-        }
-
-        public String getToBarrowsTPMethodItemName() {
-            return name;
-        }
-
-    }
-
     @ConfigItem(
             keyName = "targetBarrowsTeleports",
             name = "Max Barrows Teleports",
@@ -209,6 +169,53 @@ public interface BarrowsConfig extends Config {
     )
     default boolean shouldPrayAgainstWeakerBrothers() {
         return true;
+    }
+
+    enum prayerRestoreType {
+        Prayer_Potion(ItemID._4DOSEPRAYERRESTORE, "Prayer potion(4)"),
+        MoonlightMothMix(ItemID.HUNTER_MIX_MOONMOTH_2DOSE, "Moonlight moth mix (2)"),
+        MoonlightMoth(ItemID.BUTTERFLY_JAR_MOONMOTH, "Moonlight moth");
+
+        private final int id;
+        private final String name;
+
+        prayerRestoreType(int id, String name) {
+            this.id = id;
+            this.name = name;
+        }
+
+
+        public int getPrayerRestoreTypeID() {
+            return id;
+        }
+
+        public String getPrayerRestoreTypeName() {
+            return name;
+        }
+
+    }
+
+    enum selectedToBarrowsTPMethod {
+        Tablet(ItemID.TELETAB_BARROWS, "Barrows teleport"),
+        POH(ItemID.POH_TABLET_TELEPORTTOHOUSE, "Teleport to house");
+
+        private final int id;
+        private final String name;
+
+        selectedToBarrowsTPMethod(int id, String name) {
+            this.id = id;
+            this.name = name;
+        }
+
+
+        public int getToBarrowsTPMethodItemID() {
+            return id;
+        }
+
+        public String getToBarrowsTPMethodItemName() {
+            return name;
+        }
+
     }
 
 }

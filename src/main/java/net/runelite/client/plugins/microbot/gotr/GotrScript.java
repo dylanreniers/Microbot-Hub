@@ -1,7 +1,16 @@
 package net.runelite.client.plugins.microbot.gotr;
 
 import com.google.common.collect.ImmutableList;
-import net.runelite.api.*;
+import net.runelite.api.DynamicObject;
+import net.runelite.api.GameObject;
+import net.runelite.api.ItemID;
+import net.runelite.api.NPC;
+import net.runelite.api.NpcID;
+import net.runelite.api.ObjectID;
+import net.runelite.api.Quest;
+import net.runelite.api.QuestState;
+import net.runelite.api.Skill;
+import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.game.ItemManager;
@@ -29,7 +38,15 @@ import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -40,31 +57,24 @@ import static net.runelite.client.plugins.microbot.Microbot.log;
 
 public class GotrScript extends Script {
 
-    public static long totalTime = 0;
-    public static boolean shouldMineGuardianRemains = true;
     public static final String rewardPointRegex = "Total elemental energy:[^>]+>([\\d,]+).*Total catalytic energy:[^>]+>([\\d,]+).";
     public static final Pattern rewardPointPattern = Pattern.compile(rewardPointRegex);
-
-    public static boolean isInMiniGame = false;
-    public static boolean isFirstPortal = true;
     public static final int portalId = ObjectID.PORTAL_43729;
     public static final int greatGuardianId = 11403;
     public static final Map<Integer, GuardianPortalInfo> guardianPortalInfo = new HashMap<>();
-    public static Optional<Instant> nextGameStart = Optional.empty();
-    public static Optional<Instant> timeSincePortal = Optional.empty();
     public static final Set<GameObject> guardians = new HashSet<>();
     public static final List<GameObject> activeGuardianPortals = new ArrayList<>();
+    public static long totalTime = 0;
+    public static boolean shouldMineGuardianRemains = true;
+    public static boolean isInMiniGame = false;
+    public static boolean isFirstPortal = true;
+    public static Optional<Instant> nextGameStart = Optional.empty();
+    public static Optional<Instant> timeSincePortal = Optional.empty();
     public static NPC greatGuardian;
     public static int elementalRewardPoints;
     public static int catalyticRewardPoints;
     public static GotrState state;
     static GotrConfig config;
-    String GUARDIAN_FRAGMENTS = "guardian fragments";
-    String GUARDIAN_ESSENCE = "guardian essence";
-
-    boolean initCheck = false;
-    boolean optimizedEssenceLoop = false;
-
     static boolean useNpcContact = true;
     private final List<Integer> runeIds = ImmutableList.of(
             ItemID.NATURE_RUNE,
@@ -88,6 +98,241 @@ public class GotrScript extends Script {
             ItemID.MIST_RUNE,
             ItemID.MUD_RUNE,
             ItemID.WRATH_RUNE);
+    String GUARDIAN_FRAGMENTS = "guardian fragments";
+    String GUARDIAN_ESSENCE = "guardian essence";
+    boolean initCheck = false;
+    boolean optimizedEssenceLoop = false;
+
+    private static boolean waitForMinigameToStart() {
+        if (!isInMainRegion()) {
+            TileObject rcPortal = findPortalToLeaveAltar();
+            if (rcPortal != null && Rs2GameObject.interact(rcPortal.getId())) {
+                state = GotrState.LEAVING_ALTAR;
+                return true;
+            }
+        }
+        resetPlugin();
+        if (state != GotrState.WAITING) {
+            state = GotrState.WAITING;
+            log("Make sure to start the script near the minigame barrier.");
+            Rs2GameObject.interact(ObjectID.BARRIER_43849, "Peek");
+        }
+        return state == GotrState.WAITING;
+    }
+
+    private static boolean enterMinigame() {
+        if (Rs2GameObject.interact(ObjectID.BARRIER_43700, "quick-pass")) {
+            Rs2Player.waitForWalking();
+            state = GotrState.ENTER_GAME;
+            GotrScript.shouldMineGuardianRemains = true;
+            log("Entering game...");
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean repairPouches() {
+        if (!useNpcContact) {
+            repairWithCordelia();
+            return true;
+        }
+        if (Rs2Inventory.hasDegradedPouch()) {
+            return Rs2Magic.repairPouchesWithLunar();
+        }
+        return false;
+    }
+
+    /**
+     * Repair pouch by talking to cordelia
+     * make sure to have the repair unlocked for 25 pearls
+     */
+    private static void repairWithCordelia() {
+        if (!Rs2Inventory.hasDegradedPouch()) return;
+        if (!Rs2Inventory.hasItem(ItemID.ABYSSAL_PEARLS)) return;
+        Rs2NpcModel pouchRepairNpc = Rs2Npc.getNpc(NpcID.APPRENTICE_CORDELIA_12180);
+        if (pouchRepairNpc == null) return;
+        if (!Rs2Npc.hasAction(pouchRepairNpc.getId(), "Repair")) return;
+        if (!Rs2Npc.canWalkTo(pouchRepairNpc, 10)) return;
+        if (!Rs2Npc.interact(pouchRepairNpc, "Repair")) return;
+
+        Microbot.log("Repairing pouches...");
+
+        Global.sleepUntil(() -> {
+            Rs2Dialogue.clickContinue();
+            return !Rs2Inventory.hasDegradedPouch();
+        }, 10000);
+
+    }
+
+    public static boolean isOutsideBarrier() {
+        int outsideBarrierY = 9482;
+        return Rs2Player.getWorldLocation().getY() <= outsideBarrierY
+                && Rs2Player.getWorldLocation().getRegionID() == 14484;
+    }
+
+    public static boolean isInLargeMine() {
+        int largeMineX = 3637;
+        return Rs2Player.getWorldLocation().getRegionID() == 14484
+                && Microbot.getClient().getLocalPlayer().getWorldLocation().getX() >= largeMineX;
+    }
+
+    public static boolean isGuardianPortal(GameObject gameObject) {
+        return guardianPortalInfo.containsKey(gameObject.getId());
+    }
+
+    public static boolean isInMainRegion() {
+        return Rs2Player.getWorldLocation().getRegionID() == 14484;
+    }
+
+    public static int getStartTimer() {
+        Widget timerWidget = Rs2Widget.getWidget(48889861);
+        if (timerWidget != null) {
+            String timer = timerWidget.getText();
+            if (timer == null) return -1;
+            // Split the timer string into minutes and seconds
+            String[] timeParts = timer.split(":");
+
+            // Ensure there are two parts (minutes and seconds)
+            if (timeParts.length == 2) {
+                int minutes = Integer.parseInt(timeParts[0]);
+                int seconds = Integer.parseInt(timeParts[1]);
+
+                // Convert the timer to total seconds
+                int totalSeconds = (minutes * 60) + seconds;
+                return totalSeconds;
+            }
+        }
+        return -1;
+    }
+
+    public static int getTimeSincePortal() {
+        if (getStartTimer() == -1) {
+            return -1;
+        }
+        int firstPortalTimeAdjustment = isFirstPortal ? 40 : 0;
+        return timeSincePortal.map(instant -> (int) ChronoUnit.SECONDS.between(instant, Instant.now()) - firstPortalTimeAdjustment).orElse(-1);
+
+    }
+
+    public static List<GameObject> getAvailableAltars() {
+        int elementalPoints = elementalRewardPoints;
+        int catalyticPoints = catalyticRewardPoints;
+        List<GameObject> availableAltars = Rs2GameObject.getGameObjects().stream()
+                .filter(x -> {
+
+                    if (!guardianPortalInfo.containsKey(x.getId())) return false;
+
+                    GuardianPortalInfo portalInfo = GotrScript.guardianPortalInfo.get(x.getId());
+
+                    if (portalInfo.getRequiredLevel()
+                            > Microbot.getClient().getBoostedSkillLevel(Skill.RUNECRAFT)) {
+                        Microbot.log("Filtered altar " + portalInfo.getName() + " – insufficient RC level");
+                        return false;
+                    }
+                    if (portalInfo.getQuestState() != QuestState.FINISHED) {
+                        Microbot.log("Filtered altar " + portalInfo.getName() + " – quest not complete");
+                        return false;
+                    }
+
+                    if (((DynamicObject) x.getRenderable()).getAnimation() == null) {
+                        return false;
+                    }
+                    if (((DynamicObject) x.getRenderable()).getAnimation().getId() != 9363) {
+                        return false;
+                    }
+                    Microbot.log("Adding " + portalInfo.getName() + " to list of available altars");
+                    return true;
+
+                })
+                .collect(Collectors.toList());
+
+        Microbot.log("Found " + availableAltars.size() + " active altars after filtering.");
+
+        if (config.Mode() == Mode.POINTS) {
+            // Sort by strongest → weakest CellType; if equal, fall back to balancing points
+            Microbot.log("Sorting by CellType (strongest→weakest) for POINTS mode...");
+            return availableAltars.stream()
+                    .sorted(
+                            Comparator.<GameObject>comparingInt(
+                                            o -> GotrScript.guardianPortalInfo.get(o.getId()).getCellType().ordinal()
+                                    ).reversed()
+                                    .thenComparingInt(o -> {
+                                        RuneType rt = GotrScript.guardianPortalInfo.get(o.getId()).getRuneType();
+                                        boolean preferElemental = elementalPoints < catalyticPoints;
+                                        return ((preferElemental && rt == RuneType.ELEMENTAL) ||
+                                                (!preferElemental && rt == RuneType.CATALYTIC)) ? 0 : 1;
+                                    })
+                    )
+                    .peek(o -> Microbot.log("Altar " +
+                            GotrScript.guardianPortalInfo.get(o.getId()).getName() + " – " +
+                            GotrScript.guardianPortalInfo.get(o.getId()).getCellType()))
+                    .collect(Collectors.toList());
+        }
+
+        if ((config.Mode() == Mode.BALANCED && elementalPoints < catalyticPoints) || config.Mode() == Mode.ELEMENTAL) {
+            Microbot.log(elementalPoints < catalyticPoints
+                    ? "We have " + elementalPoints + " elemental points, looking for elemental altar..."
+                    : "We have " + catalyticPoints + " catalytic points, looking for catalytic altar...");
+
+            Microbot.log("Sorting for BALANCED/ELEMENTAL mode (" +
+                    (elementalPoints < catalyticPoints ? "Elemental priority" : "Catalytic priority") + ")");
+
+            return availableAltars.stream()
+                    .sorted(
+                            (elementalPoints < catalyticPoints)
+                                    ? Comparator.comparingInt(TileObject::getId)
+                                    : Comparator.comparingInt(TileObject::getId).reversed()
+                    )
+                    .collect(Collectors.toList());
+        }
+        Microbot.log("Returning unsorted altars (default mode).");
+        return availableAltars;
+    }
+
+    public static void resetPlugin() {
+        guardians.clear();
+        activeGuardianPortals.clear();
+        greatGuardian = null;
+        Microbot.getClient().clearHintArrow();
+    }
+
+    public static TileObject findRcAltar() {
+        Integer[] altarIds = new Integer[]{ObjectID.ALTAR_34760, ObjectID.ALTAR_34761, ObjectID.ALTAR_34762, ObjectID.ALTAR_34763, ObjectID.ALTAR_34764,
+                ObjectID.ALTAR_34765, ObjectID.ALTAR_34766, ObjectID.ALTAR_34767, ObjectID.ALTAR_34768, ObjectID.ALTAR_34769, ObjectID.ALTAR_34770,
+                ObjectID.ALTAR_34771, ObjectID.ALTAR_34772, ObjectID.ALTAR_43479};
+        return Rs2GameObject.findObject(altarIds);
+    }
+
+    public static TileObject findPortalToLeaveAltar() {
+        Integer[] altarIds = new Integer[]{ObjectID.PORTAL_34748, ObjectID.PORTAL_34749, ObjectID.PORTAL_34750, ObjectID.PORTAL_34751, ObjectID.PORTAL_34752,
+                ObjectID.PORTAL_34753, ObjectID.PORTAL_34754, ObjectID.PORTAL_34755, ObjectID.PORTAL_34756, ObjectID.PORTAL_34757, ObjectID.PORTAL_34758,
+                ObjectID.PORTAL_34758, ObjectID.PORTAL_34759, ObjectID.PORTAL_43478};
+        return Rs2GameObject.findObject(altarIds);
+    }
+
+    public static boolean leaveMinigame() {
+        GotrScript.isInMiniGame = !isOutsideBarrier() && isInMainRegion();
+        if (!isInMiniGame) {
+            return true;    // Already outside the minigame, successfully left
+        }
+        if (isInLargeMine()) {
+            Rs2GameObject.interact(ObjectID.RUBBLE_43726);
+            Rs2Player.waitForAnimation();
+            sleepUntil(() -> !isInLargeMine());
+            if (isInLargeMine()) {
+                log("Failed to leave large mine, retrying...");
+                return false;// Retry leaving large mine
+            }
+
+        }
+        Rs2GameObject.interact(ObjectID.BARRIER_43700, "quick-pass");
+        Rs2Player.waitForWalking();
+        sleepUntil(() -> {
+            return !(!isOutsideBarrier() && isInMainRegion());
+        }, 200);
+        GotrScript.isInMiniGame = !isOutsideBarrier() && isInMainRegion();
+        return !GotrScript.isInMiniGame;// Successfully left the minigame
+    }
 
     private void initializeGuardianPortalInfo() {
         guardianPortalInfo.put(ObjectID.GUARDIAN_OF_AIR, new GuardianPortalInfo("AIR", 1, ItemID.AIR_RUNE, 26887, 4353, RuneType.ELEMENTAL, CellType.WEAK, QuestState.FINISHED));
@@ -153,7 +398,7 @@ public class GotrScript extends Script {
                 if (isInMiniGame) {
 
                     if (waitingForGameToStart(timeToStart)) return;
-            
+
 
                     if (!Rs2Inventory.hasItem("Uncharged cell") && !isInLargeMine() && !isInHugeMine()) {
                         takeUnchargedCells();
@@ -182,7 +427,8 @@ public class GotrScript extends Script {
                         if (!Rs2Inventory.isFull() && !optimizedEssenceLoop) {
                             if (leaveLargeMine()) return;
 
-                            if (state == GotrState.CRAFT_GUARDIAN_ESSENCE && (Rs2Player.isAnimating() || Rs2Player.isMoving())) return;
+                            if (state == GotrState.CRAFT_GUARDIAN_ESSENCE && (Rs2Player.isAnimating() || Rs2Player.isMoving()))
+                                return;
 
                             if (craftGuardianEssences()) return;
 
@@ -192,7 +438,7 @@ public class GotrScript extends Script {
                         }
                     } else {
                         if (getGuardiansPower() > 70) {
-                            if (Rs2Inventory.hasItemAmount(GUARDIAN_FRAGMENTS, Rs2Random.between(Rs2Inventory.emptySlotCount()+Rs2Inventory.getRemainingCapacityInPouches(), Rs2Inventory.emptySlotCount()+Rs2Inventory.getRemainingCapacityInPouches()+3))) {
+                            if (Rs2Inventory.hasItemAmount(GUARDIAN_FRAGMENTS, Rs2Random.between(Rs2Inventory.emptySlotCount() + Rs2Inventory.getRemainingCapacityInPouches(), Rs2Inventory.emptySlotCount() + Rs2Inventory.getRemainingCapacityInPouches() + 3))) {
                                 shouldMineGuardianRemains = false;
                             }
                         } else {
@@ -249,9 +495,9 @@ public class GotrScript extends Script {
             }
 
             repairPouches();
-    
+
             if (!shouldMineGuardianRemains) return true;
-    
+
             mineGuardianRemains();
             return true;
         }
@@ -299,7 +545,6 @@ public class GotrScript extends Script {
         }
         return false;
     }
-
 
     private void takeUnchargedCells() {
 
@@ -365,7 +610,7 @@ public class GotrScript extends Script {
             log("Crafting guardian essences...");
             return true;
         }
-       return false;
+        return false;
     }
 
     private boolean leaveLargeMine() {
@@ -391,7 +636,7 @@ public class GotrScript extends Script {
     private boolean isOutOfFragments() {
         if ((!Rs2Inventory.hasItem(GUARDIAN_FRAGMENTS) && !Rs2Inventory.isFull()) || (getTimeSincePortal() > 85 && !Rs2Inventory.hasItem(GUARDIAN_ESSENCE))) {
             shouldMineGuardianRemains = true;
-            if(!Rs2Inventory.hasItem(GUARDIAN_FRAGMENTS))
+            if (!Rs2Inventory.hasItem(GUARDIAN_FRAGMENTS))
                 log("Memorize that we no longer have guardian fragments...");
 
             return true;
@@ -421,40 +666,12 @@ public class GotrScript extends Script {
                     TileObject rcPortal = findPortalToLeaveAltar();
                     if (Rs2GameObject.interact(rcPortal.getId())) {
                         log("Leaving the altar...");
-                        sleepUntilTrue(GotrScript::isInMainRegion,100,10000);
+                        sleepUntilTrue(GotrScript::isInMainRegion, 100, 10000);
                         sleep(Rs2Random.randomGaussian(750, 150));
                     }
                 }
                 return true;
             }
-        }
-        return false;
-    }
-
-    private static boolean waitForMinigameToStart() {
-        if (!isInMainRegion()) {
-            TileObject rcPortal = findPortalToLeaveAltar();
-            if (rcPortal != null && Rs2GameObject.interact(rcPortal.getId())) {
-                state = GotrState.LEAVING_ALTAR;
-                return true;
-            }
-        }
-        resetPlugin();
-        if (state != GotrState.WAITING) {
-            state = GotrState.WAITING;
-            log("Make sure to start the script near the minigame barrier.");
-            Rs2GameObject.interact(ObjectID.BARRIER_43849, "Peek");
-        }
-        return state == GotrState.WAITING;
-    }
-
-    private static boolean enterMinigame() {
-        if (Rs2GameObject.interact(ObjectID.BARRIER_43700, "quick-pass")) {
-            Rs2Player.waitForWalking();
-            state = GotrState.ENTER_GAME;
-            GotrScript.shouldMineGuardianRemains = true;
-            log("Entering game...");
-            return true;
         }
         return false;
     }
@@ -483,7 +700,7 @@ public class GotrScript extends Script {
                 }
             } else {
                 if (Rs2Inventory.allPouchesFull()) {
-                    if(Rs2Inventory.hasItem("guardian stone"))
+                    if (Rs2Inventory.hasItem("guardian stone"))
                         optimizedEssenceLoop = true;
                     leaveHugeMine();
                 } else {
@@ -542,7 +759,7 @@ public class GotrScript extends Script {
         } else {
             //guardian parts
             if (!Rs2Player.isAnimating() && getStartTimer() != -1) {
-                if(isInLargeMine()) {
+                if (isInLargeMine()) {
                     leaveLargeMine();
                 }
                 if (Rs2Equipment.isWearing("dragon pickaxe")) {
@@ -564,65 +781,16 @@ public class GotrScript extends Script {
 
     }
 
-    private static boolean repairPouches() {
-        if (!useNpcContact) {
-            repairWithCordelia();
-            return true;
-        }
-        if (Rs2Inventory.hasDegradedPouch()) {
-            return Rs2Magic.repairPouchesWithLunar();
-        }
-        return false;
-    }
-
-    /**
-     * Repair pouch by talking to cordelia
-     * make sure to have the repair unlocked for 25 pearls
-     */
-    private static void repairWithCordelia() {
-        if (!Rs2Inventory.hasDegradedPouch()) return;
-        if (!Rs2Inventory.hasItem(ItemID.ABYSSAL_PEARLS)) return;
-        Rs2NpcModel pouchRepairNpc = Rs2Npc.getNpc(NpcID.APPRENTICE_CORDELIA_12180);
-        if (pouchRepairNpc == null) return;
-        if (!Rs2Npc.hasAction(pouchRepairNpc.getId(), "Repair")) return;
-        if (!Rs2Npc.canWalkTo(pouchRepairNpc, 10)) return;
-        if (!Rs2Npc.interact(pouchRepairNpc, "Repair")) return;
-
-        Microbot.log("Repairing pouches...");
-
-        Global.sleepUntil(() -> {
-            Rs2Dialogue.clickContinue();
-            return !Rs2Inventory.hasDegradedPouch();
-        }, 10000);
-
-    }
-
     @Override
     public void shutdown() {
         state = null;
         super.shutdown();
     }
 
-    public static boolean isOutsideBarrier() {
-        int outsideBarrierY = 9482;
-        return Rs2Player.getWorldLocation().getY() <= outsideBarrierY
-                && Rs2Player.getWorldLocation().getRegionID() == 14484;
-    }
-
-    public  static boolean isInLargeMine() {
-        int largeMineX = 3637;
-        return Rs2Player.getWorldLocation().getRegionID() == 14484
-                && Microbot.getClient().getLocalPlayer().getWorldLocation().getX() >= largeMineX;
-    }
-
-    public  boolean isInHugeMine() {
+    public boolean isInHugeMine() {
         int hugeMineX = 3594;
         return Rs2Player.getWorldLocation().getRegionID() == 14484
                 && Microbot.getClient().getLocalPlayer().getWorldLocation().getX() <= hugeMineX;
-    }
-
-    public static boolean isGuardianPortal(GameObject gameObject) {
-        return guardianPortalInfo.containsKey(gameObject.getId());
     }
 
     public ItemManager getItemManager() {
@@ -635,115 +803,6 @@ public class GotrScript extends Script {
         return elementalRuneWidget != null;
     }
 
-    public static boolean isInMainRegion() {
-        return Rs2Player.getWorldLocation().getRegionID() == 14484;
-    }
-
-    public static int getStartTimer() {
-        Widget timerWidget = Rs2Widget.getWidget(48889861);
-        if (timerWidget != null) {
-            String timer = timerWidget.getText();
-            if (timer == null) return -1;
-            // Split the timer string into minutes and seconds
-            String[] timeParts = timer.split(":");
-
-            // Ensure there are two parts (minutes and seconds)
-            if (timeParts.length == 2) {
-                int minutes = Integer.parseInt(timeParts[0]);
-                int seconds = Integer.parseInt(timeParts[1]);
-
-                // Convert the timer to total seconds
-                int totalSeconds = (minutes * 60) + seconds;
-                return totalSeconds;
-            }
-        }
-        return -1;
-    }
-
-    public static int getTimeSincePortal() {
-        if(getStartTimer() == -1) {
-            return -1;
-        }
-        int firstPortalTimeAdjustment = isFirstPortal ? 40 : 0;
-        return timeSincePortal.map(instant -> (int) ChronoUnit.SECONDS.between(instant, Instant.now())-firstPortalTimeAdjustment).orElse(-1);
-
-    }
-
-    public static List<GameObject> getAvailableAltars() {
-        int elementalPoints = elementalRewardPoints;
-        int catalyticPoints = catalyticRewardPoints;
-        List<GameObject> availableAltars = Rs2GameObject.getGameObjects().stream()
-                .filter(x -> {
-
-                    if (!guardianPortalInfo.containsKey(x.getId())) return false;
-
-                    GuardianPortalInfo portalInfo = GotrScript.guardianPortalInfo.get(x.getId());
-
-                    if (portalInfo.getRequiredLevel()
-                            > Microbot.getClient().getBoostedSkillLevel(Skill.RUNECRAFT)) {
-                        Microbot.log("Filtered altar " + portalInfo.getName() + " – insufficient RC level");
-                        return false;
-                    }
-                    if (portalInfo.getQuestState() != QuestState.FINISHED) {
-                        Microbot.log("Filtered altar " + portalInfo.getName() + " – quest not complete");
-                        return false;
-                    }
-
-                    if (((DynamicObject) x.getRenderable()).getAnimation() == null) {
-                        return false;
-                    }
-                    if (((DynamicObject) x.getRenderable()).getAnimation().getId() != 9363) {
-                        return false;
-                    }
-                    Microbot.log("Adding " + portalInfo.getName() + " to list of available altars");
-                    return true;
-
-                })
-                .collect(Collectors.toList());
-
-        Microbot.log("Found " + availableAltars.size() + " active altars after filtering.");
-
-        if (config.Mode() == Mode.POINTS) {
-            // Sort by strongest → weakest CellType; if equal, fall back to balancing points
-            Microbot.log("Sorting by CellType (strongest→weakest) for POINTS mode...");
-            return availableAltars.stream()
-                    .sorted(
-                            Comparator.<GameObject>comparingInt(
-                                            o -> GotrScript.guardianPortalInfo.get(o.getId()).getCellType().ordinal()
-                                    ).reversed()
-                                    .thenComparingInt(o -> {
-                                        RuneType rt = GotrScript.guardianPortalInfo.get(o.getId()).getRuneType();
-                                        boolean preferElemental = elementalPoints < catalyticPoints;
-                                        return ((preferElemental && rt == RuneType.ELEMENTAL) ||
-                                                (!preferElemental && rt == RuneType.CATALYTIC)) ? 0 : 1;
-                                    })
-                    )
-                    .peek(o -> Microbot.log("Altar " +
-                            GotrScript.guardianPortalInfo.get(o.getId()).getName() + " – " +
-                            GotrScript.guardianPortalInfo.get(o.getId()).getCellType()))
-                    .collect(Collectors.toList());
-        }
-
-        if ((config.Mode() == Mode.BALANCED && elementalPoints < catalyticPoints) || config.Mode() == Mode.ELEMENTAL) {
-            Microbot.log(elementalPoints < catalyticPoints
-                    ? "We have " + elementalPoints + " elemental points, looking for elemental altar..."
-                    : "We have " + catalyticPoints +" catalytic points, looking for catalytic altar...");
-
-            Microbot.log("Sorting for BALANCED/ELEMENTAL mode (" +
-                    (elementalPoints < catalyticPoints ? "Elemental priority" : "Catalytic priority") + ")");
-
-            return availableAltars.stream()
-                    .sorted(
-                            (elementalPoints < catalyticPoints)
-                                    ? Comparator.comparingInt(TileObject::getId)
-                                    : Comparator.comparingInt(TileObject::getId).reversed()
-                    )
-                    .collect(Collectors.toList());
-        }
-        Microbot.log("Returning unsorted altars (default mode).");
-        return availableAltars;
-    }
-
     private int getGuardiansPower() {
         Widget pWidget = Rs2Widget.getWidget(48889874);
         if (pWidget == null) {
@@ -753,47 +812,5 @@ public class GotrScript extends Script {
         Matcher matcher = Pattern.compile("(\\d+)%").matcher(pWidget.getText());
 
         return matcher.find() ? Integer.parseInt(matcher.group(1)) : 0;
-    }
-
-    public static void resetPlugin() {
-        guardians.clear();
-        activeGuardianPortals.clear();
-        greatGuardian = null;
-        Microbot.getClient().clearHintArrow();
-    }
-
-    public static TileObject findRcAltar() {
-        Integer[] altarIds = new Integer[] {ObjectID.ALTAR_34760, ObjectID.ALTAR_34761, ObjectID.ALTAR_34762, ObjectID.ALTAR_34763, ObjectID.ALTAR_34764,
-                ObjectID.ALTAR_34765, ObjectID.ALTAR_34766, ObjectID.ALTAR_34767, ObjectID.ALTAR_34768, ObjectID.ALTAR_34769, ObjectID.ALTAR_34770,
-                ObjectID.ALTAR_34771, ObjectID.ALTAR_34772, ObjectID.ALTAR_43479};
-        return Rs2GameObject.findObject(altarIds);
-    }
-
-    public static TileObject findPortalToLeaveAltar() {
-        Integer[] altarIds = new Integer[] {ObjectID.PORTAL_34748, ObjectID.PORTAL_34749, ObjectID.PORTAL_34750, ObjectID.PORTAL_34751, ObjectID.PORTAL_34752,
-                ObjectID.PORTAL_34753, ObjectID.PORTAL_34754, ObjectID.PORTAL_34755, ObjectID.PORTAL_34756, ObjectID.PORTAL_34757, ObjectID.PORTAL_34758,
-                ObjectID.PORTAL_34758, ObjectID.PORTAL_34759, ObjectID.PORTAL_43478};
-        return Rs2GameObject.findObject(altarIds);
-    }
-    public static boolean leaveMinigame() {
-        GotrScript.isInMiniGame = !isOutsideBarrier() && isInMainRegion(); 
-        if (!isInMiniGame) {
-            return true;    // Already outside the minigame, successfully left     
-        }
-        if(isInLargeMine()) {
-            Rs2GameObject.interact(ObjectID.RUBBLE_43726);
-            Rs2Player.waitForAnimation();
-            sleepUntil(()-> !isInLargeMine());
-            if (isInLargeMine()){
-                log("Failed to leave large mine, retrying...");
-                return false;// Retry leaving large mine
-            }
-            
-        }        
-        Rs2GameObject.interact(ObjectID.BARRIER_43700, "quick-pass");
-        Rs2Player.waitForWalking();
-        sleepUntil( ()-> {return !(!isOutsideBarrier() && isInMainRegion());}, 200);
-        GotrScript.isInMiniGame  = !isOutsideBarrier() && isInMainRegion();
-        return !GotrScript.isInMiniGame;// Successfully left the minigame
     }
 }

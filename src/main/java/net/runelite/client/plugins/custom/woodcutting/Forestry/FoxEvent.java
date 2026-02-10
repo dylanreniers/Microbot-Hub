@@ -3,10 +3,10 @@ package net.runelite.client.plugins.custom.woodcutting.Forestry;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingPlugin;
+import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
 import net.runelite.client.plugins.microbot.BlockingEvent;
 import net.runelite.client.plugins.microbot.BlockingEventPriority;
 import net.runelite.client.plugins.microbot.Microbot;
-import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
@@ -16,13 +16,14 @@ import org.slf4j.event.Level;
 public class FoxEvent implements BlockingEvent {
 
     private final AutoWoodcuttingPlugin plugin;
+
     public FoxEvent(AutoWoodcuttingPlugin plugin) {
         this.plugin = plugin;
     }
 
     @Override
     public boolean validate() {
-        try{
+        try {
             if (plugin == null || !Microbot.isPluginEnabled(plugin)) return false;
             if (Microbot.getClient() == null || !Microbot.isLoggedIn()) return false;
             var outDoorFox = Rs2Npc.getNpc(NpcID.GATHERING_EVENT_POACHERS_FOX_OUTDOORS);

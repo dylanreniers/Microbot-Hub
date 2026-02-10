@@ -11,7 +11,6 @@ import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-
 import java.util.Optional;
 
 import static net.runelite.client.plugins.microbot.util.Global.sleep;
@@ -33,15 +32,15 @@ public class FeroxService {
         this.rs2TileObjectCache = rs2TileObjectCache;
     }
 
+    public static boolean isNearFerox() {
+        return Rs2Player.getWorldLocation().distanceTo(BankLocation.FEROX_ENCLAVE.getWorldPoint()) <= 50;
+    }
+
     public void teleportToFerox() {
         if (!isNearFerox() && Rs2Equipment.isWearing(RING_OF_DUELING, false)) {
             Rs2Equipment.interact(EquipmentInventorySlot.RING, FEROX_ENCLAVE);
             sleepUntil(FeroxService::isNearFerox);
         }
-    }
-
-    public static boolean isNearFerox() {
-        return Rs2Player.getWorldLocation().distanceTo(BankLocation.FEROX_ENCLAVE.getWorldPoint()) <= 50;
     }
 
     public void restoreAtFerox() {
@@ -56,7 +55,7 @@ public class FeroxService {
         if (poolOfRefreshment.isPresent()) {
             poolOfRefreshment.get().click(DRINK);
             sleepUntil(this::isPrayerAndRunSufficient, 15000); //takes a bit longer to run to the pool
-        }  else {
+        } else {
             log.info("Pool of Refreshment not found.");
         }
     }

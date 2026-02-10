@@ -47,8 +47,8 @@ public class DiscordPanel extends PluginPanel {
         enableNotificationsCheckbox.setSelected(config.enableNotifications());
         enableNotificationsCheckbox.setForeground(Color.WHITE);
         enableNotificationsCheckbox.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-        enableNotificationsCheckbox.addActionListener(e -> 
-            plugin.updateConfig("enableNotifications", enableNotificationsCheckbox.isSelected()));
+        enableNotificationsCheckbox.addActionListener(e ->
+                plugin.updateConfig("enableNotifications", enableNotificationsCheckbox.isSelected()));
         add(enableNotificationsCheckbox, c);
 
         c.gridy++;
@@ -63,12 +63,12 @@ public class DiscordPanel extends PluginPanel {
         JPanel eventPanel = new JPanel(new GridBagLayout());
         eventPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         eventPanel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(ColorScheme.BRAND_ORANGE),
-            "Event Notifications",
-            TitledBorder.LEFT,
-            TitledBorder.TOP,
-            new Font("Arial", Font.BOLD, 12),
-            Color.WHITE
+                BorderFactory.createLineBorder(ColorScheme.BRAND_ORANGE),
+                "Event Notifications",
+                TitledBorder.LEFT,
+                TitledBorder.TOP,
+                new Font("Arial", Font.BOLD, 12),
+                Color.WHITE
         ));
 
         GridBagConstraints ec = new GridBagConstraints();
@@ -83,7 +83,7 @@ public class DiscordPanel extends PluginPanel {
         loginLogoutCheckbox.setForeground(Color.WHITE);
         loginLogoutCheckbox.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         loginLogoutCheckbox.addActionListener(e ->
-            plugin.updateConfig("notifyLoginLogout", loginLogoutCheckbox.isSelected()));
+                plugin.updateConfig("notifyLoginLogout", loginLogoutCheckbox.isSelected()));
         eventPanel.add(loginLogoutCheckbox, ec);
 
         ec.gridy++;
@@ -92,7 +92,7 @@ public class DiscordPanel extends PluginPanel {
         deathCheckbox.setForeground(Color.WHITE);
         deathCheckbox.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         deathCheckbox.addActionListener(e ->
-            plugin.updateConfig("notifyDeath", deathCheckbox.isSelected()));
+                plugin.updateConfig("notifyDeath", deathCheckbox.isSelected()));
         eventPanel.add(deathCheckbox, ec);
 
         ec.gridy++;
@@ -101,7 +101,7 @@ public class DiscordPanel extends PluginPanel {
         levelUpCheckbox.setForeground(Color.WHITE);
         levelUpCheckbox.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         levelUpCheckbox.addActionListener(e ->
-            plugin.updateConfig("notifyLevelUp", levelUpCheckbox.isSelected()));
+                plugin.updateConfig("notifyLevelUp", levelUpCheckbox.isSelected()));
         eventPanel.add(levelUpCheckbox, ec);
 
         ec.gridy++;
@@ -116,7 +116,7 @@ public class DiscordPanel extends PluginPanel {
 
         JPanel thresholdPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         thresholdPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-        
+
         JLabel thresholdLabel = new JLabel("Min Value:");
         thresholdLabel.setForeground(Color.WHITE);
         thresholdPanel.add(thresholdLabel);
@@ -124,8 +124,8 @@ public class DiscordPanel extends PluginPanel {
         SpinnerNumberModel spinnerModel = new SpinnerNumberModel(100000, 1, Integer.MAX_VALUE, 1000);
         JSpinner thresholdSpinner = new JSpinner(spinnerModel);
         thresholdSpinner.setPreferredSize(new Dimension(100, 25));
-        thresholdSpinner.addChangeListener(e -> 
-            plugin.updateConfig("valuableItemThreshold", (Integer) thresholdSpinner.getValue()));
+        thresholdSpinner.addChangeListener(e ->
+                plugin.updateConfig("valuableItemThreshold", (Integer) thresholdSpinner.getValue()));
         thresholdPanel.add(thresholdSpinner);
 
         JLabel gpLabel = new JLabel("gp");
@@ -139,7 +139,7 @@ public class DiscordPanel extends PluginPanel {
             plugin.updateConfig("notifyValuableItems", valuableItemCheckbox.isSelected());
             thresholdPanel.setVisible(valuableItemCheckbox.isSelected());
         });
-        
+
         thresholdPanel.setVisible(valuableItemCheckbox.isSelected());
 
         valuableItemPanel.add(valuableItemCheckbox, vic);
@@ -202,4 +202,4 @@ public class DiscordPanel extends PluginPanel {
 
         add(eventPanel, c);
     }
-} 
+}

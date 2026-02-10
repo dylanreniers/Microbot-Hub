@@ -28,6 +28,10 @@ public class LocationService {
     @Inject
     private final Rs2TileObjectCache rs2TileObjectCache;
 
+    public static boolean isNearFerox() {
+        return Rs2Player.getWorldLocation().distanceTo(BankLocation.FEROX_ENCLAVE.getWorldPoint()) <= 50;
+    }
+
     public void teleportToFerox() {
         if (!isNearFerox() && Rs2Equipment.isWearing("Ring of dueling", false)) {
             Rs2Equipment.interact(EquipmentInventorySlot.RING, FEROX_ENCLAVE);
@@ -46,9 +50,5 @@ public class LocationService {
                 .where(IEntity::isReachable)
                 .where(object -> object.getId() == POH_PORTAL_ID)
                 .nearestOnClientThread(40) != null);
-    }
-
-    public static boolean isNearFerox() {
-        return Rs2Player.getWorldLocation().distanceTo(BankLocation.FEROX_ENCLAVE.getWorldPoint()) <= 50;
     }
 }

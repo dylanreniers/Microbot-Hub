@@ -4,14 +4,14 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.plugins.custom.autobankstander.config.ConfigData;
 import net.runelite.client.plugins.custom.autobankstander.processors.BankStandingProcessor;
 import net.runelite.client.plugins.custom.autobankstander.processors.SkillType;
+import net.runelite.client.plugins.custom.autobankstander.skills.fletching.FletchingProcessor;
 import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.FletchingMode;
+import net.runelite.client.plugins.custom.autobankstander.skills.herblore.HerbloreProcessor;
 import net.runelite.client.plugins.custom.autobankstander.skills.magic.MagicMethod;
+import net.runelite.client.plugins.custom.autobankstander.skills.magic.enchanting.EnchantingProcessor;
 import net.runelite.client.plugins.custom.autobankstander.skills.magic.lunars.LunarsProcessor;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
-import net.runelite.client.plugins.custom.autobankstander.skills.fletching.FletchingProcessor;
-import net.runelite.client.plugins.custom.autobankstander.skills.herblore.HerbloreProcessor;
-import net.runelite.client.plugins.custom.autobankstander.skills.magic.enchanting.EnchantingProcessor;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 

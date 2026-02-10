@@ -7,24 +7,23 @@ import net.runelite.client.ui.overlay.components.LineComponent;
 import net.runelite.client.ui.overlay.components.TitleComponent;
 
 import javax.inject.Inject;
-import javax.inject.Named;
 import java.awt.*;
 
 public class BarrowsOverlay extends OverlayPanel {
 
     @Inject
-    BarrowsOverlay(BarrowsPlugin plugin)
-    {
+    BarrowsOverlay(BarrowsPlugin plugin) {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
         setNaughty();
     }
+
     @Override
     public Dimension render(Graphics2D graphics) {
         try {
             panelComponent.setPreferredSize(new Dimension(200, 300));
             panelComponent.getChildren().add(TitleComponent.builder()
-                    .text("Barrows V"+BarrowsPlugin.version)
+                    .text("Barrows V" + BarrowsPlugin.version)
                     .color(Color.GREEN)
                     .build());
 
@@ -54,8 +53,7 @@ public class BarrowsOverlay extends OverlayPanel {
                     .build());
 
 
-
-        } catch(Exception ex) {
+        } catch (Exception ex) {
             System.out.println(ex.getMessage());
         }
         return super.render(graphics);

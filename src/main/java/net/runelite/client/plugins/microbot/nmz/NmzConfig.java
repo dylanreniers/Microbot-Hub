@@ -1,6 +1,10 @@
 package net.runelite.client.plugins.microbot.nmz;
 
-import net.runelite.client.config.*;
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigGroup;
+import net.runelite.client.config.ConfigInformation;
+import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.ConfigSection;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 
 @ConfigGroup("nmz")
@@ -32,7 +36,9 @@ public interface NmzConfig extends Config {
             position = 1,
             section = generalSection
     )
-    default InventorySetup inventorySetup() { return null; }
+    default InventorySetup inventorySetup() {
+        return null;
+    }
 
     @ConfigItem(
             keyName = "inventorySetupon",
@@ -41,7 +47,9 @@ public interface NmzConfig extends Config {
             position = 1,
             section = generalSection
     )
-    default boolean inventorySetupon() { return true; }
+    default boolean inventorySetupon() {
+        return true;
+    }
 
     @ConfigItem(
             keyName = "How many overload potions to use",
@@ -50,8 +58,7 @@ public interface NmzConfig extends Config {
             position = 3,
             section = generalSection
     )
-    default int overloadPotionAmount()
-    {
+    default int overloadPotionAmount() {
         return 8;
     }
 
@@ -62,8 +69,7 @@ public interface NmzConfig extends Config {
             position = 4,
             section = generalSection
     )
-    default int absorptionPotionAmount()
-    {
+    default int absorptionPotionAmount() {
         return 19;
     }
 
@@ -74,8 +80,7 @@ public interface NmzConfig extends Config {
             position = 4,
             section = generalSection
     )
-    default boolean stopAfterDeath()
-    {
+    default boolean stopAfterDeath() {
         return true;
     }
 
@@ -86,8 +91,7 @@ public interface NmzConfig extends Config {
             position = 4,
             section = generalSection
     )
-    default boolean useZapper()
-    {
+    default boolean useZapper() {
         return false;
     }
 
@@ -98,8 +102,7 @@ public interface NmzConfig extends Config {
             position = 4,
             section = generalSection
     )
-    default boolean useReccurentDamage()
-    {
+    default boolean useReccurentDamage() {
         return false;
     }
 
@@ -110,10 +113,10 @@ public interface NmzConfig extends Config {
             position = 4,
             section = generalSection
     )
-    default boolean usePowerSurge()
-    {
+    default boolean usePowerSurge() {
         return false;
     }
+
     @ConfigItem(
             keyName = "Auto Prayer Potion",
             name = "Auto drink prayer potion",
@@ -121,10 +124,10 @@ public interface NmzConfig extends Config {
             position = 5,
             section = generalSection
     )
-    default boolean togglePrayerPotions()
-    {
+    default boolean togglePrayerPotions() {
         return false;
     }
+
     @ConfigItem(
             keyName = "Random Mouse Movements",
             name = "Random Mouse Movements",
@@ -132,10 +135,10 @@ public interface NmzConfig extends Config {
             position = 6,
             section = generalSection
     )
-    default boolean randomMouseMovements()
-    {
+    default boolean randomMouseMovements() {
         return true;
     }
+
     @ConfigItem(
             keyName = "Walk to center",
             name = "Walk to center",
@@ -143,10 +146,10 @@ public interface NmzConfig extends Config {
             position = 7,
             section = generalSection
     )
-    default boolean walkToCenter()
-    {
+    default boolean walkToCenter() {
         return true;
     }
+
     @ConfigItem(
             keyName = "Randomly trigger rapid heal",
             name = "Randomly trigger rapid heal",
@@ -154,8 +157,7 @@ public interface NmzConfig extends Config {
             position = 8,
             section = generalSection
     )
-    default boolean randomlyTriggerRapidHeal()
-    {
+    default boolean randomlyTriggerRapidHeal() {
         return true;
     }
 }

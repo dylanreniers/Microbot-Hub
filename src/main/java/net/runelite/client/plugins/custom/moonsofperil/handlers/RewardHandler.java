@@ -23,11 +23,11 @@ public class RewardHandler implements BaseHandler {
     private static final WorldPoint rewardChestLocation = Locations.REWARDS_CHEST_LOBBY.getWorldPoint();
     private static final int lunarChestGameObjectID = 51346;
     private static final int lunarChestBankAllWidgetID = 56885268;
+    private final boolean debugLogging;
+    private final BossHandler boss;
     private boolean eclipseEnabled;
     private boolean blueEnabled;
     private boolean bloodEnabled;
-    private final boolean debugLogging;
-    private final BossHandler boss;
 
     @Inject
     public RewardHandler(MoonsOfPerilConfig cfg) {
@@ -51,12 +51,16 @@ public class RewardHandler implements BaseHandler {
         BreakHandlerScript.setLockState(true);
         boss.walkToBoss(null, "Rewards Chest", rewardChestLocation);
         if (Rs2GameObject.interact(lunarChestGameObjectID, "Claim")) {
-            if (debugLogging) {Microbot.log("Successfully claimed rewards from Lunar Chest");}
+            if (debugLogging) {
+                Microbot.log("Successfully claimed rewards from Lunar Chest");
+            }
             rewardChestCount.incrementAndGet();
             sleep(2_400);
         }
         if (Rs2Widget.clickWidget(lunarChestBankAllWidgetID)) {
-            if (debugLogging) {Microbot.log("Successfully banked all rewards");}
+            if (debugLogging) {
+                Microbot.log("Successfully banked all rewards");
+            }
             sleep(1_200);
         }
         BreakHandlerScript.setLockState(false);

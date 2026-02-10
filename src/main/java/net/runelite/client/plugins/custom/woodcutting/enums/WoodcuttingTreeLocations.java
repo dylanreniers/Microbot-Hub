@@ -68,11 +68,11 @@ public class WoodcuttingTreeLocations {
                 .collect(Collectors.toList());
     }
 
-     /**
+    /**
      * Gets the best accessible resource location for a tree type with minimum resource requirements.
      * Prioritizes accessible locations, then resource count, then proximity to player.
      *
-     * @param tree The tree type to find locations for
+     * @param tree         The tree type to find locations for
      * @param minResources Minimum number of tree spawns required
      * @return The best location meeting criteria, or null if none found
      */
@@ -142,25 +142,25 @@ public class WoodcuttingTreeLocations {
         // Lumbridge - great for beginners, close to bank
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3192, 3223, 0),
-                "Lumbridge General Trees",false,5
+                "Lumbridge General Trees", false, 5
         ));
 
         // Grand Exchange area - convenient banking
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3151, 3231, 0),
-                "Grand Exchange Trees",false,1
+                "Grand Exchange Trees", false, 1
         ));
 
         // Varrock East - multiple trees
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3227, 3457, 0),
-                "Varrock East Trees",false,1
+                "Varrock East Trees", false, 1
         ));
 
         // Falador Trees
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3002, 3374, 0),
-                "Falador Trees",false,1
+                "Falador Trees", false, 1
         ));
 
         return locations;
@@ -172,19 +172,19 @@ public class WoodcuttingTreeLocations {
         // Lumbridge area - best for low levels
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3190, 3247, 0),
-                "Lumbridge Oak Trees",false,1
+                "Lumbridge Oak Trees", false, 1
         ));
 
         // Varrock West Bank area
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3085, 3481, 0),
-                "Varrock West Oak Trees",false,1
+                "Varrock West Oak Trees", false, 1
         ));
 
         // Draynor Village
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3103, 3279, 0),
-                "Draynor Village Oak Trees",false,1
+                "Draynor Village Oak Trees", false, 1
         ));
 
         return locations;
@@ -196,19 +196,19 @@ public class WoodcuttingTreeLocations {
         // Port Sarim - excellent with nearby deposit box
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3059, 3253, 0),
-                "Port Sarim Willow Trees",false,1
+                "Port Sarim Willow Trees", false, 1
         ));
 
         // Draynor Village - popular location
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3088, 3235, 0),
-                "Draynor Village Willow Trees",false,1
+                "Draynor Village Willow Trees", false, 1
         ));
 
         // Barbarian Outpost
         locations.add(new ResourceLocationOption(
                 new WorldPoint(2532, 3565, 0),
-                "Barbarian Outpost Willow Trees",false,1
+                "Barbarian Outpost Willow Trees", false, 1
         ));
 
         return locations;
@@ -220,7 +220,7 @@ public class WoodcuttingTreeLocations {
         // Castle Wars area - very popular for teaks
         locations.add(new ResourceLocationOption(
                 new WorldPoint(2335, 3048, 0),
-                "Castle Wars Teak Trees",true,1
+                "Castle Wars Teak Trees", true, 1
         ));
 
         // Ape Atoll - requires quest
@@ -228,7 +228,7 @@ public class WoodcuttingTreeLocations {
         apeAtollQuests.put(Quest.MONKEY_MADNESS_I, QuestState.FINISHED);
         locations.add(new ResourceLocationOption(
                 new WorldPoint(2774, 2697, 0),
-                "Ape Atoll Teak Trees",true,1,
+                "Ape Atoll Teak Trees", true, 1,
                 apeAtollQuests,
                 new HashMap<>(),
                 new HashMap<>(),
@@ -241,7 +241,7 @@ public class WoodcuttingTreeLocations {
         mosLeHarmlessQuests.put(Quest.CABIN_FEVER, QuestState.FINISHED);
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3832, 3067, 0),
-                "Mos Le'Harmless Teak Trees",true,1,
+                "Mos Le'Harmless Teak Trees", true, 1,
                 mosLeHarmlessQuests,
                 new HashMap<>(),
                 new HashMap<>(),
@@ -258,7 +258,7 @@ public class WoodcuttingTreeLocations {
         // Seers' Village - very popular location
         locations.add(new ResourceLocationOption(
                 new WorldPoint(2720, 3465, 0),
-                "Seers' Village Maple Trees" ,true,1
+                "Seers' Village Maple Trees", true, 1
         ));
 
         return locations;
@@ -273,7 +273,7 @@ public class WoodcuttingTreeLocations {
         locations.add(new ResourceLocationOption(
                 new WorldPoint(2716, 2710, 0),
                 "Ape Atoll Mahogany Trees",
-                true,1,
+                true, 1,
                 apeAtollQuests,
                 new HashMap<>(),
                 new HashMap<>(),
@@ -287,9 +287,9 @@ public class WoodcuttingTreeLocations {
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3824, 3053, 0),
                 "Mos Le'Harmless Mahogany Trees",
-                true,1,
+                true, 1,
                 mosLeHarmlessQuests,
-              new HashMap<>(),
+                new HashMap<>(),
                 new HashMap<>(),
                 new HashMap<>(),
                 new HashMap<>()
@@ -307,7 +307,7 @@ public class WoodcuttingTreeLocations {
         locations.add(new ResourceLocationOption(
                 new WorldPoint(1591, 3483, 0),
                 "Woodcutting Guild Yew Trees",
-                true,1,
+                true, 1,
                 new HashMap<>(),
                 wcGuildSkills,
                 new HashMap<>(),
@@ -320,19 +320,19 @@ public class WoodcuttingTreeLocations {
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3052, 3272, 0),
                 "Falador Yew Trees",
-                false,1
+                false, 1
         ));
 
         // Lumbridge
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3165, 3220, 0),
-                "Lumbridge Yew Trees",false,1
+                "Lumbridge Yew Trees", false, 1
         ));
 
         // Seers' Village
         locations.add(new ResourceLocationOption(
                 new WorldPoint(2711, 3463, 0),
-                "Seers' Village Yew Trees",true,1
+                "Seers' Village Yew Trees", true, 1
         ));
 
         return locations;
@@ -347,9 +347,9 @@ public class WoodcuttingTreeLocations {
         locations.add(new ResourceLocationOption(
                 new WorldPoint(3631, 3362, 0),
                 "Darkmeyer Blisterwood Trees",
-                true,1,
+                true, 1,
                 darkmeberQuests,
-                  new HashMap<>(),
+                new HashMap<>(),
                 new HashMap<>(),
                 new HashMap<>(),
                 new HashMap<>()
@@ -366,7 +366,7 @@ public class WoodcuttingTreeLocations {
         wcGuildSkills.put(Skill.WOODCUTTING, 60);
         locations.add(new ResourceLocationOption(
                 new WorldPoint(1610, 3443, 0),
-                "Woodcutting Guild Magic Trees",true,1,
+                "Woodcutting Guild Magic Trees", true, 1,
                 new HashMap<>(),
                 wcGuildSkills,
                 new HashMap<>(),
@@ -377,9 +377,8 @@ public class WoodcuttingTreeLocations {
         // Sorcerer's Tower
         locations.add(new ResourceLocationOption(
                 new WorldPoint(2704, 3397, 0),
-                "Sorcerer's Tower Magic Tree",true,1
+                "Sorcerer's Tower Magic Tree", true, 1
         ));
-
 
 
         return locations;
@@ -394,7 +393,7 @@ public class WoodcuttingTreeLocations {
         locations.add(new ResourceLocationOption(
                 new WorldPoint(1569, 3493, 0),
                 "Woodcutting Guild Redwood Trees",
-                true,1,
+                true, 1,
                 new HashMap<>(),
                 wcGuildSkills,
                 new HashMap<>(),

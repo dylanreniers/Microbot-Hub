@@ -2,21 +2,23 @@
 
 ## 🎯 **Overview**
 
-This guide documents the refactoring of the Guardians of the Rift (GOTR) script from a monolithic 795-line class into a maintainable, service-oriented architecture.
+This guide documents the refactoring of the Guardians of the Rift (GOTR) script from a monolithic 795-line class into a
+maintainable, service-oriented architecture.
 
 ## 📊 **Before vs After**
 
-| **Metric** | **Before** | **After** | **Improvement** |
-|------------|------------|-----------|-----------------|
-| Lines of code | 795 lines | ~400 lines main + 5 services | **50% reduction in main class** |
-| Cyclomatic complexity | Very High | Medium | **Much easier to understand** |
-| Testability | Poor | Good | **Services can be unit tested** |
-| Maintainability | Difficult | Easy | **Clear separation of concerns** |
-| Magic numbers | 50+ scattered | 0 (all in constants) | **100% elimination** |
+| **Metric**            | **Before**    | **After**                    | **Improvement**                  |
+|-----------------------|---------------|------------------------------|----------------------------------|
+| Lines of code         | 795 lines     | ~400 lines main + 5 services | **50% reduction in main class**  |
+| Cyclomatic complexity | Very High     | Medium                       | **Much easier to understand**    |
+| Testability           | Poor          | Good                         | **Services can be unit tested**  |
+| Maintainability       | Difficult     | Easy                         | **Clear separation of concerns** |
+| Magic numbers         | 50+ scattered | 0 (all in constants)         | **100% elimination**             |
 
 ## 🏗️ **Refactored Architecture**
 
 ### **1. GotrConstants**
+
 Centralized location for all magic numbers and configuration values.
 
 ```java
@@ -38,6 +40,7 @@ public final class GotrConstants {
 ### **2. Service Classes**
 
 #### **LocationService**
+
 - Handles all location-based checks
 - Determines current game area (main region, large mine, huge mine)
 - Checks barrier status
@@ -53,7 +56,8 @@ public class LocationService {
 }
 ```
 
-#### **TimerService**  
+#### **TimerService**
+
 - Manages all timer-related functionality
 - Tracks game start times, portal spawn times
 - Parses timer widgets
@@ -69,6 +73,7 @@ public class TimerService {
 ```
 
 #### **MiningService**
+
 - Handles all mining operations
 - Manages mine entry/exit logic
 - Coordinates different mining strategies
@@ -84,6 +89,7 @@ public class MiningService {
 ```
 
 #### **PouchService**
+
 - Manages pouch operations (fill, empty, check, repair)
 - Handles both NPC Contact and Cordelia repair methods
 - Coordinates pouch state checking
@@ -99,6 +105,7 @@ public class PouchService {
 ```
 
 #### **AltarService**
+
 - Manages altar selection and interaction
 - Implements different sorting strategies (points, balanced, elemental)
 - Handles runecrafting operations
@@ -116,32 +123,38 @@ public class AltarService {
 ### **3. Refactored Main Script**
 
 The main `GotrScriptRefactored` class is now focused on:
+
 - **Orchestration** - coordinating between services
 - **Main game loop** - simplified decision making
 - **State management** - tracking current activity
 
 Key improvements:
+
 - **Clear method hierarchy**: `executeGameLoop()` → `executeMinigameLoop()` → specific handlers
-- **Reduced complexity**: Each method has a single responsibility  
+- **Reduced complexity**: Each method has a single responsibility
 - **Better error handling**: Try-catch blocks with specific error messages
 - **Dependency injection**: Services injected via constructor
 
 ## 🔧 **Key Improvements**
 
 ### **1. Eliminated Magic Numbers**
+
 **Before:**
+
 ```java
 if (Rs2Player.getWorldLocation().getY() <= 9482) // What does 9482 mean?
 if (getStartTimer() > Rs2Random.randomGaussian(35, Rs2Random.between(1, 5))) // Why 35?
 ```
 
-**After:**  
+**After:**
+
 ```java
 if (Rs2Player.getWorldLocation().getY() <= GotrConstants.OUTSIDE_BARRIER_Y)
 if (getStartTimer() > Rs2Random.randomGaussian(GotrConstants.GAME_START_THRESHOLD, Rs2Random.between(1, 5)))
 ```
 
 ### **2. Simplified Main Loop**
+
 **Before:** 795-line method with deeply nested conditions
 **After:** Clear, hierarchical method structure:
 
@@ -165,7 +178,9 @@ private void executeGameLoop() {
 ```
 
 ### **3. Better Error Handling**
+
 **Before:**
+
 ```java
 } catch (Exception ex) {
     Microbot.log("Something went wrong in the GOTR Script: " + ex.getMessage());
@@ -173,6 +188,7 @@ private void executeGameLoop() {
 ```
 
 **After:**
+
 ```java
 } catch (Exception ex) {
     log("Error in GOTR Script: " + ex.getMessage());
@@ -182,6 +198,7 @@ private void executeGameLoop() {
 ```
 
 ### **4. Testable Code**
+
 Services can now be unit tested independently:
 
 ```java
@@ -196,21 +213,25 @@ public void testLocationService() {
 ## 📈 **Benefits Achieved**
 
 ### **Readability** ✅
+
 - Methods are focused and short (< 30 lines each)
 - Clear naming conventions
 - Logical flow from general to specific
 
-### **Maintainability** ✅  
+### **Maintainability** ✅
+
 - Services can be modified independently
 - Easy to add new features (just create new service)
 - Constants are centralized and documented
 
 ### **Testability** ✅
+
 - Each service can be unit tested
 - Dependencies are injectable
 - Methods have clear inputs/outputs
 
 ### **Performance** ✅
+
 - Same performance characteristics as original
 - Services are singletons (no object creation overhead)
 - Logic flow optimized to exit early when conditions not met
@@ -218,13 +239,15 @@ public void testLocationService() {
 ## 🚀 **Usage Instructions**
 
 ### **Option 1: Full Replacement**
+
 Replace the original `GotrScript` with `GotrScriptRefactored`:
 
 1. Update the plugin to inject `GotrScriptRefactored` instead
 2. Ensure all service classes are available
 3. Update any references to static methods
 
-### **Option 2: Gradual Migration**  
+### **Option 2: Gradual Migration**
+
 Migrate functionality piece by piece:
 
 1. Start by replacing magic numbers with constants
@@ -232,6 +255,7 @@ Migrate functionality piece by piece:
 3. Gradually simplify the main loop
 
 ### **Option 3: Hybrid Approach**
+
 Use the services alongside the existing script:
 
 1. Keep the original script for stability
@@ -241,7 +265,7 @@ Use the services alongside the existing script:
 ## 🧪 **Testing Strategy**
 
 1. **Unit Tests**: Test each service independently
-2. **Integration Tests**: Test service interactions  
+2. **Integration Tests**: Test service interactions
 3. **End-to-end Tests**: Full minigame completion
 4. **Performance Tests**: Ensure no regression in execution time
 
@@ -253,4 +277,5 @@ Use the services alongside the existing script:
 4. **Add configuration validation** for user settings
 5. **Create integration tests** for the full workflow
 
-This refactoring provides a solid foundation for future enhancements while maintaining all existing functionality with improved maintainability and testability.
+This refactoring provides a solid foundation for future enhancements while maintaining all existing functionality with
+improved maintainability and testability.

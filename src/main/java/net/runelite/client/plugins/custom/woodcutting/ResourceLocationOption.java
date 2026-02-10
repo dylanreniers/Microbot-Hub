@@ -13,7 +13,7 @@ import java.util.Map;
  * Extended LocationOption with resource tracking capabilities.
  * This class is specifically designed for resource-based locations like mining rocks,
  * fishing spots, or woodcutting trees where the number of available resources matters.
- *
+ * <p>
  * The numberOfResources field allows for intelligent location selection based on
  * resource availability, helping to choose locations with sufficient resources
  * for efficient skilling activities.
@@ -34,9 +34,9 @@ public class ResourceLocationOption extends LocationOption {
     /**
      * Constructor with resource count and members-only flag.
      *
-     * @param worldPoint The world coordinates of this location
-     * @param name The display name of this location
-     * @param membersOnly Whether this location requires membership
+     * @param worldPoint        The world coordinates of this location
+     * @param name              The display name of this location
+     * @param membersOnly       Whether this location requires membership
      * @param numberOfResources The number of resources available at this location
      */
     public ResourceLocationOption(WorldPoint worldPoint, String name, boolean membersOnly, int numberOfResources) {
@@ -47,15 +47,15 @@ public class ResourceLocationOption extends LocationOption {
     /**
      * Full constructor with all requirements and resource count.
      *
-     * @param worldPoint The world coordinates of this location
-     * @param name The display name of this location
-     * @param membersOnly Whether this location requires membership
+     * @param worldPoint        The world coordinates of this location
+     * @param name              The display name of this location
+     * @param membersOnly       Whether this location requires membership
      * @param numberOfResources The number of resources available at this location
-     * @param requiredQuests Quest requirements for accessing this location
-     * @param requiredSkills Skill level requirements for accessing this location
-     * @param requiredVarbits Varbit requirements for accessing this location
+     * @param requiredQuests    Quest requirements for accessing this location
+     * @param requiredSkills    Skill level requirements for accessing this location
+     * @param requiredVarbits   Varbit requirements for accessing this location
      * @param requiredVarplayer Varplayer requirements for accessing this location
-     * @param requiredItems Item requirements for accessing this location
+     * @param requiredItems     Item requirements for accessing this location
      */
     public ResourceLocationOption(WorldPoint worldPoint, String name,
                                   boolean membersOnly,
@@ -108,7 +108,7 @@ public class ResourceLocationOption extends LocationOption {
      * Determines if this location is better than another based on resource count and requirements.
      * Prioritizes accessible locations first, then resource count, then proximity.
      *
-     * @param other The other location to compare against
+     * @param other          The other location to compare against
      * @param referencePoint Optional reference point for distance comparison
      * @return true if this location is better than the other
      */

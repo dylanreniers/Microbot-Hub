@@ -2,8 +2,8 @@ package net.runelite.client.plugins.custom.gotr.services;
 
 import lombok.Getter;
 import lombok.Setter;
+import net.runelite.api.NPC;
 import net.runelite.api.Skill;
-import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.custom.gotr.GotrConstants;
 import net.runelite.client.plugins.custom.gotr.GotrState;
 import net.runelite.client.plugins.microbot.Microbot;
@@ -18,8 +18,6 @@ import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-
-import net.runelite.api.NPC;
 
 import static net.runelite.client.plugins.microbot.Microbot.log;
 
@@ -47,6 +45,7 @@ public class MiningService {
 
     /**
      * Mines huge guardian remains in portal areas
+     *
      * @return true if mining operation was performed or in progress
      */
     public boolean mineHugeGuardianRemains() {

@@ -14,11 +14,11 @@ import java.awt.*;
 
 public class GotrOverlay extends OverlayPanel {
 
+    public static Color PUBLIC_TIMER_COLOR = Color.YELLOW;
+    public static int TIMER_OVERLAY_DIAMETER = 20;
     private final GotrPlugin plugin;
     private final GotrScript gotrScript;
     private final TimerService timerService;
-    public static Color PUBLIC_TIMER_COLOR = Color.YELLOW;
-    public static int TIMER_OVERLAY_DIAMETER = 20;
     private final ProgressPieComponent progressPieComponent = new ProgressPieComponent();
 
     int sleepingCounter;

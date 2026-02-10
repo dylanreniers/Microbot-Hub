@@ -63,43 +63,43 @@ public final class GotrConstants {
 
     // Rune IDs
     public static final List<Integer> RUNE_IDS = ImmutableList.of(
-        ItemID.NATURE_RUNE,
-        ItemID.LAW_RUNE,
-        ItemID.BODY_RUNE,
-        ItemID.DUST_RUNE,
-        ItemID.LAVA_RUNE,
-        ItemID.STEAM_RUNE,
-        ItemID.SMOKE_RUNE,
-        ItemID.SOUL_RUNE,
-        ItemID.WATER_RUNE,
-        ItemID.AIR_RUNE,
-        ItemID.EARTH_RUNE,
-        ItemID.FIRE_RUNE,
-        ItemID.MIND_RUNE,
-        ItemID.CHAOS_RUNE,
-        ItemID.DEATH_RUNE,
-        ItemID.BLOOD_RUNE,
-        ItemID.COSMIC_RUNE,
-        ItemID.ASTRAL_RUNE,
-        ItemID.MIST_RUNE,
-        ItemID.MUD_RUNE,
-        ItemID.WRATH_RUNE
+            ItemID.NATURE_RUNE,
+            ItemID.LAW_RUNE,
+            ItemID.BODY_RUNE,
+            ItemID.DUST_RUNE,
+            ItemID.LAVA_RUNE,
+            ItemID.STEAM_RUNE,
+            ItemID.SMOKE_RUNE,
+            ItemID.SOUL_RUNE,
+            ItemID.WATER_RUNE,
+            ItemID.AIR_RUNE,
+            ItemID.EARTH_RUNE,
+            ItemID.FIRE_RUNE,
+            ItemID.MIND_RUNE,
+            ItemID.CHAOS_RUNE,
+            ItemID.DEATH_RUNE,
+            ItemID.BLOOD_RUNE,
+            ItemID.COSMIC_RUNE,
+            ItemID.ASTRAL_RUNE,
+            ItemID.MIST_RUNE,
+            ItemID.MUD_RUNE,
+            ItemID.WRATH_RUNE
     );
 
     // Altar IDs for runecrafting
     public static final Integer[] RC_ALTAR_IDS = new Integer[]{
-        ObjectID.ALTAR_34760, ObjectID.ALTAR_34761, ObjectID.ALTAR_34762, ObjectID.ALTAR_34763,
-        ObjectID.ALTAR_34764, ObjectID.ALTAR_34765, ObjectID.ALTAR_34766, ObjectID.ALTAR_34767,
-        ObjectID.ALTAR_34768, ObjectID.ALTAR_34769, ObjectID.ALTAR_34770, ObjectID.ALTAR_34771,
-        ObjectID.ALTAR_34772, ObjectID.ALTAR_43479
+            ObjectID.ALTAR_34760, ObjectID.ALTAR_34761, ObjectID.ALTAR_34762, ObjectID.ALTAR_34763,
+            ObjectID.ALTAR_34764, ObjectID.ALTAR_34765, ObjectID.ALTAR_34766, ObjectID.ALTAR_34767,
+            ObjectID.ALTAR_34768, ObjectID.ALTAR_34769, ObjectID.ALTAR_34770, ObjectID.ALTAR_34771,
+            ObjectID.ALTAR_34772, ObjectID.ALTAR_43479
     };
 
     // Portal IDs for leaving altars
     public static final Integer[] RC_PORTAL_IDS = new Integer[]{
-        ObjectID.PORTAL_34748, ObjectID.PORTAL_34749, ObjectID.PORTAL_34750, ObjectID.PORTAL_34751,
-        ObjectID.PORTAL_34752, ObjectID.PORTAL_34753, ObjectID.PORTAL_34754, ObjectID.PORTAL_34755,
-        ObjectID.PORTAL_34756, ObjectID.PORTAL_34757, ObjectID.PORTAL_34758, ObjectID.PORTAL_34758,
-        ObjectID.PORTAL_34759, ObjectID.PORTAL_43478
+            ObjectID.PORTAL_34748, ObjectID.PORTAL_34749, ObjectID.PORTAL_34750, ObjectID.PORTAL_34751,
+            ObjectID.PORTAL_34752, ObjectID.PORTAL_34753, ObjectID.PORTAL_34754, ObjectID.PORTAL_34755,
+            ObjectID.PORTAL_34756, ObjectID.PORTAL_34757, ObjectID.PORTAL_34758, ObjectID.PORTAL_34758,
+            ObjectID.PORTAL_34759, ObjectID.PORTAL_43478
     };
 
     // Patterns for parsing

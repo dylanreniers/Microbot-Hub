@@ -117,18 +117,18 @@ public class AutoCookingScript extends Script {
 
                             Rs2Keyboard.keyPress(KeyEvent.VK_SPACE);
                             Microbot.status = "Cooking " + cookingItem.getRawItemName();
-                            
+
                             Rs2Antiban.actionCooldown();
                             Rs2Antiban.takeMicroBreakByChance();
 
                             sleepUntil(() -> (Rs2Player.getAnimation() != AnimationID.IDLE));
                             sleepUntilTrue(() -> (!hasRawItem(cookingItem) && !Rs2Player.isAnimating(3500))
                                     || Rs2Dialogue.isInDialogue() || Rs2Player.isMoving(), 500, 150000);
-                            
+
                             if (hasRawItem(cookingItem)) {
                                 break;
                             }
-                            
+
                             if (config.shouldDropBurntItems() && hasBurntItem(cookingItem) && !cookingItem.getBurntItemName().isEmpty()) {
                                 state = CookingState.DROPPING;
                                 return;
@@ -167,7 +167,7 @@ public class AutoCookingScript extends Script {
 
                         Rs2Bank.depositAll();
                         Rs2Inventory.waitForInventoryChanges(1800);
-                        
+
                         if (!hasRawItemInBank(cookingItem)) {
                             Microbot.showMessage("No Raw Food Item found in Bank");
                             shutdown();
@@ -181,7 +181,7 @@ public class AutoCookingScript extends Script {
                             Rs2Bank.withdrawAll(cookingItem.getRawItemName(), true);
                             Rs2Inventory.waitForInventoryChanges(1800);
                         }
-                        
+
                         state = CookingState.WALKING;
                         Rs2Bank.closeBank();
                         break;
@@ -215,9 +215,9 @@ public class AutoCookingScript extends Script {
         }, 0, 1000, TimeUnit.MILLISECONDS);
         return true;
     }
-    
+
     @Override
-    public void shutdown(){
+    public void shutdown() {
         super.shutdown();
         Rs2Antiban.resetAntibanSettings();
     }

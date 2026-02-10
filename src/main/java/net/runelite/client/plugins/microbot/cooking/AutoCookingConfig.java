@@ -26,6 +26,13 @@ public interface AutoCookingConfig extends Config {
             position = 1
     )
     String cookingSection = "cooking";
+    @ConfigSection(
+            name = "Burn Baking",
+            description = "Burn Baking Settings",
+            position = 3,
+            closedByDefault = true
+    )
+    String burnBakingSection = "burnBakingSection";
 
     @ConfigItem(
             name = "Guide",
@@ -51,14 +58,6 @@ public interface AutoCookingConfig extends Config {
     default CookingActivity cookingActivity() {
         return CookingActivity.COOKING;
     }
-
-    @ConfigSection(
-            name = "Burn Baking",
-            description = "Burn Baking Settings",
-            position = 3,
-            closedByDefault = true
-    )
-    String burnBakingSection = "burnBakingSection";
 
     @ConfigItem(
             keyName = "burnBakingDescription",

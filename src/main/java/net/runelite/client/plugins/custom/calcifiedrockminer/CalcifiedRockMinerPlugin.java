@@ -2,9 +2,7 @@ package net.runelite.client.plugins.custom.calcifiedrockminer;
 
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.ChatMessageType;
 import net.runelite.api.Skill;
-import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.StatChanged;
 import net.runelite.client.config.ConfigManager;
@@ -18,8 +16,6 @@ import net.runelite.client.ui.overlay.OverlayManager;
 import javax.inject.Inject;
 import java.awt.*;
 import java.time.Instant;
-
-import static net.runelite.client.plugins.microbot.util.Global.sleep;
 
 @PluginDescriptor(
         name = "Donder's Calcified Rock Miner",
@@ -46,6 +42,8 @@ public class CalcifiedRockMinerPlugin extends Plugin {
     private CalcifiedRockMinerOverlay calcifiedRockMinerOverlay;
     @Inject
     private CalcifiedRockMinerScript calcifiedRockMinerScript;
+    private long gameTickCounter = 0;
+    private long lastGainedXpTick = 0;
 
     protected String getTimeRunning() {
         return scriptStartTime != null ? TimeUtils.getFormattedDurationBetween(scriptStartTime, Instant.now()) : "";
@@ -74,24 +72,20 @@ public class CalcifiedRockMinerPlugin extends Plugin {
         return configManager.getConfig(CalcifiedRockMinerConfig.class);
     }
 
-    private long gameTickCounter = 0;
-    private long lastGainedXpTick = 0;
     @Subscribe
-    public void onGameTick(GameTick tick)
-    {
-       gameTickCounter++;
-       if (gameTickCounter == Long.MAX_VALUE) {
-          gameTickCounter = 0;
-       }
-       if (lastGainedXpTick == 0) {
-           return;
-       }
+    public void onGameTick(GameTick tick) {
+        gameTickCounter++;
+        if (gameTickCounter == Long.MAX_VALUE) {
+            gameTickCounter = 0;
+        }
+        if (lastGainedXpTick == 0) {
+            return;
+        }
         calcifiedRockMinerScript.shouldTryMiningAgain = lastGainedXpTick + 14 < gameTickCounter;
     }
 
     @Subscribe
-    public void onStatChanged(StatChanged statChanged)
-    {
+    public void onStatChanged(StatChanged statChanged) {
         final Skill skill = statChanged.getSkill();
         if (skill == Skill.MINING) {
             lastGainedXpTick = gameTickCounter;

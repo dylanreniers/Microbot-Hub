@@ -15,7 +15,7 @@ import java.awt.*;
         name = PluginConstants.MOCROSOFT + "Jad Helper",
         description = "Auto prays jad attacks and attacks healers",
         tags = {"jad", "microbot"},
-        authors = { "Mocrosoft" },
+        authors = {"Mocrosoft"},
         version = JadPlugin.version,
         minClientVersion = "1.9.8.8",
         cardUrl = "https://chsami.github.io/Microbot-Hub/JadPlugin/assets/card.png",
@@ -26,22 +26,19 @@ import java.awt.*;
 @Slf4j
 public class JadPlugin extends Plugin {
     static final String version = "1.0.7";
-
+    @Inject
+    JadScript jadScript;
     @Inject
     private JadConfig config;
-    @Provides
-    JadConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(JadConfig.class);
-    }
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private JadOverlay jadOverlay;
 
-    @Inject
-    JadScript jadScript;
-
+    @Provides
+    JadConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(JadConfig.class);
+    }
 
     @Override
     protected void startUp() throws AWTException {

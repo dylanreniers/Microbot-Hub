@@ -16,17 +16,37 @@ import java.awt.*;
         "<p>2. <strong>Contracts:</strong> Select your desired contract <em>BEFORE</em> starting.</p>\n" +
         "<p>3. <strong>Supplies:</strong> Stock up on the correct planks and Steel bars in the bank, the bot will handle resupplying on its own</p>\n" +
         "<p></p>\n" +
-		"<p><strong>NOTES:</strong></p>\n" +
-		"<p>- If somehow it get's stuck, enable the overlay in the options below and shift+click the option to reset the state.</p>\n" +
-		"<p></p>\n" +
-        "<p><strong>FEEDBACK:</strong> If you encounter any bugs or need assistance, shoot a message in Discord</p>\n" )
-public interface MahoganyHomesConfig extends Config
-{
+        "<p><strong>NOTES:</strong></p>\n" +
+        "<p>- If somehow it get's stuck, enable the overlay in the options below and shift+click the option to reset the state.</p>\n" +
+        "<p></p>\n" +
+        "<p><strong>FEEDBACK:</strong> If you encounter any bugs or need assistance, shoot a message in Discord</p>\n")
+public interface MahoganyHomesConfig extends Config {
     String GROUP_NAME = "MahoganyHomesBot";
     String HOME_KEY = "currentHome";
     String TIER_KEY = "currentTier";
     String WORLD_MAP_KEY = "worldMapIcon";
     String HINT_ARROW_KEY = "displayHintArrows";
+    @ConfigSection(
+            name = "Highlight Options",
+            description = "Settings related to the highlighting of objects and items",
+            position = 100,
+            closedByDefault = true
+    )
+    String highlightSection = "highlightSection";
+    @ConfigSection(
+            name = "Overlay Options",
+            description = "Settings related to the overlay boxes",
+            position = 200,
+            closedByDefault = true
+    )
+    String overlaySection = "overlaySection";
+    // debug section and options
+    @ConfigSection(
+            name = "Debug Options",
+            description = "Settings related to debugging",
+            position = 300
+    )
+    String debugSection = "debugSection";
 
     @ConfigItem(
             keyName = WORLD_MAP_KEY,
@@ -35,8 +55,7 @@ public interface MahoganyHomesConfig extends Config
             position = 0,
             hidden = true
     )
-    default boolean worldMapIcon()
-    {
+    default boolean worldMapIcon() {
         return true;
     }
 
@@ -47,8 +66,7 @@ public interface MahoganyHomesConfig extends Config
             description = "Configures the tier of contract you would like to complete",
             position = 1
     )
-    default ContractTierEnum currentTier()
-    {
+    default ContractTierEnum currentTier() {
         return ContractTierEnum.BEGINNER;
     }
 
@@ -59,8 +77,7 @@ public interface MahoganyHomesConfig extends Config
             description = "Configures whether or not to use the NPC Contact spell to start a new contract",
             position = 2
     )
-    default boolean useNpcContact()
-    {
+    default boolean useNpcContact() {
         return false;
     }
 
@@ -71,8 +88,7 @@ public interface MahoganyHomesConfig extends Config
             description = "Configures whether or not to use the Plank Sack to store planks",
             position = 3
     )
-    default boolean usePlankSack()
-    {
+    default boolean usePlankSack() {
         return false;
     }
 
@@ -83,8 +99,7 @@ public interface MahoganyHomesConfig extends Config
             position = 1,
             hidden = true
     )
-    default boolean displayHintArrows()
-    {
+    default boolean displayHintArrows() {
         return true;
     }
 
@@ -94,18 +109,9 @@ public interface MahoganyHomesConfig extends Config
             description = "Configures whether or not to display the required materials for your current task",
             position = 2
     )
-    default boolean showRequiredMaterials()
-    {
+    default boolean showRequiredMaterials() {
         return true;
     }
-
-    @ConfigSection(
-            name = "Highlight Options",
-            description = "Settings related to the highlighting of objects and items",
-            position = 100,
-            closedByDefault = true
-    )
-    String highlightSection = "highlightSection";
 
     @ConfigItem(
             keyName = "highlightHotspots",
@@ -114,8 +120,7 @@ public interface MahoganyHomesConfig extends Config
             section = highlightSection,
             position = 0
     )
-    default boolean highlightHotspots()
-    {
+    default boolean highlightHotspots() {
         return true;
     }
 
@@ -126,8 +131,7 @@ public interface MahoganyHomesConfig extends Config
             section = highlightSection,
             position = 2
     )
-    default boolean highlightStairs()
-    {
+    default boolean highlightStairs() {
         return true;
     }
 
@@ -140,19 +144,9 @@ public interface MahoganyHomesConfig extends Config
             position = 3,
             hidden = true
     )
-    default Color highlightStairsColor()
-    {
+    default Color highlightStairsColor() {
         return new Color(0, 255, 0, 20);
     }
-
-
-    @ConfigSection(
-            name = "Overlay Options",
-            description = "Settings related to the overlay boxes",
-            position = 200,
-            closedByDefault = true
-    )
-    String overlaySection = "overlaySection";
 
     @ConfigItem(
             keyName = "textOverlay",
@@ -162,8 +156,7 @@ public interface MahoganyHomesConfig extends Config
             position = 0,
             hidden = true
     )
-    default boolean textOverlay()
-    {
+    default boolean textOverlay() {
         return true;
     }
 
@@ -175,18 +168,9 @@ public interface MahoganyHomesConfig extends Config
             section = overlaySection,
             position = 1
     )
-    default boolean showSessionStats()
-    {
+    default boolean showSessionStats() {
         return true;
     }
-
-    // debug section and options
-    @ConfigSection(
-            name = "Debug Options",
-            description = "Settings related to debugging",
-            position = 300
-    )
-    String debugSection = "debugSection";
 
     // log messages in chat
     @ConfigItem(
@@ -196,8 +180,7 @@ public interface MahoganyHomesConfig extends Config
             section = debugSection,
             position = 0
     )
-    default boolean logMessages()
-    {
+    default boolean logMessages() {
         return true;
     }
 

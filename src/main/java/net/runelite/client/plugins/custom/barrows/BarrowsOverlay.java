@@ -26,7 +26,7 @@ public class BarrowsOverlay extends OverlayPanel {
         try {
             panelComponent.setPreferredSize(new Dimension(200, 300));
             panelComponent.getChildren().add(TitleComponent.builder()
-                    .text("Barrows V"+ BarrowsPlugin.version)
+                    .text("Barrows V" + BarrowsPlugin.version)
                     .color(Color.GREEN)
                     .build());
 
@@ -46,7 +46,7 @@ public class BarrowsOverlay extends OverlayPanel {
                     .left("Tunnel:")
                     .right(barrowsPlugin.getBarrowsScript().getBrotherInTunnel().split(" ")[0])
                     .build());
-        } catch(Exception ex) {
+        } catch (Exception ex) {
             System.out.println(ex.getMessage());
         }
         return super.render(graphics);

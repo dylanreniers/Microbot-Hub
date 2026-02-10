@@ -14,7 +14,7 @@ public class ArrowScript extends Script {
     public boolean run(ArrowConfig config) {
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
-				if (!super.run() || !Microbot.isLoggedIn()) {
+                if (!super.run() || !Microbot.isLoggedIn()) {
                     return;
                 }
                 if (config.ARROWBool()) {

@@ -75,47 +75,6 @@ public class RoyalTitansScript extends Script {
     private static final WorldPoint BOSS_LOCATION = new WorldPoint(2951, 9574, 0);
     private static final WorldArea FIGHT_AREA = new WorldArea(new WorldPoint(2909, 9561, 0), 12, 4);
 
-    @Getter
-    @Setter
-    private RoyalTitansBotStatus state = RoyalTitansBotStatus.TRAVELLING;
-    @Getter
-    @Setter
-    private String subState = "";
-    @Getter
-    private int kills = 0;
-
-    @Inject
-    private FeroxService feroxService;
-
-    @Inject
-    private Rs2NpcCache rs2NpcCache;
-
-    @Inject
-    private Rs2TileObjectCache rs2TileObjectCache;
-
-    @Inject
-    private Rs2PlayerCache rs2PlayerCache;
-
-    @Inject
-    private Client client;
-
-    private Rs2InventorySetup inventorySetup = null;
-    private Rs2InventorySetup magicInventorySetup = null;
-    private Rs2InventorySetup meleeInventorySetup = null;
-    private Rs2InventorySetup specialAttackInventorySetup = null;
-    private Rs2InventorySetup rangedInventorySetup = null;
-    private RoyalTitansTravelStatus travelStatus = RoyalTitansTravelStatus.TO_BANK;
-    private Instant waitingTimeStart = null;
-    private boolean waitedLastIteration = false;
-    private boolean isRunning;
-    private double fireTitanHealthPercentage = 100;
-    private double iceTitanHealthPercentage = 100;
-    private RoyalTitansConfig config;
-    private final AtomicReference<Tile> enrageTile = new AtomicReference<>(null);
-    private final List<WorldPoint> dangerousTiles = new ArrayList<>();
-    private int minFreeSlots = 0;
-    private RoyalTitansConfig.RoyalTitan lootedTitan = null;
-
     static {
         Microbot.enableAutoRunOn = false;
         Rs2Antiban.resetAntibanSettings();
@@ -132,6 +91,58 @@ public class RoyalTitansScript extends Script {
         Rs2AntibanSettings.moveMouseRandomly = true;
         Rs2AntibanSettings.moveMouseRandomlyChance = 0.04;
         Rs2Antiban.setActivityIntensity(EXTREME);
+    }
+
+    private final AtomicReference<Tile> enrageTile = new AtomicReference<>(null);
+    private final List<WorldPoint> dangerousTiles = new ArrayList<>();
+    @Getter
+    @Setter
+    private RoyalTitansBotStatus state = RoyalTitansBotStatus.TRAVELLING;
+    @Getter
+    @Setter
+    private String subState = "";
+    @Getter
+    private int kills = 0;
+    @Inject
+    private FeroxService feroxService;
+    @Inject
+    private Rs2NpcCache rs2NpcCache;
+    @Inject
+    private Rs2TileObjectCache rs2TileObjectCache;
+    @Inject
+    private Rs2PlayerCache rs2PlayerCache;
+    @Inject
+    private Client client;
+    private Rs2InventorySetup inventorySetup = null;
+    private Rs2InventorySetup magicInventorySetup = null;
+    private Rs2InventorySetup meleeInventorySetup = null;
+    private Rs2InventorySetup specialAttackInventorySetup = null;
+    private Rs2InventorySetup rangedInventorySetup = null;
+    private RoyalTitansTravelStatus travelStatus = RoyalTitansTravelStatus.TO_BANK;
+    private Instant waitingTimeStart = null;
+    private boolean waitedLastIteration = false;
+    private boolean isRunning;
+    private double fireTitanHealthPercentage = 100;
+    private double iceTitanHealthPercentage = 100;
+    private RoyalTitansConfig config;
+    private int minFreeSlots = 0;
+    private RoyalTitansConfig.RoyalTitan lootedTitan = null;
+
+    public static boolean isTitanAlive(Rs2NpcModel titan) {
+        return titan != null && !titan.isDead();
+    }
+
+    @Nonnull
+    private static Predicate<Rs2NpcModel> npcInCenterOfArena() {
+        return npc -> {
+            log.info("RegionX: {}", npc.getWorldLocation().getRegionX());
+            return npc.getWorldLocation().getRegionX() == 31;
+        };
+    }
+
+    private static void lootTitan(Rs2NpcModel iceTitanDead) {
+        iceTitanDead.click("Loot");
+        Rs2Inventory.waitForInventoryChanges(5000);
     }
 
     public boolean run(RoyalTitansConfig config) {
@@ -450,10 +461,6 @@ public class RoyalTitansScript extends Script {
                 && getEnrageTile() == null;
     }
 
-    public static boolean isTitanAlive(Rs2NpcModel titan) {
-        return titan != null && !titan.isDead();
-    }
-
     private boolean fireTitanShouldBeAttacked(Rs2NpcModel fireTitan, Rs2NpcModel iceTitan) {
         return (config.royalTitanToFocus() == RoyalTitansConfig.RoyalTitan.FIRE_TITAN && isTitanAlive(fireTitan)) || !isTitanAlive(iceTitan);
     }
@@ -519,14 +526,6 @@ public class RoyalTitansScript extends Script {
         }
 
 
-    }
-
-    @Nonnull
-    private static Predicate<Rs2NpcModel> npcInCenterOfArena() {
-        return npc -> {
-            log.info("RegionX: {}", npc.getWorldLocation().getRegionX());
-            return npc.getWorldLocation().getRegionX() == 31;
-        };
     }
 
     private void handleMinions() {
@@ -688,7 +687,7 @@ public class RoyalTitansScript extends Script {
                         state = RoyalTitansBotStatus.FIGHTING;
                     } else {
                         var teammate = rs2PlayerCache.query().withName(config.teammateName()).nearestOnClientThread();
-                            if (teammate != null) {
+                        if (teammate != null) {
                             log.info("Waiting for teammate to enter the instance");
                             return;
                         }
@@ -783,11 +782,6 @@ public class RoyalTitansScript extends Script {
         Rs2Bank.closeBank();
         travelStatus = RoyalTitansTravelStatus.TO_TITANS;
         state = RoyalTitansBotStatus.TRAVELLING;
-    }
-
-    private static void lootTitan(Rs2NpcModel iceTitanDead) {
-        iceTitanDead.click("Loot");
-        Rs2Inventory.waitForInventoryChanges(5000);
     }
 
     private void lootUntradeableItems() {

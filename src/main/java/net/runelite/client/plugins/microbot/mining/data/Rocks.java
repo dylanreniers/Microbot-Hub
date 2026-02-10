@@ -31,7 +31,7 @@ public enum Rocks {
     public String toString() {
         return name;
     }
-    
+
     public boolean hasRequiredLevel() {
         return Rs2Player.getSkillRequirement(Skill.MINING, this.miningLevel);
     }

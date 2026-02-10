@@ -5,10 +5,10 @@ import net.runelite.api.GameObject;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingPlugin;
 import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingScript;
+import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
 import net.runelite.client.plugins.microbot.BlockingEvent;
 import net.runelite.client.plugins.microbot.BlockingEventPriority;
 import net.runelite.client.plugins.microbot.Microbot;
-import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
@@ -27,17 +27,18 @@ import static net.runelite.api.gameval.ObjectID.GATHERING_EVENT_SAPLING_INGREDIE
 import static net.runelite.api.gameval.ObjectID.GATHERING_EVENT_SAPLING_INGREDIENT_4B;
 import static net.runelite.api.gameval.ObjectID.GATHERING_EVENT_SAPLING_INGREDIENT_4C;
 import static net.runelite.api.gameval.ObjectID.GATHERING_EVENT_SAPLING_INGREDIENT_5;
+
 @Slf4j
 public class StrugglingSaplingEvent implements BlockingEvent {
     private final AutoWoodcuttingPlugin plugin;
     private final List<Integer> ingredientIds = List.of(
-        GATHERING_EVENT_SAPLING_INGREDIENT_1,
-        GATHERING_EVENT_SAPLING_INGREDIENT_2,
-        GATHERING_EVENT_SAPLING_INGREDIENT_3,
-        GATHERING_EVENT_SAPLING_INGREDIENT_4A,
-        GATHERING_EVENT_SAPLING_INGREDIENT_4B,
-        GATHERING_EVENT_SAPLING_INGREDIENT_4C,
-        GATHERING_EVENT_SAPLING_INGREDIENT_5
+            GATHERING_EVENT_SAPLING_INGREDIENT_1,
+            GATHERING_EVENT_SAPLING_INGREDIENT_2,
+            GATHERING_EVENT_SAPLING_INGREDIENT_3,
+            GATHERING_EVENT_SAPLING_INGREDIENT_4A,
+            GATHERING_EVENT_SAPLING_INGREDIENT_4B,
+            GATHERING_EVENT_SAPLING_INGREDIENT_4C,
+            GATHERING_EVENT_SAPLING_INGREDIENT_5
     );
 
     public StrugglingSaplingEvent(AutoWoodcuttingPlugin plugin) {
@@ -46,7 +47,7 @@ public class StrugglingSaplingEvent implements BlockingEvent {
 
     @Override
     public boolean validate() {
-        try{
+        try {
             if (plugin == null || !Microbot.isPluginEnabled(plugin)) return false;
             if (Microbot.getClient() == null || !Microbot.isLoggedIn()) return false;
             var strugglingSaplings = Rs2GameObject.getGameObjects(Rs2GameObject.nameMatches("Struggling sapling", false));
@@ -161,8 +162,7 @@ public class StrugglingSaplingEvent implements BlockingEvent {
             plugin.saplingOrder[2] = null;
             plugin.incrementForestryEventCompleted();
             return true;
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             Microbot.log("StrugglingSaplingEvent: Error during execution: " + e.getMessage() + Arrays.toString(e.getStackTrace()));
             return this.validate();
         }

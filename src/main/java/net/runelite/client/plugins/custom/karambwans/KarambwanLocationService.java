@@ -22,12 +22,15 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 @Slf4j
 public class KarambwanLocationService {
 
+    public static final String CASTLE_WARS = "Castle Wars";
     private static final int POH_PORTAL_ID = 4525;
     private static final int FAIRY_RING_ID = 29228;
-    public static final String CASTLE_WARS = "Castle Wars";
-
     @Inject
     private Rs2TileObjectCache rs2TileObjectCache;
+
+    public static boolean isNearCastleWars() {
+        return Rs2Player.getWorldLocation().distanceTo(BankLocation.CASTLE_WARS.getWorldPoint()) <= 50;
+    }
 
     public void teleportToCastleWars() {
         log.info("Teleporting to castle wars...");
@@ -59,9 +62,5 @@ public class KarambwanLocationService {
         sleepUntil(Rs2Player::isAnimating);
         sleepUntil(() -> !Rs2Player.isAnimating());
         sleep(600, 1200);
-    }
-
-    public static boolean isNearCastleWars() {
-        return Rs2Player.getWorldLocation().distanceTo(BankLocation.CASTLE_WARS.getWorldPoint()) <= 50;
     }
 }

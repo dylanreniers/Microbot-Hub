@@ -27,13 +27,9 @@ import java.awt.*;
 public class GabulhasKarambwansPlugin extends Plugin {
     public static final String version = "1.1.0";
     @Inject
+    GabulhasKarambwansScript gabulhasKarambwansScript;
+    @Inject
     private GabulhasKarambwansConfig config;
-
-    @Provides
-    GabulhasKarambwansConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(GabulhasKarambwansConfig.class);
-    }
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
@@ -41,8 +37,10 @@ public class GabulhasKarambwansPlugin extends Plugin {
     @Inject
     private GabulhasKarambwansOverlay gabulhasKarambwansOverlay;
 
-    @Inject
-    GabulhasKarambwansScript gabulhasKarambwansScript;
+    @Provides
+    GabulhasKarambwansConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(GabulhasKarambwansConfig.class);
+    }
 
     @Override
     protected void startUp() throws AWTException {

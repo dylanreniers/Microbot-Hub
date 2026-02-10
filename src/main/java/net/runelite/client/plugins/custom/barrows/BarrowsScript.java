@@ -9,13 +9,13 @@ import net.runelite.api.QuestState;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldArea;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.client.plugins.custom.barrows.services.BankService;
+import net.runelite.client.plugins.custom.barrows.services.LocationService;
+import net.runelite.client.plugins.custom.barrows.services.PuzzleSolverService;
+import net.runelite.client.plugins.custom.barrows.services.TileObjectService;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
-import net.runelite.client.plugins.custom.barrows.services.BankService;
-import net.runelite.client.plugins.custom.barrows.services.PuzzleSolverService;
-import net.runelite.client.plugins.custom.barrows.services.TileObjectService;
-import net.runelite.client.plugins.custom.barrows.services.LocationService;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
@@ -62,37 +62,47 @@ public class BarrowsScript extends AbstractScript {
     private static final String RELEASE = "Release";
     private static final String UNKNOWN_BROTHER = "Unknown";
     private static final WorldPoint CHEST_LOCATION = new WorldPoint(3552, 9694, 0);
-
-    private enum BarrowsState {
-        RESTORE,
-        BANKING,
-        TRAVEL_TO_BARROWS,
-        MOUNDS,
-        ENTER_TUNNELS,
-        TUNNELS,
-        CHEST,
-    }
-
+    private final AtomicReference<ScheduledFuture<?>> walkToChestTask = new AtomicReference<>();
+    private final Map<BarrowsBrother, Boolean> brotherStatuses = new LinkedHashMap<>();
     @Inject
     private BarrowsConfig config;
-
     private BankService bankService;
     private PuzzleSolverService puzzleSolverService;
     private LocationService locationService;
     private TileObjectService tileObjectService;
-
     @Getter
     private int chestsOpened = 0;
     @Getter
     private String brotherInTunnel = UNKNOWN_BROTHER;
     @Setter
     private boolean outOfPoweredStaffCharges;
-
     private int skeletonsKilled;
     private int bloodwormsKilled;
 
-    private final AtomicReference<ScheduledFuture<?>> walkToChestTask = new AtomicReference<>();
-    private final Map<BarrowsBrother, Boolean> brotherStatuses = new LinkedHashMap<>();
+    private static boolean hasLineOfSight(Rs2TileObjectModel tileObject) {
+        if (tileObject == null) {
+            log.info("Object is null");
+            return false;
+        } else {
+            WorldPoint point = Rs2Player.getWorldLocation();
+            return (new WorldArea(tileObject.getWorldLocation(), 2, 2)).hasLineOfSightTo(Microbot.getClient().getTopLevelWorldView(), new WorldArea(point.getX(), point.getY(), 2, 2, point.getPlane()));
+        }
+    }
+
+    private static void usePrayerRestoration() {
+        Rs2ItemModel restore = Rs2Inventory.get(it ->
+                it != null && (it.getName().contains(PRAYER_POTION) || it.getName().contains(MOONLIGHT_MOTH)));
+
+        if (restore == null) {
+            log.info("Couldn't find Prayer potion or moonlight moth.");
+            return;
+        }
+
+        String action = restore.getName().contains(MOONLIGHT_MOTH) ? RELEASE : DRINK;
+        log.info("Restoring prayer.");
+        Rs2Inventory.interact(restore, action);
+        sleep(0, 750);
+    }
 
     @Override
     public void initialize() {
@@ -177,16 +187,6 @@ public class BarrowsScript extends AbstractScript {
         return chest.isPresent() && hasLineOfSight(chest.get()) && Rs2Player.distanceTo(chest.get().getWorldLocation()) < 6;
     }
 
-    private static boolean hasLineOfSight(Rs2TileObjectModel tileObject) {
-        if (tileObject == null) {
-            log.info("Object is null");
-            return false;
-        } else {
-            WorldPoint point = Rs2Player.getWorldLocation();
-            return (new WorldArea(tileObject.getWorldLocation(), 2, 2)).hasLineOfSightTo(Microbot.getClient().getTopLevelWorldView(), new WorldArea(point.getX(), point.getY(), 2, 2, point.getPlane()));
-        }
-    }
-
     private void restoreAtFerox() {
         locationService.teleportToFerox();
         drinkFromPoolOfRefreshment();
@@ -199,7 +199,7 @@ public class BarrowsScript extends AbstractScript {
         if (poolOfRefreshment.isPresent()) {
             poolOfRefreshment.get().click(DRINK);
             sleepUntil(this::isPrayerAndRunSufficient, 15000); //takes a bit longer to run to the pool
-        }  else {
+        } else {
             log.info("Pool of Refreshment not found.");
         }
     }
@@ -224,7 +224,7 @@ public class BarrowsScript extends AbstractScript {
 
         BarrowsBrother brother = getNextBarrowsBrother();
 
-        log.info("Going for brother: {}" , brother.getName());
+        log.info("Going for brother: {}", brother.getName());
         changeEquipment(brother);
 
         if (!config.magicAttack().isPoweredStaff() && !brother.isAhrim()) {
@@ -502,21 +502,6 @@ public class BarrowsScript extends AbstractScript {
         return false;
     }
 
-    private static void usePrayerRestoration() {
-        Rs2ItemModel restore = Rs2Inventory.get(it ->
-                it != null && (it.getName().contains(PRAYER_POTION) || it.getName().contains(MOONLIGHT_MOTH)));
-
-        if (restore == null) {
-            log.info("Couldn't find Prayer potion or moonlight moth.");
-            return;
-        }
-
-        String action = restore.getName().contains(MOONLIGHT_MOTH) ? RELEASE : DRINK;
-        log.info("Restoring prayer.");
-        Rs2Inventory.interact(restore, action);
-        sleep(0, 750);
-    }
-
     private Rs2NpcModel hintNpcModel() {
         Optional<NPC> hintNpc = Microbot.getClientThread().runOnClientThreadOptional(
                 () -> Microbot.getClient().getHintArrowNpc()
@@ -612,7 +597,6 @@ public class BarrowsScript extends AbstractScript {
         walkToChest();
     }
 
-
     private void walkToChest() {
         if (walkToChestTask.get() != null) {
             return;
@@ -691,5 +675,15 @@ public class BarrowsScript extends AbstractScript {
     public void shutdown() {
         super.shutdown();
         resetChestWalker();
+    }
+
+    private enum BarrowsState {
+        RESTORE,
+        BANKING,
+        TRAVEL_TO_BARROWS,
+        MOUNDS,
+        ENTER_TUNNELS,
+        TUNNELS,
+        CHEST,
     }
 }

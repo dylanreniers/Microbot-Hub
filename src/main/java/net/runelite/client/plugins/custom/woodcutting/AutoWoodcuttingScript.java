@@ -5,17 +5,17 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ItemID;
+import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
 import net.runelite.client.plugins.custom.woodcutting.enums.WoodcuttingPrimaryAction;
+import net.runelite.client.plugins.custom.woodcutting.enums.WoodcuttingScriptState;
 import net.runelite.client.plugins.custom.woodcutting.enums.WoodcuttingSecondaryAction;
+import net.runelite.client.plugins.custom.woodcutting.enums.WoodcuttingTree;
 import net.runelite.client.plugins.custom.woodcutting.enums.WoodcuttingTreeLocations;
+import net.runelite.client.plugins.custom.woodcutting.enums.WoodcuttingWalkBack;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
-import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
-import net.runelite.client.plugins.custom.woodcutting.enums.WoodcuttingScriptState;
-import net.runelite.client.plugins.custom.woodcutting.enums.WoodcuttingTree;
-import net.runelite.client.plugins.custom.woodcutting.enums.WoodcuttingWalkBack;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2AntibanSettings;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
@@ -90,22 +90,34 @@ public class AutoWoodcuttingScript extends Script {
     );
 
     private static WorldPoint returnPoint;
+    private final AutoWoodcuttingPlugin plugin;
     public volatile boolean cannotLightFire = false;
     WoodcuttingScriptState woodcuttingScriptState = WoodcuttingScriptState.WOODCUTTING;
     private boolean hasAutoHopMessageShown = false;
-    private final AutoWoodcuttingPlugin plugin;
-
     @Getter
     private WoodcuttingTree activeTree = WoodcuttingTree.TREE;
     private ResourceLocationOption activeLocation;
+    @Inject
+    private Rs2TileObjectCache rs2TileObjectCache;
 
     @Inject
     public AutoWoodcuttingScript(AutoWoodcuttingPlugin plugin) {
         this.plugin = plugin;
     }
 
-    @Inject
-    private Rs2TileObjectCache rs2TileObjectCache;
+    public static WorldPoint getReturnPoint(AutoWoodcuttingConfig config) {
+        if (config.walkBack().equals(WoodcuttingWalkBack.LAST_LOCATION)) {
+            return returnPoint == null ? Rs2Player.getWorldLocation() : returnPoint;
+        } else {
+            return initialPlayerLocation == null ? Rs2Player.getWorldLocation() : initialPlayerLocation;
+        }
+    }
+
+    private static boolean isAnAxeWithSpecialAttack() {
+        return Rs2Equipment.isWearing(ItemID.DRAGON_AXE) || Rs2Equipment.isWearing(ItemID.DRAGON_AXE_2H) || Rs2Equipment.isWearing(ItemID.CRYSTAL_AXE) ||
+                Rs2Equipment.isWearing(ItemID.CRYSTAL_AXE_2H) || Rs2Equipment.isWearing(ItemID.INFERNAL_AXE) ||
+                Rs2Equipment.isWearing(ItemID.TRAILBLAZER_AXE);
+    }
 
     private void handleFiremaking(AutoWoodcuttingConfig config) {
         WoodcuttingTree treeType = getActiveTree();
@@ -123,14 +135,6 @@ public class AutoWoodcuttingScript extends Script {
             Rs2Bank.withdrawAll(treeType.getLog());
             Rs2Bank.closeBank();
             sleep(500, 1200);
-        }
-    }
-
-    public static WorldPoint getReturnPoint(AutoWoodcuttingConfig config) {
-        if (config.walkBack().equals(WoodcuttingWalkBack.LAST_LOCATION)) {
-            return returnPoint == null ? Rs2Player.getWorldLocation() : returnPoint;
-        } else {
-            return initialPlayerLocation == null ? Rs2Player.getWorldLocation() : initialPlayerLocation;
         }
     }
 
@@ -226,12 +230,6 @@ public class AutoWoodcuttingScript extends Script {
         }
 
         return Rs2Player.isAnimating();
-    }
-
-    private static boolean isAnAxeWithSpecialAttack() {
-        return Rs2Equipment.isWearing(ItemID.DRAGON_AXE) || Rs2Equipment.isWearing(ItemID.DRAGON_AXE_2H) || Rs2Equipment.isWearing(ItemID.CRYSTAL_AXE) ||
-                Rs2Equipment.isWearing(ItemID.CRYSTAL_AXE_2H) || Rs2Equipment.isWearing(ItemID.INFERNAL_AXE) ||
-                Rs2Equipment.isWearing(ItemID.TRAILBLAZER_AXE);
     }
 
     private boolean preFlightChecksAreInvalid(AutoWoodcuttingConfig config) {
@@ -649,18 +647,6 @@ public class AutoWoodcuttingScript extends Script {
         return new ProgressiveSelection(WoodcuttingTree.TREE, fallbackLocation);
     }
 
-    @Getter
-    private static class ProgressiveSelection {
-        private final WoodcuttingTree tree;
-        private final ResourceLocationOption location;
-
-        private ProgressiveSelection(WoodcuttingTree tree, ResourceLocationOption location) {
-            this.tree = tree;
-            this.location = location;
-        }
-
-    }
-
     @Override
     public void shutdown() {
         super.shutdown();
@@ -671,5 +657,17 @@ public class AutoWoodcuttingScript extends Script {
         hasAutoHopMessageShown = false;
         Rs2Antiban.resetAntibanSettings();
         activeLocation = null;
+    }
+
+    @Getter
+    private static class ProgressiveSelection {
+        private final WoodcuttingTree tree;
+        private final ResourceLocationOption location;
+
+        private ProgressiveSelection(WoodcuttingTree tree, ResourceLocationOption location) {
+            this.tree = tree;
+            this.location = location;
+        }
+
     }
 }

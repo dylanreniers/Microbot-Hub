@@ -83,6 +83,10 @@ public enum BoltType {
         this.runeQuantities = runeQuantities;
     }
 
+    public static MagicAction getCrossbowBoltSpell() {
+        return MagicAction.ENCHANT_SAPPHIRE_BOLT; // all bolt types use the same crossbow bolt spell
+    }
+
     public String getName() {
         return name;
     }
@@ -101,10 +105,6 @@ public enum BoltType {
 
     public String getEnchantedName() {
         return enchantedName;
-    }
-
-    public static MagicAction getCrossbowBoltSpell() {
-        return MagicAction.ENCHANT_SAPPHIRE_BOLT; // all bolt types use the same crossbow bolt spell
     }
 
     public int[] getRuneIds() {

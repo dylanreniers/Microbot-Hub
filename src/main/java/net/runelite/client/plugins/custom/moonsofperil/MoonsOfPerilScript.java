@@ -19,7 +19,6 @@ import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import javax.inject.Inject;
 import java.util.EnumMap;
 import java.util.Map;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -27,6 +26,7 @@ public class MoonsOfPerilScript extends Script {
 
     public static boolean test = false;
     public static volatile State CURRENT_STATE = State.IDLE;
+    public static AtomicReference<NPC> sigilNpc = new AtomicReference<>();
     private final MoonsOfPerilConfig config;
     private final Map<State, BaseHandler> handlers = new EnumMap<>(State.class);
     private Rs2InventorySetup bloodEquipment;
@@ -35,8 +35,6 @@ public class MoonsOfPerilScript extends Script {
     private Rs2InventorySetup eclipseClones;
     @Getter
     private State state = State.IDLE;
-
-    public static AtomicReference<NPC> sigilNpc = new AtomicReference<>();
 
 
     @Inject
@@ -90,7 +88,8 @@ public class MoonsOfPerilScript extends Script {
     private State determineState() {
         if (isPlayerDead()) {
             return State.DEATH;
-        } if (needsToStop()) {
+        }
+        if (needsToStop()) {
             return State.LOGOUT;
         } else if (readyToLootChest()) {
             return State.REWARDS;

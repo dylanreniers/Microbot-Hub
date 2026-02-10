@@ -7,36 +7,32 @@ import net.runelite.client.plugins.microbot.util.misc.Operation;
 
 import java.util.List;
 
-public class ArdougneCourse implements AgilityCourseHandler
-{
-	@Override
-	public WorldPoint getStartPoint()
-	{
-		return new WorldPoint(2673, 3298, 0);
-	}
+public class ArdougneCourse implements AgilityCourseHandler {
+    @Override
+    public WorldPoint getStartPoint() {
+        return new WorldPoint(2673, 3298, 0);
+    }
 
-	@Override
-	public List<AgilityObstacleModel> getObstacles()
-	{
-		return List.of(
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_WALLCLIMB),
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_JUMP),
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_PLANK),
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_JUMP_2, -1, 3318, Operation.GREATER, Operation.GREATER_EQUAL),
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_JUMP_3, -1, 3310, Operation.GREATER, Operation.GREATER_EQUAL),
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_WALLCROSSING),
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_JUMP_4)
-		);
-	}
+    @Override
+    public List<AgilityObstacleModel> getObstacles() {
+        return List.of(
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_WALLCLIMB),
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_JUMP),
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_PLANK),
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_JUMP_2, -1, 3318, Operation.GREATER, Operation.GREATER_EQUAL),
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_JUMP_3, -1, 3310, Operation.GREATER, Operation.GREATER_EQUAL),
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_WALLCROSSING),
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_ARDY_JUMP_4)
+        );
+    }
 
-	@Override
-	public Integer getRequiredLevel()
-	{
-		return 90;
-	}
+    @Override
+    public Integer getRequiredLevel() {
+        return 90;
+    }
 
-	@Override
-	public int getLootDistance() {
-		return 2;
-	}
+    @Override
+    public int getLootDistance() {
+        return 2;
+    }
 }

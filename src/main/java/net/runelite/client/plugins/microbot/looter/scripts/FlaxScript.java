@@ -53,10 +53,10 @@ public class FlaxScript extends Script {
                             return;
                         }
                         if (config.worldHop() && Rs2Player.hopIfPlayerDetected(1, 10, 10)) return;
-                        
+
                         GameObject flaxObject = Rs2GameObject.findObject("flax", false, config.distanceToStray(), true, initialPlayerLocation);
                         if (flaxObject != null) {
-                            if(Rs2GameObject.interact(flaxObject, "pick")){
+                            if (Rs2GameObject.interact(flaxObject, "pick")) {
                                 Rs2Antiban.actionCooldown();
                             }
                         }
@@ -87,7 +87,7 @@ public class FlaxScript extends Script {
     }
 
     @Override
-    public void shutdown(){
+    public void shutdown() {
         super.shutdown();
         Rs2Antiban.resetAntibanSettings();
     }

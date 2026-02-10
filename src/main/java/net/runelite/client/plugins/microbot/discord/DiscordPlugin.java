@@ -2,8 +2,19 @@ package net.runelite.client.plugins.microbot.discord;
 
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.*;
-import net.runelite.api.events.*;
+import net.runelite.api.ChatMessageType;
+import net.runelite.api.Client;
+import net.runelite.api.GameState;
+import net.runelite.api.InventoryID;
+import net.runelite.api.Item;
+import net.runelite.api.ItemContainer;
+import net.runelite.api.Player;
+import net.runelite.api.Skill;
+import net.runelite.api.events.ActorDeath;
+import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.events.StatChanged;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
@@ -19,8 +30,13 @@ import net.runelite.client.util.ImageUtil;
 import javax.inject.Inject;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.*;
+import java.util.Map;
+import java.util.Set;
 
 @PluginDescriptor(
         name = "Discord Notifier",
@@ -37,26 +53,21 @@ import java.util.*;
 @Slf4j
 public class DiscordPlugin extends Plugin {
     public static final String version = "1.0.0";
+    private final Map<Skill, Integer> skillLevels = new EnumMap<>(Skill.class);
     @Inject
     private DiscordConfig config;
-
     @Inject
     private Client client;
-
     @Inject
     private ConfigManager configManager;
-
     @Inject
     private ClientToolbar clientToolbar;
-
     @Inject
     private ItemManager itemManager;
-
     private NavigationButton navButton;
     private DiscordPanel panel;
     private GameState lastGameState = null;
     private String lastUsername = null;
-    private final Map<Skill, Integer> skillLevels = new EnumMap<>(Skill.class);
     private boolean skillsInitialized = false;
     private boolean seenLoginScreen = false;
     private Set<Integer> notifiedItems = new HashSet<>();
@@ -148,13 +159,13 @@ public class DiscordPlugin extends Plugin {
 
         if (newLevel > oldLevel) {
             skillLevels.put(skill, newLevel);
-            
+
             try {
                 String username = client.getLocalPlayer().getName();
                 DiscordEmbed embed = new DiscordEmbed();
                 embed.setTitle("Level Up Notification");
-                embed.setDescription(String.format("%s has reached level %d in %s!", 
-                    username, newLevel, skill.getName()));
+                embed.setDescription(String.format("%s has reached level %d in %s!",
+                        username, newLevel, skill.getName()));
                 embed.setColor(Rs2Discord.convertColorToInt(Color.CYAN));
 
                 Rs2Discord.sendWebhookMessage("Level Up Notification", Collections.singletonList(embed));
@@ -186,7 +197,7 @@ public class DiscordPlugin extends Plugin {
             embed.setColor(Rs2Discord.convertColorToInt(Color.GREEN));
 
             Rs2Discord.sendWebhookMessage("Login Notification", Collections.singletonList(embed));
-            
+
             new Thread(this::initializeSkillLevels).start();
         } catch (Exception e) {
         }
@@ -195,13 +206,13 @@ public class DiscordPlugin extends Plugin {
     @Subscribe
     public void onGameStateChanged(GameStateChanged gameStateChanged) {
         GameState newState = gameStateChanged.getGameState();
-        
+
         if (newState == GameState.LOGIN_SCREEN) {
             seenLoginScreen = true;
             skillsInitialized = false;
             skillLevels.clear();
         }
-        
+
         if (newState == GameState.LOGGED_IN && seenLoginScreen) {
             seenLoginScreen = false;
             new Thread(() -> {
@@ -216,8 +227,7 @@ public class DiscordPlugin extends Plugin {
                 } catch (InterruptedException e) {
                 }
             }).start();
-        }
-        else if (lastGameState == GameState.LOGGED_IN && newState == GameState.LOGIN_SCREEN) {
+        } else if (lastGameState == GameState.LOGGED_IN && newState == GameState.LOGIN_SCREEN) {
             if (!config.enableNotifications() || !config.notifyLoginLogout()) {
                 return;
             }
@@ -225,9 +235,9 @@ public class DiscordPlugin extends Plugin {
             try {
                 DiscordEmbed embed = new DiscordEmbed();
                 embed.setTitle("Logout Notification");
-                String logoutMessage = (lastUsername != null) ? 
-                    lastUsername + " has logged out" : 
-                    "Your player has logged out";
+                String logoutMessage = (lastUsername != null) ?
+                        lastUsername + " has logged out" :
+                        "Your player has logged out";
                 embed.setDescription(logoutMessage);
                 embed.setColor(Rs2Discord.convertColorToInt(Color.YELLOW));
 
@@ -286,7 +296,7 @@ public class DiscordPlugin extends Plugin {
         int threshold = config.valuableItemThreshold();
 
         Item[] currentItems = container.getItems();
-        
+
         if (lastInventoryItems == null) {
             lastInventoryItems = currentItems.clone();
             return;
@@ -299,7 +309,7 @@ public class DiscordPlugin extends Plugin {
 
             boolean isNewItem = true;
             int oldQuantity = 0;
-            
+
             for (Item oldItem : lastInventoryItems) {
                 if (oldItem.getId() == currentItem.getId()) {
                     isNewItem = false;
@@ -318,7 +328,7 @@ public class DiscordPlugin extends Plugin {
                     if (quantityIncrease > 1) {
                         itemName = quantityIncrease + " x " + itemName;
                     }
-                    
+
                     try {
                         DiscordEmbed embed = new DiscordEmbed();
                         embed.setTitle("Valuable Item Notification");
@@ -343,10 +353,10 @@ public class DiscordPlugin extends Plugin {
             List<String> phraseList = new ArrayList<>();
             StringBuilder currentPhrase = new StringBuilder();
             boolean inQuotes = false;
-            
+
             for (int i = 0; i < phrases.length(); i++) {
                 char c = phrases.charAt(i);
-                
+
                 if (c == '"') {
                     inQuotes = !inQuotes;
                     currentPhrase.append(c);
@@ -359,7 +369,7 @@ public class DiscordPlugin extends Plugin {
                     currentPhrase.append(c);
                 }
             }
-            
+
             if (currentPhrase.length() > 0) {
                 phraseList.add(currentPhrase.toString().trim());
             }
@@ -368,7 +378,7 @@ public class DiscordPlugin extends Plugin {
                 if (phrase.startsWith("\"") && phrase.endsWith("\"") && phrase.length() >= 2) {
                     phrase = phrase.substring(1, phrase.length() - 1);
                 }
-                
+
                 if (!phrase.isEmpty()) {
                     monitoredPhrases.add(phrase.toLowerCase());
                 }
@@ -382,21 +392,21 @@ public class DiscordPlugin extends Plugin {
             return;
         }
 
-        if (chatMessage.getType() != ChatMessageType.PUBLICCHAT && 
-            chatMessage.getType() != ChatMessageType.MODCHAT) {
+        if (chatMessage.getType() != ChatMessageType.PUBLICCHAT &&
+                chatMessage.getType() != ChatMessageType.MODCHAT) {
             return;
         }
 
         String message = chatMessage.getMessage();
         String sender = chatMessage.getName();
-        
+
         for (String phrase : monitoredPhrases) {
             if (message.toLowerCase().equals(phrase.toLowerCase())) {
                 try {
                     DiscordEmbed embed = new DiscordEmbed();
                     embed.setTitle("Chat Monitor Alert");
-                    embed.setDescription(String.format("Player: %s\nMessage: %s", 
-                        sender, message));
+                    embed.setDescription(String.format("Player: %s\nMessage: %s",
+                            sender, message));
                     embed.setColor(Rs2Discord.convertColorToInt(Color.YELLOW));
 
                     Rs2Discord.sendWebhookMessage("Chat Monitor Alert", Collections.singletonList(embed));
@@ -407,4 +417,4 @@ public class DiscordPlugin extends Plugin {
             }
         }
     }
-} 
+}

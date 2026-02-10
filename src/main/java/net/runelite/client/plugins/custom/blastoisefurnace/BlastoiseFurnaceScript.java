@@ -41,6 +41,7 @@ import static net.runelite.api.gameval.ItemID.COINS;
 import static net.runelite.api.gameval.ItemID.GAUNTLETS_OF_GOLDSMITHING;
 import static net.runelite.api.gameval.ItemID.GOLD_ORE;
 import static net.runelite.api.gameval.ItemID.ICE_GLOVES;
+import static net.runelite.api.gameval.ItemID.SILVER_ORE;
 import static net.runelite.api.gameval.ItemID.SMITHING_UNIFORM_GLOVES_ICE;
 import static net.runelite.api.gameval.ObjectID.BLAST_FURNACE_AUTOMATA_COFFER;
 import static net.runelite.api.gameval.ObjectID.BLAST_FURNACE_CONVEYER_BELT_CLICKABLE;
@@ -55,6 +56,7 @@ import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_GOLD_ORE;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_IRON_BARS;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_MITHRIL_BARS;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_RUNITE_BARS;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_SILVER_BARS;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_STEEL_BARS;
 import static net.runelite.client.plugins.microbot.util.misc.Rs2UiHelper.ITEM_NAME_SUFFIX_PATTERN;
 
@@ -67,12 +69,21 @@ public class BlastoiseFurnaceScript extends Script {
     static boolean coalBagEmpty;
     static boolean primaryOreEmpty;
     static boolean secondaryOreEmpty;
-    private boolean timerStarted = false;
-    private volatile boolean timeIsUp;
-    private boolean init = false;
-
     private final BlastoiseFurnacePlugin plugin;
     private final BlastoiseFurnaceConfig config;
+    private final Runnable retrievePrimary = this::retrievePrimary;
+    private boolean timerStarted = false;
+    private volatile boolean timeIsUp;
+    private final Runnable retrieveCoalAndPrimary = this::retrieveCoalAndPrimary;
+    private final Runnable retrieveCoalAndGold = this::retrieveCoalAndGold;
+    private final Runnable retrieveDoubleCoal = this::retrieveDoubleCoal;
+    private boolean init = false;
+
+    @Inject
+    public BlastoiseFurnaceScript(BlastoiseFurnacePlugin plugin, BlastoiseFurnaceConfig config) {
+        this.plugin = plugin;
+        this.config = config;
+    }
 
     private boolean hasRequiredOresForSmithing() {
         int primaryOre = config.getBars().getPrimaryOre();
@@ -80,12 +91,6 @@ public class BlastoiseFurnaceScript extends Script {
         boolean hasPrimaryOre = Rs2Bank.hasItem(primaryOre);
         boolean hasSecondaryOre = secondaryOre != -1 && Rs2Bank.hasItem(secondaryOre);
         return hasPrimaryOre && hasSecondaryOre;
-    }
-
-    @Inject
-    public BlastoiseFurnaceScript(BlastoiseFurnacePlugin plugin, BlastoiseFurnaceConfig config) {
-        this.plugin = plugin;
-        this.config = config;
     }
 
     public boolean run() {
@@ -132,6 +137,8 @@ public class BlastoiseFurnaceScript extends Script {
                 }
 
                 boolean hasGauntlets;
+                log.info("state: {}", state);
+
                 switch (state) {
                     case BANKING:
                         Microbot.status = "Banking";
@@ -198,6 +205,7 @@ public class BlastoiseFurnaceScript extends Script {
                     case SMITHING:
                         log.info("clicking conveyor");
                         if (barsInDispenser(config.getBars()) > 0) {
+                            log.info("handle dispenser looting");
                             handleDispenserLooting();
                         }
 
@@ -233,8 +241,8 @@ public class BlastoiseFurnaceScript extends Script {
             Rs2Dialogue.clickOption("Yes");
             sleep(1200, 1850);
             Rs2Dialogue.clickContinue();
-            sleepUntil(()-> !Rs2Dialogue.isInDialogue());
-            if(!Rs2Dialogue.isInDialogue()){
+            sleepUntil(() -> !Rs2Dialogue.isInDialogue());
+            if (!Rs2Dialogue.isInDialogue()) {
                 setTenMinuteTimer();
             }
         }
@@ -243,6 +251,7 @@ public class BlastoiseFurnaceScript extends Script {
     private void handleDispenserLooting() {
         if (!Rs2Inventory.isFull()) {
             if (!dispenserContainsBars()) {
+                log.info("no bars?");
                 sleepUntil(this::dispenserContainsBars, Rs2Random.between(3000, 5000));
             }
 
@@ -344,10 +353,23 @@ public class BlastoiseFurnaceScript extends Script {
         doOreRun(true, true);
     }
 
+    private void retrieveSilver() {
+        if (!Rs2Inventory.hasItem(SILVER_ORE)) {
+            Rs2Bank.withdrawAll(SILVER_ORE);
+            return;
+        }
+        depositOre();
+        doOreRun(true, false);
+    }
+
     private void doOreRun(boolean useIceGloves, boolean waitInventoryChange) {
+        Rs2Bank.closeBank();
         Rs2Walker.walkFastCanvas(new WorldPoint(1940, 4962, 0));
+        log.info("sleep 1");
         sleep(3400);
+        log.info("sleep 2");
         sleepUntil(() -> barsInDispenser(config.getBars()) > 0, 10000);
+        log.info("sleep 2 done");
 
         if (useIceGloves) {
             if (!Rs2Equipment.isWearing(ICE_GLOVES) && !Rs2Equipment.isWearing(SMITHING_UNIFORM_GLOVES_ICE)) {
@@ -360,8 +382,12 @@ public class BlastoiseFurnaceScript extends Script {
                     return;
                 }
             }
-            if (waitInventoryChange)
+            if (waitInventoryChange) {
+                log.info("another sleep");
                 Rs2Inventory.waitForInventoryChanges(2000);
+            } else {
+                sleep(600, 800);
+            }
         } else {
             sleep(400, 700);
         }
@@ -376,6 +402,9 @@ public class BlastoiseFurnaceScript extends Script {
         final int batch = coal / divisor;
 
         switch (bar) {
+            case SILVER_BAR:
+                retrieveSilver();
+                break;
             case GOLD_BAR:
                 retrieveGold();
                 break;
@@ -410,11 +439,6 @@ public class BlastoiseFurnaceScript extends Script {
     private boolean isHybrid(Bars bar) {
         return bar.name().startsWith("HYBRID");
     }
-
-    private final Runnable retrievePrimary = this::retrievePrimary;
-    private final Runnable retrieveCoalAndPrimary = this::retrieveCoalAndPrimary;
-    private final Runnable retrieveCoalAndGold = this::retrieveCoalAndGold;
-    private final Runnable retrieveDoubleCoal = this::retrieveDoubleCoal;
 
     private void dispatchStandard(int batch, int doubleCoalMax, Runnable doubleCoal, Runnable coalAndPrimary, Runnable primary) {
         if (batch <= doubleCoalMax) {
@@ -528,7 +552,7 @@ public class BlastoiseFurnaceScript extends Script {
         sleepUntil(() -> Rs2Dialogue.isInDialogue() || getInventoryOreCount() < oreCount, 10_000);
         if (Rs2Widget.hasWidget("You must ask the foreman's")) {
             log.info("Need to pay the noob tax");
-            if(timerStarted && !timeIsUp){
+            if (timerStarted && !timeIsUp) {
                 return putOreOnConveyorBelt();
             }
 
@@ -538,8 +562,8 @@ public class BlastoiseFurnaceScript extends Script {
         return true;
     }
 
-    public void setTenMinuteTimer(){
-        if(timerStarted) return;
+    public void setTenMinuteTimer() {
+        if (timerStarted) return;
 
         Timer timer = new Timer();
 
@@ -581,6 +605,8 @@ public class BlastoiseFurnaceScript extends Script {
 
     public int barsInDispenser(Bars bar) {
         switch (bar) {
+            case SILVER_BAR:
+                return getBars(BLAST_FURNACE_SILVER_BARS);
             case GOLD_BAR:
                 return getBars(BLAST_FURNACE_GOLD_BARS);
             case STEEL_BAR:
@@ -621,6 +647,7 @@ public class BlastoiseFurnaceScript extends Script {
         return Arrays.stream(new int[]{
                 BLAST_FURNACE_IRON_BARS,
                 BLAST_FURNACE_STEEL_BARS,
+                BLAST_FURNACE_SILVER_BARS,
                 BLAST_FURNACE_GOLD_BARS,
                 BLAST_FURNACE_MITHRIL_BARS,
                 BLAST_FURNACE_ADAMANTITE_BARS,

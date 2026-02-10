@@ -21,22 +21,25 @@ import java.util.Comparator;
 import java.util.stream.Collectors;
 
 import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
+
 @Slf4j
 public class EggEvent implements BlockingEvent {
 
     private final AutoWoodcuttingPlugin plugin;
+
     public EggEvent(AutoWoodcuttingPlugin plugin) {
         this.plugin = plugin;
     }
 
     @Override
     public boolean validate() {
-        try{
+        try {
             if (plugin == null || !Microbot.isPluginEnabled(plugin)) return false;
             if (Microbot.getClient() == null || !Microbot.isLoggedIn()) return false;
             var forester = Rs2Npc
                     .getNpcs(NpcID.GATHERING_EVENT_PHEASANT_FORESTER)
-                    .min(Comparator.comparingInt(Rs2NpcModel::getDistanceFromPlayer));;
+                    .min(Comparator.comparingInt(Rs2NpcModel::getDistanceFromPlayer));
+            ;
             return forester.isPresent();
         } catch (Exception e) {
             log.error("EggEvent: Exception in validate method", e);
@@ -50,7 +53,8 @@ public class EggEvent implements BlockingEvent {
         Microbot.log("EggEvent: Executing Egg event");
         var forester = Rs2Npc
                 .getNpcs(NpcID.GATHERING_EVENT_PHEASANT_FORESTER)
-                .min(Comparator.comparingInt(Rs2NpcModel::getDistanceFromPlayer));;
+                .min(Comparator.comparingInt(Rs2NpcModel::getDistanceFromPlayer));
+        ;
         if (forester.isEmpty()) {
             Microbot.log("EggEvent: Forester not found, cannot proceed with egg event.");
             return true; // If the forester is not found, we cannot proceed with the event

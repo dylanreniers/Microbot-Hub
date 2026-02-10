@@ -49,6 +49,7 @@ public class AltarService {
 
     /**
      * Enters the best available altar based on configuration
+     *
      * @return true if entering an altar
      */
     public boolean enterBestAvailableAltar() {
@@ -59,9 +60,9 @@ public class AltarService {
             Rs2GameObject.interact(availableAltar);
 
             Global.sleepUntil(() ->
-                !locationService.isInMainRegion() ||
-                !Objects.equals(getAvailableAltars().stream().findFirst().orElse(null), availableAltar),
-                5000
+                            !locationService.isInMainRegion() ||
+                                    !Objects.equals(getAvailableAltars().stream().findFirst().orElse(null), availableAltar),
+                    5000
             );
             Global.sleep(Rs2Random.randomGaussian(1000, 300));
             return true;
@@ -72,6 +73,7 @@ public class AltarService {
 
     /**
      * Crafts runes at the current altar
+     *
      * @return true if crafting operation was performed
      */
     public boolean craftRunes() {
@@ -103,6 +105,7 @@ public class AltarService {
 
     /**
      * Leaves the current altar and returns to main region
+     *
      * @return true if leaving altar
      */
     public boolean leaveAltar() {
@@ -121,8 +124,8 @@ public class AltarService {
      */
     public List<GameObject> getAvailableAltars() {
         List<GameObject> availableAltars = Rs2GameObject.getGameObjects().stream()
-            .filter(this::isValidPortal)
-            .collect(Collectors.toList());
+                .filter(this::isValidPortal)
+                .collect(Collectors.toList());
 
         log("Found " + availableAltars.size() + " available altars after filtering.");
 
@@ -196,10 +199,10 @@ public class AltarService {
 
         if (mode == Mode.BALANCED && GotrScript.elementalRewardPoints < GotrScript.catalyticRewardPoints) {
             return availableAltars.stream()
-                .sorted(GotrScript.elementalRewardPoints < GotrScript.catalyticRewardPoints
-                    ? Comparator.comparingInt(TileObject::getId)
-                    : Comparator.comparingInt(TileObject::getId).reversed())
-                .collect(Collectors.toList());
+                    .sorted(GotrScript.elementalRewardPoints < GotrScript.catalyticRewardPoints
+                            ? Comparator.comparingInt(TileObject::getId)
+                            : Comparator.comparingInt(TileObject::getId).reversed())
+                    .collect(Collectors.toList());
         } else if (mode == Mode.CATALYTIC) {
             return availableAltars.stream()
                     .sorted(Comparator.comparingInt(TileObject::getId).reversed())
@@ -218,20 +221,20 @@ public class AltarService {
         log("Sorting by CellType (strongest→weakest) for POINTS mode...");
 
         return availableAltars.stream()
-            .sorted(
-                Comparator.<GameObject>comparingInt(
-                    o -> GotrScript.guardianPortalInfo.get(o.getId()).getCellType().ordinal()
-                ).reversed()
-                .thenComparingInt(o -> {
-                    RuneType rt = GotrScript.guardianPortalInfo.get(o.getId()).getRuneType();
-                    boolean preferElemental = elementalPoints < catalyticPoints;
-                    return ((preferElemental && rt == RuneType.ELEMENTAL) ||
-                            (!preferElemental && rt == RuneType.CATALYTIC)) ? 0 : 1;
-                })
-            )
-            .peek(o -> log("Altar " +
-                GotrScript.guardianPortalInfo.get(o.getId()).getName() + " – " +
-                GotrScript.guardianPortalInfo.get(o.getId()).getCellType()))
-            .collect(Collectors.toList());
+                .sorted(
+                        Comparator.<GameObject>comparingInt(
+                                        o -> GotrScript.guardianPortalInfo.get(o.getId()).getCellType().ordinal()
+                                ).reversed()
+                                .thenComparingInt(o -> {
+                                    RuneType rt = GotrScript.guardianPortalInfo.get(o.getId()).getRuneType();
+                                    boolean preferElemental = elementalPoints < catalyticPoints;
+                                    return ((preferElemental && rt == RuneType.ELEMENTAL) ||
+                                            (!preferElemental && rt == RuneType.CATALYTIC)) ? 0 : 1;
+                                })
+                )
+                .peek(o -> log("Altar " +
+                        GotrScript.guardianPortalInfo.get(o.getId()).getName() + " – " +
+                        GotrScript.guardianPortalInfo.get(o.getId()).getCellType()))
+                .collect(Collectors.toList());
     }
 }

@@ -47,7 +47,7 @@ public class TheMessOverlay extends Overlay {
         this.plugin = plugin;
         this.iconManager = new SkillIconManager();
 
-        Microbot.log(Level.DEBUG,"Initializing The Mess Overlay");
+        Microbot.log(Level.DEBUG, "Initializing The Mess Overlay");
 
         setLayer(OverlayLayer.ALWAYS_ON_TOP);
         setPosition(OverlayPosition.DYNAMIC);
@@ -126,7 +126,7 @@ public class TheMessOverlay extends Overlay {
 
         } catch (Exception ex) {
             System.out.println(ex.getMessage());
-            Microbot.log(Level.DEBUG,"Error rendering The Mess Overlay: {}", ex.getMessage());
+            Microbot.log(Level.DEBUG, "Error rendering The Mess Overlay: {}", ex.getMessage());
         }
 
         return null;

@@ -5,8 +5,7 @@ import lombok.RequiredArgsConstructor;
 
 @Getter
 @RequiredArgsConstructor
-public enum FletchingMaterial
-{
+public enum FletchingMaterial {
     LOG("Log"),
     WOOD("Wood"),
     OAK("Oak"),
@@ -20,8 +19,7 @@ public enum FletchingMaterial
 
 
     @Override
-    public String toString()
-    {
+    public String toString() {
         return name;
     }
 }

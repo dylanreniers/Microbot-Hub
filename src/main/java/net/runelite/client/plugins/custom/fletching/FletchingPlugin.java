@@ -15,7 +15,7 @@ import java.awt.*;
 @PluginDescriptor(
         name = PluginConstants.MOCROSOFT + "Fletcher",
         description = "Microbot fletching plugin",
-        authors = { "Mocrosoft" },
+        authors = {"Mocrosoft"},
         version = FletchingPlugin.version,
         minClientVersion = "1.9.9.1",
         tags = {"fletching", "microbot", "skills"},
@@ -28,25 +28,22 @@ import java.awt.*;
 public class FletchingPlugin extends Plugin {
 
     public static final String version = "1.6.3";
-
+    FletchingScript fletchingScript;
     @Inject
     private FletchingConfig config;
-
-    @Provides
-    FletchingConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(FletchingConfig.class);
-    }
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private FletchingOverlay fletchingOverlay;
 
-    FletchingScript fletchingScript;
-
+    @Provides
+    FletchingConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(FletchingConfig.class);
+    }
 
     @Override
     protected void startUp() throws AWTException {
-		Microbot.pauseAllScripts.compareAndSet(true, false);
+        Microbot.pauseAllScripts.compareAndSet(true, false);
         if (overlayManager != null) {
             overlayManager.add(fletchingOverlay);
         }

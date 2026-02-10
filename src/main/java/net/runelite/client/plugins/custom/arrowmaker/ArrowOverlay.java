@@ -10,15 +10,14 @@ import javax.inject.Inject;
 import java.awt.*;
 
 
-
 public class ArrowOverlay extends OverlayPanel {
 
     @Inject
-    ArrowOverlay(ArrowPlugin plugin)
-    {
+    ArrowOverlay(ArrowPlugin plugin) {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
     }
+
     @Override
     public Dimension render(Graphics2D graphics) {
         try {
@@ -33,7 +32,7 @@ public class ArrowOverlay extends OverlayPanel {
                     .build());
 
 
-        } catch(Exception ex) {
+        } catch (Exception ex) {
             Microbot.logStackTrace(this.getClass().getSimpleName(), ex);
         }
         return super.render(graphics);

@@ -17,8 +17,8 @@ public class HerbPatch {
     private final String regionName;
     private final CropState prediction;
     private final WorldPoint location;
-    private boolean enabled;
     private final HashMap<String, Integer> items = new HashMap<>();
+    private boolean enabled;
 
     public HerbPatch(FarmingPatch patch, HerbrunConfig config, FarmingHandler farmingHandler) {
         this.patch = patch;
@@ -73,6 +73,7 @@ public class HerbPatch {
 
     /**
      * Gets a Herbs enum value from its string name
+     *
      * @param regionName The region name (e.g., "Ardougne")
      * @return The matching Herbs enum value, or NONE if not found
      */
@@ -86,10 +87,10 @@ public class HerbPatch {
     }
 
     public boolean isInRange(int distance) {
-        if(Objects.equals(regionName, "Weiss")) {
-         return Rs2Player.getWorldLocation().getRegionID() == 11325;
+        if (Objects.equals(regionName, "Weiss")) {
+            return Rs2Player.getWorldLocation().getRegionID() == 11325;
 
-        } else if(Objects.equals(regionName, "Troll Stronghold")) {
+        } else if (Objects.equals(regionName, "Troll Stronghold")) {
             return Rs2Player.getWorldLocation().getRegionID() == 11321;
         } else {
             return Rs2Player.getWorldLocation().distanceTo(location) < distance;

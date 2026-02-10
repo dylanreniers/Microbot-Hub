@@ -15,8 +15,7 @@ public class ExampleOverlay extends OverlayPanel {
     public final ButtonComponent myButton;
 
     @Inject
-    ExampleOverlay(ExamplePlugin plugin)
-    {
+    ExampleOverlay(ExamplePlugin plugin) {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
         setNaughty();
@@ -45,7 +44,7 @@ public class ExampleOverlay extends OverlayPanel {
             panelComponent.getChildren().add(myButton);
 
 
-        } catch(Exception ex) {
+        } catch (Exception ex) {
             System.out.println(ex.getMessage());
         }
         return super.render(graphics);

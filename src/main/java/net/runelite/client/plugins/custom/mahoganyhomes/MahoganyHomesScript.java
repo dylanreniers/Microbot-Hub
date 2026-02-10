@@ -30,7 +30,6 @@ import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.tile.Rs2Tile;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
-import net.runelite.client.plugins.microbot.util.walker.WalkerState;
 
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
@@ -53,6 +52,36 @@ public class MahoganyHomesScript extends Script {
 
     @Inject
     private Rs2NpcCache rs2NpcCache;
+
+    @Nonnull
+    private static List<TileObject> getDoorsOnPath(List<WorldPoint> walkerPath) {
+        List<TileObject> doors = new ArrayList<>();
+        for (WorldPoint wp : walkerPath) {
+            TileObject door = null;
+            var tile = Rs2Walker.getTile(wp);
+
+            if (tile != null) {
+                door = tile.getWallObject();
+            }
+
+            if (door == null) {
+                continue;
+            }
+
+            var objectComp = Rs2GameObject.getObjectComposition(door.getId());
+            if (objectComp == null) {
+                continue;
+            }
+
+            String name = objectComp.getName();
+
+            if (Arrays.asList(objectComp.getActions()).contains("Open") && !name.equalsIgnoreCase("Chest")) {
+                doors.add(door);
+            }
+
+        }
+        return doors;
+    }
 
     public boolean run(MahoganyHomesConfig config) {
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
@@ -96,11 +125,11 @@ public class MahoganyHomesScript extends Script {
         log.info(message);
     }
 
+    // Tasks section
+
     private void log(String format, Object... args) {
         log.info(String.format(format, args));
     }
-
-    // Tasks section
 
     private void checkPlankSack() {
         if (plugin.getConfig().usePlankSack() && plugin.getPlankCount() == -1) {
@@ -210,36 +239,6 @@ public class MahoganyHomesScript extends Script {
         return false;
     }
 
-    @Nonnull
-    private static List<TileObject> getDoorsOnPath(List<WorldPoint> walkerPath) {
-        List<TileObject> doors = new ArrayList<>();
-        for (WorldPoint wp : walkerPath) {
-            TileObject door = null;
-            var tile = Rs2Walker.getTile(wp);
-
-            if (tile != null) {
-                door = tile.getWallObject();
-            }
-
-            if (door == null) {
-                continue;
-            }
-
-            var objectComp = Rs2GameObject.getObjectComposition(door.getId());
-            if (objectComp == null) {
-                continue;
-            }
-
-            String name = objectComp.getName();
-
-            if (Arrays.asList(objectComp.getActions()).contains("Open") && !name.equalsIgnoreCase("Chest")) {
-                doors.add(door);
-            }
-
-        }
-        return doors;
-    }
-
     private void interactWithObject(GameObject object) {
         Hotspot hotspot = Hotspot.getByObjectId(object.getId());
         String action = Objects.requireNonNull(hotspot).getRequiredAction();
@@ -258,7 +257,7 @@ public class MahoganyHomesScript extends Script {
         if (plugin.getCurrentHome() != null
                 && plugin.getCurrentHome().isInside(Rs2Player.getWorldLocation())
                 && Hotspot.isEverythingFixed()) {
-            if(plugin.getConfig().usePlankSack() && planksInPlankSack() > 0 && !Rs2Inventory.isFull()){
+            if (plugin.getConfig().usePlankSack() && planksInPlankSack() > 0 && !Rs2Inventory.isFull()) {
                 if (Rs2Inventory.contains(ItemID.PLANK_SACK) && Rs2Inventory.contains(ItemID.STEEL_BAR)) {
                     Rs2ItemModel plankSack = Rs2Inventory.get(ItemID.PLANK_SACK);
                     if (plankSack != null) {
@@ -302,7 +301,7 @@ public class MahoganyHomesScript extends Script {
     // Get new contract
     private void getNewContract() {
         if (plugin.getCurrentHome() == null) {
-            if(plugin.getConfig().useNpcContact()) {
+            if (plugin.getConfig().useNpcContact()) {
                 if (Rs2Magic.npcContact("amy")) {
                     handleContractDialogue();
                 }
@@ -319,13 +318,13 @@ public class MahoganyHomesScript extends Script {
 
                 // Search for Mahogany Homes contract NPCs directly by name
                 var npc = Rs2Npc.getNpcs()
-                    .filter(n -> n.getName() != null &&
-                           (n.getName().equals("Amy") ||
-                            n.getName().equals("Marlo") ||
-                            n.getName().equals("Ellie") ||
-                            n.getName().equals("Angelo")))
-                    .findFirst()
-                    .orElse(null);
+                        .filter(n -> n.getName() != null &&
+                                (n.getName().equals("Amy") ||
+                                        n.getName().equals("Marlo") ||
+                                        n.getName().equals("Ellie") ||
+                                        n.getName().equals("Angelo")))
+                        .findFirst()
+                        .orElse(null);
 
                 if (npc == null) {
                     log("No contract NPC found, waiting before retry");
@@ -367,9 +366,9 @@ public class MahoganyHomesScript extends Script {
             BankLocation bankLocation = Rs2Bank.getNearestBank(currentHome.getLocation());
             ShortestPathPlugin.getPathfinderConfig().setIgnoreTeleportAndItems(false);
             if (Rs2Bank.walkToBank(bankLocation)) {
-                if(Rs2Bank.openBank()) {
+                if (Rs2Bank.openBank()) {
                     sleepUntil(Rs2Bank::isOpen);
-                    if (Rs2Bank.count(plugin.getConfig().currentTier().getPlankSelection().getPlankId()) <= 28 || Rs2Bank.count(ItemID.STEEL_BAR) <= 4 ){
+                    if (Rs2Bank.count(plugin.getConfig().currentTier().getPlankSelection().getPlankId()) <= 28 || Rs2Bank.count(ItemID.STEEL_BAR) <= 4) {
                         System.out.println("Out of Plank or Steel Bar");
                         Microbot.stopPlugin(plugin);
                         return;
@@ -401,7 +400,7 @@ public class MahoganyHomesScript extends Script {
                                 plankSackEntry.setWorldViewId(-1);
                                 plankSackEntry.setForceLeftClick(false);
                                 plankSackEntry.setDeprioritized(false);
-                                Microbot.doInvoke(plankSackEntry,Rs2Inventory.itemBounds(plankSack));
+                                Microbot.doInvoke(plankSackEntry, Rs2Inventory.itemBounds(plankSack));
                                 Rs2Inventory.waitForInventoryChanges(1000);
                                 if (Rs2Inventory.isFull()) {
                                     plugin.setPlankCount(28);

@@ -27,8 +27,8 @@ public class ResupplyHandler implements BaseHandler {
 
     public ResupplyHandler(MoonsOfPerilConfig cfg) {
         this.minMoonlightPotions = cfg.moonlightPotionsMinimum();
-        this.minCookedBream      = cfg.cookedBreamMinimum();
-        this.potionBatchSize     = cfg.moonlightPotionsQuantum();
+        this.minCookedBream = cfg.cookedBreamMinimum();
+        this.potionBatchSize = cfg.moonlightPotionsQuantum();
         this.debugLogging = cfg.debugLogging();
     }
 
@@ -53,26 +53,38 @@ public class ResupplyHandler implements BaseHandler {
                 || (Rs2Inventory.count(ItemID.BREAM_FISH_COOKED) < cookedBreamMinimum)) {
             return true;
         } else {
-            if (debugLogging) {Microbot.log("No need to resupply right now.");}
+            if (debugLogging) {
+                Microbot.log("No need to resupply right now.");
+            }
         }
         return false;
     }
 
     private void walkToSupplies() {
-        if (debugLogging) {Microbot.log("Attempting to walk to supply area 1");}
+        if (debugLogging) {
+            Microbot.log("Attempting to walk to supply area 1");
+        }
         Rs2Walker.walkWithState(supplyLocation, 0);
-        if (debugLogging) {Microbot.log("Arrived at supply area 1");}
+        if (debugLogging) {
+            Microbot.log("Arrived at supply area 1");
+        }
     }
 
     private void makeMoonlightPotions(int moonlightPotionsQuantum) {
-        if (debugLogging) {Microbot.log("Need a total of " + moonlightPotionsQuantum + " Moonlight potions");}
+        if (debugLogging) {
+            Microbot.log("Need a total of " + moonlightPotionsQuantum + " Moonlight potions");
+        }
         int amountToCreate = checkPotionQuantum(moonlightPotionsQuantum);
-        if (debugLogging) {Microbot.log("Need to create " + amountToCreate + " Moonlight potions");}
+        if (debugLogging) {
+            Microbot.log("Need to create " + amountToCreate + " Moonlight potions");
+        }
 
         if ((amountToCreate > 0) && (Rs2Player.distanceTo(supplyLocation) <= 10)) {
             /* Take herblore supplies */
             while (Rs2Inventory.count(ItemID.VIAL_WATER) < amountToCreate) {
-                if (debugLogging) {Microbot.log("Take herblore supplies from supply crate");}
+                if (debugLogging) {
+                    Microbot.log("Take herblore supplies from supply crate");
+                }
                 if (Rs2GameObject.interact(ObjectID.PMOON_SUPPLY_CRATE, "Take from")) {
                     Rs2Dialogue.sleepUntilHasDialogueOption("Take herblore supplies.");
                     Rs2Dialogue.clickOption("Take herblore supplies.");
@@ -83,7 +95,9 @@ public class ResupplyHandler implements BaseHandler {
             /* Forage for grubs */
             while (Rs2Inventory.count(ItemID.MOONLIGHT_GRUB)
                     + Rs2Inventory.count(ItemID.MOONLIGHT_GRUB_PASTE) < amountToCreate) {
-                if (debugLogging) {Microbot.log("Collect Moonlight Grub");}
+                if (debugLogging) {
+                    Microbot.log("Collect Moonlight Grub");
+                }
                 if (Rs2GameObject.interact(ObjectID.PMOON_GRUB_SAPLING, "Collect-from")) {
                     sleepUntil(() -> Rs2Inventory.count(ItemID.MOONLIGHT_GRUB)
                             + Rs2Inventory.count(ItemID.MOONLIGHT_GRUB_PASTE) >= amountToCreate, 8_000);
@@ -95,7 +109,9 @@ public class ResupplyHandler implements BaseHandler {
                 Rs2Inventory.combine(ItemID.PESTLE_AND_MORTAR, ItemID.MOONLIGHT_GRUB);
                 sleepUntil(() -> !Rs2Inventory.contains(ItemID.MOONLIGHT_GRUB), 8_000);
             } else {
-                if (debugLogging) {Microbot.log("Need a pestle and mortar!");}
+                if (debugLogging) {
+                    Microbot.log("Need a pestle and mortar!");
+                }
             }
 
             /* Mix potion */
@@ -104,15 +120,15 @@ public class ResupplyHandler implements BaseHandler {
             }
 
             /* Drop leftovers */
-            while (Rs2Inventory.contains(ItemID.PESTLE_AND_MORTAR))  Rs2Inventory.drop(ItemID.PESTLE_AND_MORTAR);
+            while (Rs2Inventory.contains(ItemID.PESTLE_AND_MORTAR)) Rs2Inventory.drop(ItemID.PESTLE_AND_MORTAR);
             sleep(600);
-            while (Rs2Inventory.contains(ItemID.MOONLIGHT_GRUB))      Rs2Inventory.drop(ItemID.MOONLIGHT_GRUB);
+            while (Rs2Inventory.contains(ItemID.MOONLIGHT_GRUB)) Rs2Inventory.drop(ItemID.MOONLIGHT_GRUB);
             sleep(600);
-            while (Rs2Inventory.contains(ItemID.MOONLIGHT_GRUB_PASTE))Rs2Inventory.drop(ItemID.MOONLIGHT_GRUB_PASTE);
+            while (Rs2Inventory.contains(ItemID.MOONLIGHT_GRUB_PASTE)) Rs2Inventory.drop(ItemID.MOONLIGHT_GRUB_PASTE);
             sleep(600);
-            while (Rs2Inventory.contains(ItemID.VIAL_WATER))Rs2Inventory.drop(ItemID.VIAL_WATER);
+            while (Rs2Inventory.contains(ItemID.VIAL_WATER)) Rs2Inventory.drop(ItemID.VIAL_WATER);
             sleep(600);
-            while (Rs2Inventory.contains(ItemID.VIAL_EMPTY))Rs2Inventory.drop(ItemID.VIAL_EMPTY);
+            while (Rs2Inventory.contains(ItemID.VIAL_EMPTY)) Rs2Inventory.drop(ItemID.VIAL_EMPTY);
             sleep(600);
         }
     }
@@ -129,7 +145,7 @@ public class ResupplyHandler implements BaseHandler {
                 Rs2Dialogue.clickOption("Take fishing supplies.");
                 Rs2Inventory.waitForInventoryChanges(4_000);
             }
-            Rs2Walker.walkFastCanvas(new WorldPoint(1520,9689,0));
+            Rs2Walker.walkFastCanvas(new WorldPoint(1520, 9689, 0));
             while (!Rs2Inventory.isFull() && Rs2Inventory.contains(ItemID.BIG_NET)) {
                 if (!Rs2Player.isAnimating()) {
                     Rs2GameObject.interact(51367, "Fish"); // restart if animation stopped
@@ -137,7 +153,9 @@ public class ResupplyHandler implements BaseHandler {
                 }
                 sleep(300, 500);
             }
-            if (debugLogging) {Microbot.log("Inventory should now be full of fish");}
+            if (debugLogging) {
+                Microbot.log("Inventory should now be full of fish");
+            }
             sleep(600, 900);
             Rs2Inventory.drop(ItemID.BIG_NET);
         }
@@ -145,7 +163,9 @@ public class ResupplyHandler implements BaseHandler {
     }
 
     private void cookBream() {
-        if (debugLogging) {Microbot.log("Walking to cooking stove");}
+        if (debugLogging) {
+            Microbot.log("Walking to cooking stove");
+        }
         Rs2Walker.walkFastCanvas(new WorldPoint(1512, 9693, 0));
 
         while (Rs2Inventory.contains(ItemID.BREAM_FISH_RAW)) {
@@ -156,7 +176,9 @@ public class ResupplyHandler implements BaseHandler {
             }
             sleep(900, 1200);
         }
-        if (debugLogging) {Microbot.log("Finished cooking bream.");}
+        if (debugLogging) {
+            Microbot.log("Finished cooking bream.");
+        }
     }
 
     /**
@@ -172,22 +194,24 @@ public class ResupplyHandler implements BaseHandler {
     /**
      * Return int: The number of new Moonlight potions we need to make
      */
-    private int checkPotionQuantum(int target)
-    {
+    private int checkPotionQuantum(int target) {
         int desired = target - countMoonlightPotions();
         if (desired <= 0) return 0;
 
         final int overheadSlots = 2; // 1 mortar + 1 extra slot for double pulls from crate
         int requiredSlots = desired * 2 + overheadSlots;    // 2 per potion + 1 mortar + 1 space for double potion pulls from crate
-        if (debugLogging) {Microbot.log("Required free inventory slots: " + requiredSlots);}
-        int freeSlots     = Rs2Inventory.emptySlotCount();
-        if (debugLogging) {Microbot.log("Current free inventory slots: " + freeSlots);}
+        if (debugLogging) {
+            Microbot.log("Required free inventory slots: " + requiredSlots);
+        }
+        int freeSlots = Rs2Inventory.emptySlotCount();
+        if (debugLogging) {
+            Microbot.log("Current free inventory slots: " + freeSlots);
+        }
 
         /* --------- Free inventory space by dropping fish ---------------- */
         while (freeSlots < requiredSlots &&
                 (Rs2Inventory.contains(ItemID.BREAM_FISH_COOKED) ||
-                        Rs2Inventory.contains(ItemID.BREAM_FISH_RAW)))
-        {
+                        Rs2Inventory.contains(ItemID.BREAM_FISH_RAW))) {
             if (Rs2Inventory.contains(ItemID.BREAM_FISH_RAW)) {
                 Rs2Inventory.drop(ItemID.BREAM_FISH_RAW);
             } else {

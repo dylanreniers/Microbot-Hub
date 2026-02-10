@@ -11,8 +11,8 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.microbot.PluginConstants;
 import net.runelite.client.plugins.custom.blastoisefurnace.enums.State;
+import net.runelite.client.plugins.microbot.PluginConstants;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 import javax.inject.Inject;
@@ -40,20 +40,18 @@ import static net.runelite.client.plugins.custom.blastoisefurnace.BlastoiseFurna
 public class BlastoiseFurnacePlugin extends Plugin {
     final static String version = "1.2.0";
     @Inject
+    BlastoiseFurnaceScript blastoiseFurnaceScript;
+    @Inject
     private BlastoiseFurnaceConfig config;
-
-    @Provides
-    BlastoiseFurnaceConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(BlastoiseFurnaceConfig.class);
-    }
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private BlastoiseFurnaceOverlay blastoiseFurnaceOverlay;
 
-    @Inject
-    BlastoiseFurnaceScript blastoiseFurnaceScript;
+    @Provides
+    BlastoiseFurnaceConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(BlastoiseFurnaceConfig.class);
+    }
 
     @Override
     protected void startUp() throws AWTException {

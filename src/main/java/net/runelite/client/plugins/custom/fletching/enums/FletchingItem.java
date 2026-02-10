@@ -5,8 +5,7 @@ import lombok.RequiredArgsConstructor;
 
 @Getter
 @RequiredArgsConstructor
-public enum FletchingItem
-{
+public enum FletchingItem {
     ARROW_SHAFT("Arrow shaft", '1', "arrow shaft", 1),
     SHORT("Short bows", '2', "shortbow", 1),
     LONG("Long bows", '3', "longbow", 1),
@@ -19,8 +18,7 @@ public enum FletchingItem
     private final int amountRequired;
 
     @Override
-    public String toString()
-    {
+    public String toString() {
         return name;
     }
 

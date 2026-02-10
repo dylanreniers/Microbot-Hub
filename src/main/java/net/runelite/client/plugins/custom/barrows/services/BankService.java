@@ -4,9 +4,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.gameval.ItemID;
+import net.runelite.client.plugins.custom.barrows.BarrowsConfig;
 import net.runelite.client.plugins.custom.barrows.BarrowsScriptException;
 import net.runelite.client.plugins.custom.barrows.MagicAttack;
-import net.runelite.client.plugins.custom.barrows.BarrowsConfig;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
@@ -22,9 +22,23 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 @RequiredArgsConstructor
 public class BankService {
 
+    private static final String SPADE = "Spade";
     private final BarrowsConfig config;
 
-    private static final String SPADE = "Spade";
+    private static void openBank() {
+        if (!Rs2Bank.isOpen()) {
+            log.info("Opening bank.");
+            Rs2Bank.openBank();
+            sleepUntil(Rs2Bank::isOpen);
+        }
+    }
+
+    private static void closeBank() {
+        if (Rs2Bank.isOpen()) {
+            Rs2Bank.closeBank();
+            sleepUntil(() -> !Rs2Bank.isOpen(), 3000);
+        }
+    }
 
     public void handleBanking(MagicAttack magicAttack, boolean outOfPoweredStaffCharges) {
         openBank();
@@ -63,21 +77,6 @@ public class BankService {
         checkFood();
         checkSpade();
         checkRingOfDueling();
-    }
-
-    private static void openBank() {
-        if (!Rs2Bank.isOpen()) {
-            log.info("Opening bank.");
-            Rs2Bank.openBank();
-            sleepUntil(Rs2Bank::isOpen);
-        }
-    }
-
-    private static void closeBank() {
-        if (Rs2Bank.isOpen()) {
-            Rs2Bank.closeBank();
-            sleepUntil(() -> !Rs2Bank.isOpen(), 3000);
-        }
     }
 
     private void checkPrayerRestorationPotions() {
@@ -119,7 +118,7 @@ public class BankService {
 
     private void checkRingOfDueling() {
         if (Rs2Equipment.get(EquipmentInventorySlot.RING) == null) {
-                if (Rs2Bank.count(ItemID.RING_OF_DUELING_8) <= 0) {
+            if (Rs2Bank.count(ItemID.RING_OF_DUELING_8) <= 0) {
                 throw new BarrowsScriptException("No ring of dueling found in bank.");
             }
 

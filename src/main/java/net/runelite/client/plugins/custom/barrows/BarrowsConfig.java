@@ -21,8 +21,7 @@ public interface BarrowsConfig extends Config {
             description = "type of food",
             position = 1
     )
-    default Rs2Food food()
-    {
+    default Rs2Food food() {
         return Rs2Food.POTATO_WITH_CHEESE;
     }
 
@@ -45,17 +44,6 @@ public interface BarrowsConfig extends Config {
     )
     default PrayerRestoreType prayerRestoreType() {
         return PrayerRestoreType.PRAYER_POTION;
-    }
-
-    @Getter
-    @RequiredArgsConstructor
-    enum PrayerRestoreType {
-        PRAYER_POTION("Prayer Potion", ItemID._4DOSEPRAYERRESTORE),
-        MOONLIGHT_MOTH_MIX("Moonlight Moth Mix", ItemID.HUNTER_MIX_MOONMOTH_2DOSE),
-        MOONLIGHT_MOTH("Moonlight Moth", ItemID.BUTTERFLY_JAR_MOONMOTH);
-
-        private final String name;
-        private final int id;
     }
 
     @ConfigItem(
@@ -105,7 +93,9 @@ public interface BarrowsConfig extends Config {
             description = "Inventory Setup to use for melee brothers (and karil)",
             position = 9
     )
-    default InventorySetup inventorySetupMelee() { return null; }
+    default InventorySetup inventorySetupMelee() {
+        return null;
+    }
 
     @ConfigItem(
             keyName = "inventoryMagic",
@@ -113,7 +103,9 @@ public interface BarrowsConfig extends Config {
             description = "Inventory Setup to use for Ahrim",
             position = 10
     )
-    default InventorySetup inventorySetupAhrim() { return null; }
+    default InventorySetup inventorySetupAhrim() {
+        return null;
+    }
 
     @ConfigItem(
             keyName = "inventoryTunnels",
@@ -121,5 +113,18 @@ public interface BarrowsConfig extends Config {
             description = "Inventory Setup to use for the tunnels while gaining reward potential",
             position = 11
     )
-    default InventorySetup inventorySetupTunnels() { return null; }
+    default InventorySetup inventorySetupTunnels() {
+        return null;
+    }
+
+    @Getter
+    @RequiredArgsConstructor
+    enum PrayerRestoreType {
+        PRAYER_POTION("Prayer Potion", ItemID._4DOSEPRAYERRESTORE),
+        MOONLIGHT_MOTH_MIX("Moonlight Moth Mix", ItemID.HUNTER_MIX_MOONMOTH_2DOSE),
+        MOONLIGHT_MOTH("Moonlight Moth", ItemID.BUTTERFLY_JAR_MOONMOTH);
+
+        private final String name;
+        private final int id;
+    }
 }

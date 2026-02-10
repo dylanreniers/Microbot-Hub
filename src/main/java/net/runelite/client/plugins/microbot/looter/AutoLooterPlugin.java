@@ -48,7 +48,7 @@ public class AutoLooterPlugin extends Plugin {
 
     @Override
     protected void startUp() throws AWTException {
-        
+
         switch (config.looterActivity()) {
             case DEFAULT:
                 defaultScript.run(config);
@@ -61,8 +61,8 @@ public class AutoLooterPlugin extends Plugin {
                 natureRuneChestScript.run(config);
                 break;
         }
-        
-        if(overlayManager != null){
+
+        if (overlayManager != null) {
             overlayManager.add(autoLooterOverlay);
         }
     }

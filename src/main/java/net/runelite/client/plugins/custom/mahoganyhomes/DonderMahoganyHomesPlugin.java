@@ -1,7 +1,5 @@
 package net.runelite.client.plugins.custom.mahoganyhomes;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.Multiset;
 import com.google.common.collect.Sets;
 import com.google.inject.Provides;
 import lombok.Getter;
@@ -11,12 +9,8 @@ import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
-import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
-import net.runelite.api.ItemContainer;
 import net.runelite.api.ItemID;
-import net.runelite.api.MenuAction;
-import net.runelite.api.NPC;
 import net.runelite.api.coords.WorldArea;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.AnimationChanged;
@@ -25,13 +19,10 @@ import net.runelite.api.events.GameObjectDespawned;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
-import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.ScriptPostFired;
-import net.runelite.api.events.ScriptPreFired;
 import net.runelite.api.events.UsernameChanged;
 import net.runelite.api.events.VarbitChanged;
-import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -45,7 +36,6 @@ import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
 import net.runelite.client.util.ImageUtil;
-import net.runelite.client.util.Text;
 
 import javax.inject.Inject;
 import java.awt.*;
@@ -56,21 +46,20 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 
 /**
  * Mahogany Homes plugin for automating construction contracts.
- *
+ * <p>
  * This plugin helps players complete Mahogany Homes contracts by:
  * - Tracking current contract state and progress
  * - Managing plank sack inventory
  * - Highlighting objects that need repair/building
  * - Providing hint arrows and map indicators
  * - Automatically handling contract dialogues
- *
+ * <p>
  * The plugin is organized using service classes for better maintainability:
  * - ContractStateManager: Manages contract state and persistence
  * - PlankSackManager: Handles plank sack operations and inventory tracking
@@ -84,7 +73,7 @@ import java.util.stream.Collectors;
         name = "Donder's Mahogany Homes",
         description = "Automates Mahogany Homes contracts",
         tags = {"mahogany", "homes", "construction"},
-		authors = {"Donder"},
+        authors = {"Donder"},
         version = DonderMahoganyHomesPlugin.version,
         minClientVersion = "2.0.13",
         enabledByDefault = PluginConstants.DEFAULT_ENABLED,
@@ -92,12 +81,9 @@ import java.util.stream.Collectors;
 )
 public class DonderMahoganyHomesPlugin extends Plugin {
     public static final String version = "1.0.0";
-
-    private static final Map<Integer, Integer> MAHOGANY_HOMES_REPAIRS = HotspotObjects.getAllRepairObjectIds();
-
-    private static final Set<Integer> HALLOWED_SEPULCHRE_FIXES = Sets.newHashSet(39527, 39528);
     public static final List<Integer> PLANKS = Arrays.asList(ItemID.PLANK, ItemID.OAK_PLANK, ItemID.TEAK_PLANK, ItemID.MAHOGANY_PLANK);
-
+    private static final Map<Integer, Integer> MAHOGANY_HOMES_REPAIRS = HotspotObjects.getAllRepairObjectIds();
+    private static final Set<Integer> HALLOWED_SEPULCHRE_FIXES = Sets.newHashSet(39527, 39528);
     // Construction interface constants
     private static final int CONSTRUCTION_WIDGET_GROUP = 458;
     private static final int CONSTRUCTION_WIDGET_BUILD_IDX_START = 4;
@@ -106,60 +92,55 @@ public class DonderMahoganyHomesPlugin extends Plugin {
     private static final int SCRIPT_CONSTRUCTION_OPTION_CLICKED = 1405;
     private static final int SCRIPT_CONSTRUCTION_OPTION_KEYBIND = 1632;
     private static final int SCRIPT_BUILD_CONSTRUCTION_MENU_ENTRY = 1404;
-
-    /**
-     * Simple data class for build menu items
-     */
-    private static class BuildMenuItem {
-        private final Item[] planks;
-        private final boolean canBuild;
-
-        BuildMenuItem(Item[] planks, boolean canBuild) {
-            this.planks = planks;
-            this.canBuild = canBuild;
-        }
-    }
-
+    private final List<BuildMenuItem> buildMenuItems = new ArrayList<>();
+    // Game object tracking
+    @Getter
+    private final List<GameObject> objectsToMark = new ArrayList<>();
+    // Varbit tracking
+    private final Map<Integer, Integer> varbMap = new HashMap<>();
     @Getter
     @Inject
     private Client client;
-
     @Inject
     private ClientThread clientThread;
-
     @Inject
     private ConfigManager configManager;
-
     @Getter
     @Inject
     private MahoganyHomesConfig config;
-
     @Inject
     private OverlayManager overlayManager;
-
     @Inject
     private MahoganyHomesOverlay textOverlay;
-
     @Inject
     private PlankSackOverlay plankSackOverlay;
-
     @Inject
     private MahoganyHomesHighlightOverlay highlightOverlay;
-
     @Inject
     private MahoganyHomesScript script;
-
     @Inject
     private WorldMapPointManager worldMapPointManager;
-
     @Inject
     private ContractStateManager contractStateManager;
-
     @Inject
     private PlankSackManager plankSackManager;
-
     @Inject
     private ContractDialogueHandler dialogueHandler;
+    // Animation tracking
+    private int buildCost = 0;
+    private boolean watchForAnimations = false;
+    private int lastAnimation = -1;
+    // Construction interface tracking
+    private int menuItemsToCheck = 0;
+    private boolean varbChange;
+    private int lastCompletedCount = -1;
+    // UI resources
+    private BufferedImage mapIcon;
+    private BufferedImage mapArrow;
+
+    private static int TO_CHILD(int id) {
+        return id & 0xFFFF;
+    }
 
     /**
      * Provides the plugin configuration.
@@ -168,28 +149,6 @@ public class DonderMahoganyHomesPlugin extends Plugin {
     MahoganyHomesConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(MahoganyHomesConfig.class);
     }
-
-    // Animation tracking
-    private int buildCost = 0;
-    private boolean watchForAnimations = false;
-    private int lastAnimation = -1;
-
-    // Construction interface tracking
-    private int menuItemsToCheck = 0;
-    private final List<BuildMenuItem> buildMenuItems = new ArrayList<>();
-
-    // Game object tracking
-    @Getter
-    private final List<GameObject> objectsToMark = new ArrayList<>();
-
-    // Varbit tracking
-    private final Map<Integer, Integer> varbMap = new HashMap<>();
-    private boolean varbChange;
-    private int lastCompletedCount = -1;
-
-    // UI resources
-    private BufferedImage mapIcon;
-    private BufferedImage mapArrow;
 
     /**
      * API methods for accessing contract state (delegated to service classes)
@@ -200,6 +159,15 @@ public class DonderMahoganyHomesPlugin extends Plugin {
      */
     public Home getCurrentHome() {
         return contractStateManager.getCurrentHome();
+    }
+
+    /**
+     * Sets the current contract home and refreshes UI elements
+     *
+     * @param home the home to set as current contract
+     */
+    public void setCurrentHome(Home home) {
+        contractStateManager.setCurrentHome(home);
     }
 
     /**
@@ -234,40 +202,32 @@ public class DonderMahoganyHomesPlugin extends Plugin {
         plankSackManager.setPlankCount(number);
     }
 
-    /**
-     * Sets the current contract home and refreshes UI elements
-     * @param home the home to set as current contract
-     */
-    public void setCurrentHome(Home home) {
-        contractStateManager.setCurrentHome(home);
-    }
-
     // Helper methods for menu interactions
     private boolean isPlankSackAction(MenuOptionClicked event) {
         return event.getWidget().getItemId() == ItemID.PLANK_SACK &&
                 (event.getMenuOption().equals("Fill") ||
-                 event.getMenuOption().equals("Empty") ||
-                 event.getMenuOption().equals("Use"));
+                        event.getMenuOption().equals("Empty") ||
+                        event.getMenuOption().equals("Use"));
     }
 
     private boolean isPlankSackInteraction(int firstItemId, int secondItemId) {
         return (firstItemId == ItemID.PLANK_SACK && isPlankItem(secondItemId)) ||
-               (isPlankItem(firstItemId) && secondItemId == ItemID.PLANK_SACK);
+                (isPlankItem(firstItemId) && secondItemId == ItemID.PLANK_SACK);
     }
 
     private boolean isPlankItem(int itemId) {
         return itemId == ItemID.PLANK || itemId == ItemID.OAK_PLANK ||
-               itemId == ItemID.TEAK_PLANK || itemId == ItemID.MAHOGANY_PLANK;
+                itemId == ItemID.TEAK_PLANK || itemId == ItemID.MAHOGANY_PLANK;
     }
 
     private boolean isRepairOrBuildAction(MenuOptionClicked event) {
         return (event.getMenuOption().equals("Repair") || event.getMenuOption().equals("Build")) &&
-               MAHOGANY_HOMES_REPAIRS.containsKey(event.getId());
+                MAHOGANY_HOMES_REPAIRS.containsKey(event.getId());
     }
 
     private boolean isHallowedSepulchreFixAction(MenuOptionClicked event) {
         return event.getMenuOption().equals("Fix") &&
-               HALLOWED_SEPULCHRE_FIXES.contains(event.getId());
+                HALLOWED_SEPULCHRE_FIXES.contains(event.getId());
     }
 
 
@@ -486,7 +446,7 @@ public class DonderMahoganyHomesPlugin extends Plugin {
 
         int currentAnimation = client.getLocalPlayer().getAnimation();
         boolean isConstructionAnimation = (lastAnimation == AnimationID.CONSTRUCTION ||
-                                         lastAnimation == AnimationID.CONSTRUCTION_IMCANDO);
+                lastAnimation == AnimationID.CONSTRUCTION_IMCANDO);
 
         if (isConstructionAnimation && currentAnimation != lastAnimation) {
             resetAnimationTracking();
@@ -560,13 +520,13 @@ public class DonderMahoganyHomesPlugin extends Plugin {
             }
 
             client.getNpcs().stream()
-            .filter(n -> n.getId() == currentHome.getNpcId())
-            .findFirst()
-            .ifPresent(client::setHintArrow);
+                    .filter(n -> n.getId() == currentHome.getNpcId())
+                    .findFirst()
+                    .ifPresent(client::setHintArrow);
 
-        if (client.getNpcs().stream().anyMatch(n -> n.getId() == currentHome.getNpcId())) {
-            return;
-        }
+            if (client.getNpcs().stream().anyMatch(n -> n.getId() == currentHome.getNpcId())) {
+                return;
+            }
 
             // Couldn't find the NPC, find the closest ladder to player
             WorldPoint location = null;
@@ -594,6 +554,7 @@ public class DonderMahoganyHomesPlugin extends Plugin {
 
     /**
      * Counts the number of completed hotspots in the current contract
+     *
      * @return number of completed hotspots, or -1 if no active contract
      */
     int getCompletedCount() {
@@ -603,12 +564,13 @@ public class DonderMahoganyHomesPlugin extends Plugin {
         }
 
         return (int) Arrays.stream(Hotspot.values())
-            .filter(hotspot -> doesHotspotRequireAttention(hotspot.getVarb()))
-            .count();
+                .filter(hotspot -> doesHotspotRequireAttention(hotspot.getVarb()))
+                .count();
     }
 
     /**
      * Checks if a hotspot requires attention based on its varbit value
+     *
      * @param varb the varbit ID to check
      * @return true if the hotspot needs repair (1), removal (3), or building (4)
      */
@@ -623,7 +585,8 @@ public class DonderMahoganyHomesPlugin extends Plugin {
 
     /**
      * Calculates distance between a world area and a point, ignoring plane differences
-     * @param area the world area
+     *
+     * @param area  the world area
      * @param point the world point
      * @return distance between the area and point
      */
@@ -664,9 +627,9 @@ public class DonderMahoganyHomesPlugin extends Plugin {
 
     private void calculateContractTier() {
         int maxVarbValue = varbMap.values().stream()
-            .mapToInt(Integer::intValue)
-            .max()
-            .orElse(0);
+                .mapToInt(Integer::intValue)
+                .max()
+                .orElse(0);
 
         // Normalize tier from varb values 5-8 to contract tiers 1-4
         int calculatedTier = Math.max(0, maxVarbValue - 4);
@@ -700,7 +663,16 @@ public class DonderMahoganyHomesPlugin extends Plugin {
         }
     }
 
-    private static int TO_CHILD(int id) {
-        return id & 0xFFFF;
+    /**
+     * Simple data class for build menu items
+     */
+    private static class BuildMenuItem {
+        private final Item[] planks;
+        private final boolean canBuild;
+
+        BuildMenuItem(Item[] planks, boolean canBuild) {
+            this.planks = planks;
+            this.canBuild = canBuild;
+        }
     }
 }

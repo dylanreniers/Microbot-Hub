@@ -1,23 +1,23 @@
 package net.runelite.client.plugins.microbot.example;
 
-import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 
+import javax.inject.Inject;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class ExampleScript extends Script {
 
     private final ExamplePlugin plugin;
-	private final ExampleConfig config;
+    private final ExampleConfig config;
 
-	@Inject
-	public ExampleScript(ExamplePlugin plugin, ExampleConfig config) {
-		this.plugin = plugin;
-		this.config = config;
-	}
+    @Inject
+    public ExampleScript(ExamplePlugin plugin, ExampleConfig config) {
+        this.plugin = plugin;
+        this.config = config;
+    }
 
     public boolean run() {
         Microbot.enableAutoRunOn = false;
@@ -38,7 +38,7 @@ public class ExampleScript extends Script {
         }, 0, 1000, TimeUnit.MILLISECONDS);
         return true;
     }
-    
+
     @Override
     public void shutdown() {
         super.shutdown();

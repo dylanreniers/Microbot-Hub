@@ -3,9 +3,6 @@ package net.runelite.client.plugins.custom.driftnetmaker;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.custom.blastoisefurnace.BlastoiseFurnacePlugin;
-import net.runelite.client.plugins.custom.fletching.FletchingScript;
-import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
 
 import javax.inject.Inject;

@@ -1,6 +1,5 @@
 package net.runelite.client.plugins.custom.driftnetmaker;
 
-import net.runelite.client.plugins.custom.blastoisefurnace.BlastoiseFurnacePlugin;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;

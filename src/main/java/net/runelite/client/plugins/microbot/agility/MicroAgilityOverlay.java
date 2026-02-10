@@ -10,49 +10,43 @@ import net.runelite.client.ui.overlay.components.TitleComponent;
 import javax.inject.Inject;
 import java.awt.*;
 
-public class MicroAgilityOverlay extends OverlayPanel
-{
-	final MicroAgilityPlugin plugin;
-	final MicroAgilityConfig config;
+public class MicroAgilityOverlay extends OverlayPanel {
+    final MicroAgilityPlugin plugin;
+    final MicroAgilityConfig config;
 
-	@Inject
-	MicroAgilityOverlay(MicroAgilityPlugin plugin, MicroAgilityConfig config)
-	{
-		super(plugin);
-		this.plugin = plugin;
-		this.config = config;
-		setPosition(OverlayPosition.TOP_LEFT);
-		setNaughty();
-	}
+    @Inject
+    MicroAgilityOverlay(MicroAgilityPlugin plugin, MicroAgilityConfig config) {
+        super(plugin);
+        this.plugin = plugin;
+        this.config = config;
+        setPosition(OverlayPosition.TOP_LEFT);
+        setNaughty();
+    }
 
-	@Override
-	public Dimension render(Graphics2D graphics)
-	{
-		try
-		{
-			panelComponent.setPreferredSize(new Dimension(200, 300));
-			panelComponent.getChildren().add(TitleComponent.builder()
-				.text("Micro Agility V" + MicroAgilityPlugin.version)
-				.color(Color.GREEN)
-				.build());
+    @Override
+    public Dimension render(Graphics2D graphics) {
+        try {
+            panelComponent.setPreferredSize(new Dimension(200, 300));
+            panelComponent.getChildren().add(TitleComponent.builder()
+                    .text("Micro Agility V" + MicroAgilityPlugin.version)
+                    .color(Color.GREEN)
+                    .build());
 
-			panelComponent.getChildren().add(LineComponent.builder().build());
+            panelComponent.getChildren().add(LineComponent.builder().build());
 
-			panelComponent.getChildren().add(LineComponent.builder()
-				.left("Agility Exp")
-				.right(Integer.toString(Microbot.getClient().getSkillExperience(Skill.AGILITY)))
-				.build());
+            panelComponent.getChildren().add(LineComponent.builder()
+                    .left("Agility Exp")
+                    .right(Integer.toString(Microbot.getClient().getSkillExperience(Skill.AGILITY)))
+                    .build());
 
-			panelComponent.getChildren().add(LineComponent.builder()
-				.left("Current Obstacle")
-				.right(Integer.toString(config.agilityCourse().getHandler().getCurrentObstacleIndex()))
-				.build());
+            panelComponent.getChildren().add(LineComponent.builder()
+                    .left("Current Obstacle")
+                    .right(Integer.toString(config.agilityCourse().getHandler().getCurrentObstacleIndex()))
+                    .build());
 
-		}
-		catch (Exception ex)
-		{
-			Microbot.logStackTrace(this.getClass().getSimpleName(), ex);
-		}
-		return super.render(graphics);
-	}
+        } catch (Exception ex) {
+            Microbot.logStackTrace(this.getClass().getSimpleName(), ex);
+        }
+        return super.render(graphics);
+    }
 }

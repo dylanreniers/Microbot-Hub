@@ -3,7 +3,12 @@ package net.runelite.client.plugins.microbot.nmz;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.*;
+import net.runelite.api.ItemID;
+import net.runelite.api.NpcID;
+import net.runelite.api.ObjectID;
+import net.runelite.api.Skill;
+import net.runelite.api.TileObject;
+import net.runelite.api.VarPlayer;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.plugins.microbot.Microbot;
@@ -21,7 +26,6 @@ import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 import net.runelite.client.plugins.microbot.util.security.Encryption;
-import net.runelite.client.plugins.microbot.util.security.Login;
 import net.runelite.client.plugins.microbot.util.security.LoginManager;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
@@ -35,28 +39,18 @@ import static net.runelite.api.Varbits.NMZ_ABSORPTION;
 @Slf4j
 public class NmzScript extends Script {
 
-    private NmzConfig config;
-    private NmzPlugin plugin;
-
     public static boolean useOverload = false;
-
     public static PrayerPotionScript prayerPotionScript;
-
     public static int maxHealth = Rs2Random.between(2, 8);
     public static int minAbsorption = Rs2Random.between(100, 300);
-
-    private WorldPoint center = new WorldPoint(Rs2Random.between(2270, 2276), Rs2Random.between(4693, 4696), 0);
-
     @Getter
     @Setter
     private static boolean hasSurge = false;
+    private NmzConfig config;
+    private NmzPlugin plugin;
+    private WorldPoint center = new WorldPoint(Rs2Random.between(2270, 2276), Rs2Random.between(4693, 4696), 0);
     private boolean initialized = false;
     private long lastCombatTime = 0;
-
-    public boolean canStartNmz() {
-        return Rs2Inventory.count("overload (4)") == config.overloadPotionAmount() ||
-                (Rs2Inventory.hasItem("prayer potion") && config.togglePrayerPotions());
-    }
 
     @Inject
     public NmzScript(NmzPlugin plugin, NmzConfig config) {
@@ -64,6 +58,10 @@ public class NmzScript extends Script {
         this.config = config;
     }
 
+    public boolean canStartNmz() {
+        return Rs2Inventory.count("overload (4)") == config.overloadPotionAmount() ||
+                (Rs2Inventory.hasItem("prayer potion") && config.togglePrayerPotions());
+    }
 
     public boolean run() {
         prayerPotionScript = new PrayerPotionScript();
@@ -316,18 +314,18 @@ public class NmzScript extends Script {
     public void consumeEmptyVial() {
         final int EMPTY_VIAL = 26291;
         if (Microbot.getClientThread().runOnClientThreadOptional(() ->
-                Rs2Widget.getWidget(129, 6) == null || Rs2Widget.getWidget(129, 6).isHidden())
+                        Rs2Widget.getWidget(129, 6) == null || Rs2Widget.getWidget(129, 6).isHidden())
                 .orElse(false)) {
             Rs2GameObject.interact(EMPTY_VIAL, "drink");
         }
-        sleep(2000,4000);
+        sleep(2000, 4000);
         Widget widget = Rs2Widget.getWidget(129, 6);
         if (!Microbot.getClientThread().runOnClientThreadOptional(widget::isHidden).orElse(false)) {
             Rs2Widget.clickWidget(widget.getId());
             sleep(300);
             Rs2Widget.clickWidget(widget.getId());
         }
-        sleep(2000,4000);
+        sleep(2000, 4000);
     }
 
     public void handleStore() {

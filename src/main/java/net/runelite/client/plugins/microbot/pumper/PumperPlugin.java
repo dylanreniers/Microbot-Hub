@@ -8,9 +8,6 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.pumper.PumperConfig;
-import net.runelite.client.plugins.microbot.pumper.PumperOverlay;
-import net.runelite.client.plugins.microbot.pumper.PumperScript;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 import javax.inject.Inject;
@@ -31,21 +28,19 @@ import java.awt.*;
 public class PumperPlugin extends Plugin {
     public static final String version = "1.0.7";
     @Inject
+    PumperScript pumperScript;
+    int ticks = 10;
+    @Inject
     private PumperConfig config;
-
-    @Provides
-    PumperConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(PumperConfig.class);
-    }
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private PumperOverlay pumperOverlay;
 
-    @Inject
-    PumperScript pumperScript;
-
+    @Provides
+    PumperConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(PumperConfig.class);
+    }
 
     @Override
     protected void startUp() throws AWTException {
@@ -59,8 +54,6 @@ public class PumperPlugin extends Plugin {
         pumperScript.shutdown();
         overlayManager.remove(pumperOverlay);
     }
-
-    int ticks = 10;
 
     @Subscribe
     public void onGameTick(GameTick tick) {

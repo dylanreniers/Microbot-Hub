@@ -18,7 +18,6 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.custom.moonsofperil.enums.GameObjects;
 import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.gotr.GotrScript;
 import net.runelite.client.plugins.microbot.util.tile.Rs2Tile;
 import net.runelite.client.ui.overlay.OverlayManager;
 
@@ -42,24 +41,23 @@ import java.time.Instant;
 public class MoonsOfPerilPlugin extends Plugin {
 
     static final String version = "2.0.0";
-
+    public static int bloodPoolTick;
+    public static Instant scriptStartTime;
+    @Inject
+    MoonsOfPerilScript moonsOfPerilScript;
     @Inject
     private MoonsOfPerilConfig config;
-    @Provides
-    MoonsOfPerilConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(MoonsOfPerilConfig.class);
-    }
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private MoonsOfPerilOverlay moonsOfPerilOverlay;
     @Inject
-    MoonsOfPerilScript moonsOfPerilScript;
-    @Inject
     private MoonsOfPerilConfig moonsOfPerilConfig;
-    public static int bloodPoolTick;
-    public static Instant scriptStartTime;
+
+    @Provides
+    MoonsOfPerilConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(MoonsOfPerilConfig.class);
+    }
 
     @Override
     protected void startUp() throws AWTException {

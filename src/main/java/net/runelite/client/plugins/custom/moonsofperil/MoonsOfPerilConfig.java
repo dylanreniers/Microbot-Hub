@@ -12,7 +12,7 @@ import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 public interface MoonsOfPerilConfig extends Config {
 
     @ConfigSection(
-            name     = "General",
+            name = "General",
             description = "Global settings for the plugin",
             position = 0
     )
@@ -54,49 +54,59 @@ public interface MoonsOfPerilConfig extends Config {
     String ExtraOptionSection = "Extra Options";
 
     @ConfigItem(
-            keyName  = "debugLogging",
-            name     = "Debug logging",
+            keyName = "debugLogging",
+            name = "Debug logging",
             description = "Logs to the Microbot console",
             position = 0,
-            section  = generalSection
+            section = generalSection
     )
-    default boolean debugLogging() { return false; }
+    default boolean debugLogging() {
+        return false;
+    }
 
     @ConfigItem(
-            keyName  = "shutdownOnDeath",
-            name     = "Shutdown on death",
+            keyName = "shutdownOnDeath",
+            name = "Shutdown on death",
             description = "Automatically stop the script after a death event",
             position = 1,
-            section  = generalSection
+            section = generalSection
     )
-    default boolean shutdownOnDeath() { return false; }
+    default boolean shutdownOnDeath() {
+        return false;
+    }
 
     @ConfigItem(
-            keyName  = "healthPercentage",
-            name     = "Health % topup",
+            keyName = "healthPercentage",
+            name = "Health % topup",
             description = "Strategically eat during boss sequences below this health %",
             position = 2,
-            section  = generalSection
+            section = generalSection
     )
-    default int healthPercentage() { return 70; }
+    default int healthPercentage() {
+        return 70;
+    }
 
     @ConfigItem(
-            keyName  = "prayerPercentage",
-            name     = "Prayer % topup",
+            keyName = "prayerPercentage",
+            name = "Prayer % topup",
             description = "Strategically drink during boss sequences below this prayer %",
             position = 2,
-            section  = generalSection
+            section = generalSection
     )
-    default int prayerPercentage() { return 70; }
+    default int prayerPercentage() {
+        return 70;
+    }
 
     @ConfigItem(
-            keyName  = "numberOfChests",
-            name     = "Number of chests",
+            keyName = "numberOfChests",
+            name = "Number of chests",
             description = "Number of chests to do before shutting down (leave 0 for continuous)",
             position = 3,
-            section  = generalSection
+            section = generalSection
     )
-    default int numberOfChests() { return 0; }
+    default int numberOfChests() {
+        return 0;
+    }
 
     @ConfigItem(
             keyName = "moonlightPotionsQuantum",
@@ -105,8 +115,7 @@ public interface MoonsOfPerilConfig extends Config {
             position = 0,
             section = resupplySection
     )
-    default int moonlightPotionsQuantum()
-    {
+    default int moonlightPotionsQuantum() {
         return 4;
     }
 
@@ -117,8 +126,7 @@ public interface MoonsOfPerilConfig extends Config {
             position = 1,
             section = resupplySection
     )
-    default int moonlightPotionsMinimum()
-    {
+    default int moonlightPotionsMinimum() {
         return 2;
     }
 
@@ -129,19 +137,20 @@ public interface MoonsOfPerilConfig extends Config {
             position = 2,
             section = resupplySection
     )
-    default int cookedBreamMinimum()
-    {
+    default int cookedBreamMinimum() {
         return 10;
     }
 
     @ConfigItem(
-            keyName  = "enableEclipse",
-            name     = "Fight Eclipse Moon",
+            keyName = "enableEclipse",
+            name = "Fight Eclipse Moon",
             description = "Untick to skip Eclipse Moon runs",
             position = 0,
-            section  = eclipseMoonSection
+            section = eclipseMoonSection
     )
-    default boolean enableEclipse() { return true; }
+    default boolean enableEclipse() {
+        return true;
+    }
 
     @ConfigItem(
             keyName = "eclipseEquipmentNormal",
@@ -150,8 +159,7 @@ public interface MoonsOfPerilConfig extends Config {
             position = 1,
             section = eclipseMoonSection
     )
-    default InventorySetup eclipseEquipmentNormal()
-    {
+    default InventorySetup eclipseEquipmentNormal() {
         return null;
     }
 
@@ -163,28 +171,31 @@ public interface MoonsOfPerilConfig extends Config {
             section = eclipseMoonSection
     )
 
-    default InventorySetup eclipseEquipmentClones()
-    {
+    default InventorySetup eclipseEquipmentClones() {
         return null;
     }
 
     @ConfigItem(
-            keyName  = "enableEclipse",
-            name     = "Eclipse Clones - Add Random Click Delay",
+            keyName = "enableEclipse",
+            name = "Eclipse Clones - Add Random Click Delay",
             description = "Untick to skip Eclipse Moon runs",
             position = 0,
-            section  = ExtraOptionSection
+            section = ExtraOptionSection
     )
-    default boolean enableEclipseRandomDelay() { return true; }
+    default boolean enableEclipseRandomDelay() {
+        return true;
+    }
 
     @ConfigItem(
-            keyName  = "enableBlue",
-            name     = "Fight Blue Moon",
+            keyName = "enableBlue",
+            name = "Fight Blue Moon",
             description = "Untick to skip Blue Moon runs",
             position = 0,
-            section  = blueMoonSection
+            section = blueMoonSection
     )
-    default boolean enableBlue() { return true; }
+    default boolean enableBlue() {
+        return true;
+    }
 
     @ConfigItem(
             keyName = "blueEquipmentNormal",
@@ -193,8 +204,7 @@ public interface MoonsOfPerilConfig extends Config {
             position = 1,
             section = blueMoonSection
     )
-    default InventorySetup blueEquipmentNormal()
-    {
+    default InventorySetup blueEquipmentNormal() {
         return null;
     }
 
@@ -205,19 +215,20 @@ public interface MoonsOfPerilConfig extends Config {
             position = 1,
             section = ExtraOptionSection
     )
-    default boolean DisableGlacierDodge()
-    {
+    default boolean DisableGlacierDodge() {
         return true;
     }
 
     @ConfigItem(
-            keyName  = "enableBlood",
-            name     = "Fight Blood Moon",
+            keyName = "enableBlood",
+            name = "Fight Blood Moon",
             description = "Untick to skip Blood Moon runs",
             position = 0,
-            section  = bloodMoonSection
+            section = bloodMoonSection
     )
-    default boolean enableBlood() { return true; }
+    default boolean enableBlood() {
+        return true;
+    }
 
     @ConfigItem(
             keyName = "bloodEquipmentNormal",
@@ -226,19 +237,20 @@ public interface MoonsOfPerilConfig extends Config {
             position = 1,
             section = bloodMoonSection
     )
-    default InventorySetup bloodEquipmentNormal()
-    {
+    default InventorySetup bloodEquipmentNormal() {
         return null;
     }
 
     @ConfigItem(
-            keyName  = "enableBlood",
-            name     = "Blood Moon - Disable cancel clicks",
+            keyName = "enableBlood",
+            name = "Blood Moon - Disable cancel clicks",
             description = "Tick to disable ground clicking to avoid attack cancellations which may not be needed",
             position = 2,
-            section  = ExtraOptionSection
+            section = ExtraOptionSection
     )
-    default boolean DisableGroundCancelClick() { return true; }
+    default boolean DisableGroundCancelClick() {
+        return true;
+    }
 
 
 }

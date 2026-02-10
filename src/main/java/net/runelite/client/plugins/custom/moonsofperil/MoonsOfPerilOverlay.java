@@ -14,18 +14,16 @@ import java.time.Instant;
 
 public class MoonsOfPerilOverlay extends OverlayPanel {
     private Instant startTime;
+    @Inject
+    private RewardHandler rewardHandler;
 
     @Inject
-    MoonsOfPerilOverlay(MoonsOfPerilPlugin plugin)
-    {
+    MoonsOfPerilOverlay(MoonsOfPerilPlugin plugin) {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
         setSnappable(true);
         setNaughty();
     }
-
-    @Inject
-    private RewardHandler rewardHandler;
 
     @Override
     public Dimension render(Graphics2D graphics) {
@@ -60,7 +58,7 @@ public class MoonsOfPerilOverlay extends OverlayPanel {
                     .rightColor(new Color(66, 245, 84)) // Green //
                     .build());
 
-        } catch(Exception ex) {
+        } catch (Exception ex) {
             System.out.println(ex.getMessage());
         }
         return super.render(graphics);

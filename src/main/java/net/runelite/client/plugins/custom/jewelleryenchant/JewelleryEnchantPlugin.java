@@ -14,7 +14,7 @@ import javax.inject.Inject;
         name = "Donder's Jewellery Enchant",
         description = "Enchants all types of jewellery, with smart staff & rune handling.",
         tags = {"magic", "enchant", "jewellery", "skilling", "microbot"},
-        authors = { "Donder" },
+        authors = {"Donder"},
         version = JewelleryEnchantPlugin.version,
         minClientVersion = "2.1.0",
         enabledByDefault = PluginConstants.DEFAULT_ENABLED,
@@ -22,7 +22,7 @@ import javax.inject.Inject;
 )
 @Slf4j
 public class JewelleryEnchantPlugin extends Plugin {
-     static final String version = "2.0.0";
+    static final String version = "2.0.0";
 
     @Inject
     private JewelleryEnchantConfig config;
@@ -37,6 +37,7 @@ public class JewelleryEnchantPlugin extends Plugin {
     JewelleryEnchantConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(JewelleryEnchantConfig.class);
     }
+
     @Override
     protected void startUp() throws Exception {
         if (overlayManager != null) {

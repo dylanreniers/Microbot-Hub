@@ -7,31 +7,27 @@ import net.runelite.client.plugins.microbot.util.misc.Operation;
 
 import java.util.List;
 
-public class RellekkaCourse implements AgilityCourseHandler
-{
-	@Override
-	public WorldPoint getStartPoint()
-	{
-		return new WorldPoint(2625, 3677, 0);
-	}
+public class RellekkaCourse implements AgilityCourseHandler {
+    @Override
+    public WorldPoint getStartPoint() {
+        return new WorldPoint(2625, 3677, 0);
+    }
 
-	@Override
-	public List<AgilityObstacleModel> getObstacles()
-	{
-		return List.of(
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_WALLCLIMB),
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_GAP_1, -1, 3672, Operation.GREATER, Operation.GREATER),
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_TIGHTROPE_1),
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_GAP_2),
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_GAP_3, -1, 3653, Operation.GREATER, Operation.LESS_EQUAL),
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_TIGHTROPE_3),
-			new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_DROPOFF)
-		);
-	}
+    @Override
+    public List<AgilityObstacleModel> getObstacles() {
+        return List.of(
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_WALLCLIMB),
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_GAP_1, -1, 3672, Operation.GREATER, Operation.GREATER),
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_TIGHTROPE_1),
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_GAP_2),
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_GAP_3, -1, 3653, Operation.GREATER, Operation.LESS_EQUAL),
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_TIGHTROPE_3),
+                new AgilityObstacleModel(ObjectID.ROOFTOPS_RELLEKKA_DROPOFF)
+        );
+    }
 
-	@Override
-	public Integer getRequiredLevel()
-	{
-		return 80;
-	}
+    @Override
+    public Integer getRequiredLevel() {
+        return 80;
+    }
 }

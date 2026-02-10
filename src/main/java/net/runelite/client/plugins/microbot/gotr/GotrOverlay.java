@@ -13,9 +13,9 @@ import java.awt.*;
 
 public class GotrOverlay extends OverlayPanel {
 
-    private final GotrPlugin plugin;
     public static Color PUBLIC_TIMER_COLOR = Color.YELLOW;
     public static int TIMER_OVERLAY_DIAMETER = 20;
+    private final GotrPlugin plugin;
     private final ProgressPieComponent progressPieComponent = new ProgressPieComponent();
 
     int sleepingCounter;

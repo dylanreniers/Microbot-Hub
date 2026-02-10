@@ -23,13 +23,6 @@ import java.util.List;
 @Slf4j
 public class AutoChinScript extends AbstractScript {
 
-    private enum State {
-        IDLE,
-        CATCHING,
-        DROPPING,
-        LAYING
-    }
-
     private static final List<Integer> BOXES_IDS = List.of(
             ObjectID.SHAKING_BOX_9384,
             ObjectID.SHAKING_BOX_9383,
@@ -37,7 +30,7 @@ public class AutoChinScript extends AbstractScript {
             ObjectID.SHAKING_BOX,
             ObjectID.BOX_TRAP_9385
     );
-
+    public static final int[] BOX_ID_ARRAY = BOXES_IDS.stream().mapToInt(i -> i).toArray();
     private static final List<Integer> TRAP_IDS = Arrays.asList(
             ObjectID.BOX_TRAP_9380,
             ObjectID.BOX_TRAP_9385,
@@ -50,12 +43,18 @@ public class AutoChinScript extends AbstractScript {
     @Inject
     private AutoHunterConfig config;
 
-    private boolean pickedUpTraps = true;
     private final List<WorldPoint> boxTiles = new ArrayList<>();
     private final List<WorldPoint> allBoxesOriginalPoints = new ArrayList<>();
+    private boolean pickedUpTraps = true;
+    private boolean isExecutingTickManipulation;
 
     @Override
     public void tick() {
+        if (isExecutingTickManipulation) {
+            log.info("Executing tick manipulation");
+            return;
+        }
+
         if (!takingBreak()) {
             if (pickedUpTraps) {
                 layTraps();
@@ -64,13 +63,16 @@ public class AutoChinScript extends AbstractScript {
 
             switch (getState()) {
                 case DROPPING:
-                    handleDroppingState(config);
+                    handleDroppingState();
                     break;
                 case CATCHING:
-                    handleCatchingState(config);
+                    handleCatchingState();
                     break;
                 case LAYING:
-                    handleLayingState(config);
+                    handleLayingState();
+                    break;
+                case TICK_MANIPULATION:
+                    handleTickManipulationState();
                     break;
             }
         }
@@ -78,6 +80,8 @@ public class AutoChinScript extends AbstractScript {
 
     @Override
     public void initialize() {
+        allBoxesOriginalPoints.clear();
+        boxTiles.clear();
         int numberOfBoxes = Microbot.getClient().getRealSkillLevel(Skill.HUNTER) / 20 + 1;
 
         //square pattern
@@ -142,6 +146,9 @@ public class AutoChinScript extends AbstractScript {
                         .where(box -> boxTiles.contains(box.getWorldLocation()))
                         .nearestOnClientThread();
                 if (nearestBoxTrap != null) {
+                    if (hasKnifeAndLogs() && config.tickManipulation() && !isExecutingTickManipulation) {
+                        return State.TICK_MANIPULATION;
+                    }
                     return State.CATCHING;
                 }
             }
@@ -152,7 +159,7 @@ public class AutoChinScript extends AbstractScript {
         return State.IDLE;
     }
 
-    private void handleDroppingState(AutoHunterConfig config) {
+    private void handleDroppingState() {
         while (Rs2Inventory.contains(ItemID.FERRET)) {
             Rs2Inventory.interact(ItemID.FERRET, "Release");
             sleep(0, 750);
@@ -163,7 +170,7 @@ public class AutoChinScript extends AbstractScript {
         sleep(config.minSleepAfterLay(), config.maxSleepAfterLay());
     }
 
-    private void handleCatchingState(AutoHunterConfig config) {
+    private void handleCatchingState() {
         BOXES_IDS.forEach(boxId -> {
             Rs2TileObjectModel nearestBoxTrap = rs2TileObjectCache
                     .query()
@@ -176,7 +183,7 @@ public class AutoChinScript extends AbstractScript {
         });
     }
 
-    private void handleLayingState(AutoHunterConfig config) {
+    private void handleLayingState() {
         Rs2TileItemModel nearestCollapsedBoxTrap = rs2TileItemCache
                 .query()
                 .withId(ItemID.BOX_TRAP)
@@ -191,14 +198,14 @@ public class AutoChinScript extends AbstractScript {
     private void layTraps() {
         allBoxesOriginalPoints.forEach(tile -> {
             int offset = 0;
-            while(!boxSpotIsAvailable(tile.dx(offset))) {
+            while (!boxSpotIsAvailable(tile.dx(offset))) {
                 log.info("Spot already taken.");
                 offset += 1;
             }
 
             WorldPoint boxTrapLocation = tile.dx(offset);
             log.info("Setting box trap at {}", boxTrapLocation);
-            Rs2Walker.walkTo(boxTrapLocation, 0);
+            Rs2Walker.walkFastCanvas(boxTrapLocation, true);
             sleep(600, 2000);
             boxTiles.add(boxTrapLocation);
             Rs2Inventory.interact("Box trap", "Lay");
@@ -247,5 +254,76 @@ public class AutoChinScript extends AbstractScript {
                         }
                     }
                 }));
+    }
+
+    private boolean hasKnifeAndLogs() {
+        return Rs2Inventory.contains("Knife") && Rs2Inventory.contains("Teak logs");
+    }
+
+    private void handleTickManipulationState() {
+        Rs2TileObjectModel nearestBoxTrap = rs2TileObjectCache
+                .query()
+                .withIds(BOXES_IDS.stream().mapToInt(i->i).toArray())
+                .where(box -> boxTiles.contains(box.getWorldLocation()))
+                .nearestOnClientThread();
+
+        if (nearestBoxTrap != null) {
+
+            Rs2Walker.walkFastCanvas(nearestBoxTrap.getWorldLocation(), true);
+            sleepUntil(() -> Rs2Player.getWorldLocation().equals(nearestBoxTrap.getWorldLocation()));
+
+            if (nearestBoxTrap.click("check")) {
+                log.info("Checking first trap");
+                Rs2Inventory.waitForInventoryChanges(2400);
+                sleep(600, 1200);
+            }
+
+            if (Rs2Inventory.interact("Knife", "Use")) {
+                sleep(50, 150);
+                Rs2Inventory.interact("Teak logs");
+                log.info("Using knife on logs");
+                sleep(600);
+                Rs2Walker.walkFastCanvas(nearestBoxTrap.getWorldLocation(), true);
+                sleep(600);
+                Rs2Inventory.interact("Box trap", "Lay");
+                log.info("Laying box trap");
+
+                Rs2TileObjectModel box = rs2TileObjectCache
+                        .query()
+                        .withIds(BOX_ID_ARRAY)
+                        .where(potentialBox -> boxTiles.contains(potentialBox.getWorldLocation()))
+                        .nearestOnClientThread();
+
+                while (box != null) {
+                    sleep(1800);
+                    log.info("Walking to next trap");
+                    Rs2Walker.walkFastCanvas(box.getWorldLocation(), true);
+                    sleep(600);
+                    log.info("Checking trap");
+                    box.click("check");
+                    Rs2Inventory.waitForInventoryChanges(2400);
+                    log.info("Laying new trap");
+                    Rs2Inventory.interact("Box trap", "Lay");
+                    log.info("Sleeping to lay new box for 1800ms");
+                    box = rs2TileObjectCache
+                            .query()
+                            .withIds(BOX_ID_ARRAY)
+                            .where(potentialBox -> boxTiles.contains(potentialBox.getWorldLocation()))
+                            .nearestOnClientThread();
+                    log.info("Has new box? {}", box != null);
+
+                }
+            }
+        }
+
+        isExecutingTickManipulation = false;
+    }
+
+    private enum State {
+        IDLE,
+        CATCHING,
+        DROPPING,
+        LAYING,
+        TICK_MANIPULATION
     }
 }

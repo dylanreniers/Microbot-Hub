@@ -1,6 +1,10 @@
 package net.runelite.client.plugins.microbot.herbrun;
 
-import net.runelite.client.config.*;
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigGroup;
+import net.runelite.client.config.ConfigInformation;
+import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.ConfigSection;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 
 @ConfigInformation("Automated Herb Runs across all patches<br/><br/>" +
@@ -23,6 +27,34 @@ public interface HerbrunConfig extends Config {
             position = 0
     )
     String inventorySection = "inventory";
+    @ConfigSection(
+            name = "Auto Banking Settings",
+            description = "Configure automatic banking options",
+            position = 1
+    )
+    String autoSection = "autobanking";
+    @ConfigSection(
+            name = "General Settings",
+            description = "General plugin settings",
+            position = 2
+    )
+    String settingsSection = "settings";
+    //    @ConfigItem(
+//            keyName = "enableHarmony",
+//            name = "Enable Harmony Island Patch",
+//            description = "Enable Harmony Island patch in herb run",
+//            position = 9,
+//            section = locationSection
+//    )
+//    default boolean enableHarmony() {
+//        return false;
+//    }
+    @ConfigSection(
+            name = "Location toggles",
+            description = "Location toggles",
+            position = 3
+    )
+    String locationSection = "Location";
 
     @ConfigItem(
             keyName = "useInventorySetup",
@@ -45,13 +77,6 @@ public interface HerbrunConfig extends Config {
     default InventorySetup inventorySetup() {
         return null;
     }
-
-    @ConfigSection(
-            name = "Auto Banking Settings",
-            description = "Configure automatic banking options",
-            position = 1
-    )
-    String autoSection = "autobanking";
 
     @ConfigItem(
             keyName = "herbSeedType",
@@ -96,13 +121,6 @@ public interface HerbrunConfig extends Config {
     default boolean dropEmptyBuckets() {
         return true;
     }
-
-    @ConfigSection(
-            name = "General Settings",
-            description = "General plugin settings",
-            position = 2
-    )
-    String settingsSection = "settings";
 
     @ConfigItem(
             keyName = "goToBank",
@@ -213,22 +231,5 @@ public interface HerbrunConfig extends Config {
     default boolean enableGuild() {
         return true;
     }
-
-    //    @ConfigItem(
-//            keyName = "enableHarmony",
-//            name = "Enable Harmony Island Patch",
-//            description = "Enable Harmony Island patch in herb run",
-//            position = 9,
-//            section = locationSection
-//    )
-//    default boolean enableHarmony() {
-//        return false;
-//    }
-    @ConfigSection(
-            name = "Location toggles",
-            description = "Location toggles",
-            position = 3
-    )
-    String locationSection = "Location";
 
 }

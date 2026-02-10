@@ -14,7 +14,7 @@ public class RoyalTitansShared {
     public static final Integer ICE_TITAN_DEAD_ID = 14149;
     public static final Integer FIRE_TITAN_ID = 12596;
     public static final int BOSS_REGION = 11669;
-    public static final String[] ITEMS_TO_LOOT = new String[] {
+    public static final String[] ITEMS_TO_LOOT = new String[]{
             "Giantsoul amulet",
             "Fire element staff crown",
             "Ice element staff crown",

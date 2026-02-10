@@ -31,9 +31,6 @@ enum Hotspot {
             ImmutableSet.of(39988, 39996, 40163, 40289, 40299)),
     ;
 
-    private final int varb;
-    private final ImmutableSet<Integer> objectIds;
-
     private static final ImmutableMap<Integer, Hotspot> HOTSPOT_BY_OBJECT_ID;
 
     static {
@@ -46,9 +43,11 @@ enum Hotspot {
         HOTSPOT_BY_OBJECT_ID = objects.build();
     }
 
+    private final int varb;
+    private final ImmutableSet<Integer> objectIds;
+
     @Nullable
-    static Hotspot getByObjectId(final int objectId)
-    {
+    static Hotspot getByObjectId(final int objectId) {
         return HOTSPOT_BY_OBJECT_ID.get(objectId);
     }
 
@@ -72,17 +71,14 @@ enum Hotspot {
         return getBrokenHotspots().isEmpty();
     }
 
-    public boolean isFixed()
-    {
+    public boolean isFixed() {
         final int varb = Microbot.getVarbitValue(getVarb());
         return varb != 1 && varb != 3 && varb != 4;
     }
 
-    public String getRequiredAction()
-    {
+    public String getRequiredAction() {
         final int varb = Microbot.getVarbitValue(getVarb());
-        switch (varb)
-        {
+        switch (varb) {
             case 1:
                 return "Repair";
             case 3:

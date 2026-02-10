@@ -14,8 +14,6 @@ import net.runelite.client.ui.overlay.OverlayManager;
 import javax.inject.Inject;
 import java.awt.*;
 
-import static net.runelite.client.plugins.PluginDescriptor.Mocrosoft;
-
 @PluginDescriptor(
         name = PluginDescriptor.GMason + "Auto Cooking",
         description = "Microbot cooking plugin",

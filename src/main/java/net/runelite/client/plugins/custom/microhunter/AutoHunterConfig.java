@@ -17,6 +17,7 @@ public interface AutoHunterConfig extends Config {
     default int minSleepAfterCatch() {
         return 8300;
     }
+
     @ConfigItem(
             position = 2,
             keyName = "MaxSleepAfterCatch",
@@ -26,6 +27,7 @@ public interface AutoHunterConfig extends Config {
     default int maxSleepAfterCatch() {
         return 8400;
     }
+
     @ConfigItem(
             position = 3,
             keyName = "MinSleepAfterLay",
@@ -35,6 +37,7 @@ public interface AutoHunterConfig extends Config {
     default int minSleepAfterLay() {
         return 5500;
     }
+
     @ConfigItem(
             position = 4,
             keyName = "MaxSleepAfterLay",
@@ -43,5 +46,15 @@ public interface AutoHunterConfig extends Config {
     )
     default int maxSleepAfterLay() {
         return 5700;
+    }
+
+    @ConfigItem(
+            position = 5,
+            keyName = "tickManipulation",
+            name = "Tick Manipulation",
+            description = "Use knife and logs for tick manipulation"
+    )
+    default boolean tickManipulation() {
+        return false;
     }
 }

@@ -4,7 +4,6 @@ import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.events.ChatMessage;
-import net.runelite.api.events.GameTick;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -31,20 +30,18 @@ import java.awt.*;
 public class AutoChompyKillerPlugin extends Plugin {
     static final String version = "1.0.1";
     @Inject
+    AutoChompyKillerScript autoChompyKillerScript;
+    @Inject
     private AutoChompyKillerConfig config;
-
-    @Provides
-    AutoChompyKillerConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(AutoChompyKillerConfig.class);
-    }
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private AutoChompyKillerOverlay autoChompyKillerOverlay;
 
-    @Inject
-    AutoChompyKillerScript autoChompyKillerScript;
+    @Provides
+    AutoChompyKillerConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(AutoChompyKillerConfig.class);
+    }
 
     @Override
     protected void startUp() throws AWTException {
@@ -80,7 +77,7 @@ public class AutoChompyKillerPlugin extends Plugin {
             autoChompyKillerScript.handleBowNotPowerfulEnough();
         }
         if (config.stopOnChompyChickPet() && (message.contains("you have a funny feeling like you're being followed") ||
-            message.contains("you feel something weird sneaking into your backpack"))) {
+                message.contains("you feel something weird sneaking into your backpack"))) {
             autoChompyKillerScript.handlePetReceived(config.logoutOnCompletion());
         }
     }

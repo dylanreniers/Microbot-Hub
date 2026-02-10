@@ -1,6 +1,10 @@
 package net.runelite.client.plugins.microbot.mess;
 
-import net.runelite.client.config.*;
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigGroup;
+import net.runelite.client.config.ConfigInformation;
+import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.ConfigSection;
 import net.runelite.client.plugins.microbot.mess.TheMessScript.Dish;
 
 @ConfigGroup("the_mess")

@@ -40,10 +40,23 @@ enum State {
 public class AutoMiningScript extends Script {
 
     private static final int GEM_MINE_UNDERGROUND = 11410;
-    State state = State.MINING;
     private static final List<Rocks> PROGRESSIVE_ROCKS = buildProgressiveRocks();
+    State state = State.MINING;
     private Rocks activeRock;
     private LocationOption activeLocation;
+
+    private static List<Rocks> buildProgressiveRocks() {
+        List<Rocks> rocks = new ArrayList<>(Arrays.asList(
+                Rocks.TIN,
+                Rocks.IRON,
+                Rocks.COAL,
+                Rocks.GOLD,
+                Rocks.MITHRIL,
+                Rocks.ADAMANTITE,
+                Rocks.RUNITE
+        ));
+        return rocks;
+    }
 
     public boolean run(AutoMiningConfig config) {
         initialPlayerLocation = null;
@@ -142,13 +155,11 @@ public class AutoMiningScript extends Script {
                                 Rs2Bank.depositAll();
                                 if (Rs2Bank.hasItem(11074)) {
                                     Rs2Bank.withdrawAndEquip(11074);
-                                }
-                                else {
+                                } else {
                                     log.info("You don't have any more bracelet of clays");
                                 }
                                 Rs2Bank.bankItemsAndWalkBackToOriginalPosition(itemNames, initialPlayerLocation, 0, config.distanceToStray());
-                            }
-                            else if (activeRock == Rocks.GEM && Rs2Player.getWorldLocation().getRegionID() == GEM_MINE_UNDERGROUND) {
+                            } else if (activeRock == Rocks.GEM && Rs2Player.getWorldLocation().getRegionID() == GEM_MINE_UNDERGROUND) {
                                 if (Rs2DepositBox.openDepositBox()) {
                                     if (Rs2Inventory.contains("Open gem bag")) {
                                         Rs2Inventory.interact("Open gem bag", "Empty");
@@ -186,19 +197,6 @@ public class AutoMiningScript extends Script {
     public void shutdown() {
         super.shutdown();
         Rs2Antiban.resetAntibanSettings();
-    }
-
-    private static List<Rocks> buildProgressiveRocks() {
-        List<Rocks> rocks = new ArrayList<>(Arrays.asList(
-                Rocks.TIN,
-                Rocks.IRON,
-                Rocks.COAL,
-                Rocks.GOLD,
-                Rocks.MITHRIL,
-                Rocks.ADAMANTITE,
-                Rocks.RUNITE
-        ));
-        return rocks;
     }
 
     private void updateActiveRock(AutoMiningConfig config) {

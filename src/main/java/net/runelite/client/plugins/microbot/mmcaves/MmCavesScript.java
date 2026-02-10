@@ -4,12 +4,12 @@ import com.google.common.collect.Table;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
 import net.runelite.api.GroundObject;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.grounditems.GroundItem;
-import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.Microbot;
+import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.mmcaves.enums.CombatStyle;
-import net.runelite.client.plugins.microbot.mmcaves.enums.LightSources;
 import net.runelite.client.plugins.microbot.mmcaves.enums.Mode;
 import net.runelite.client.plugins.microbot.mmcaves.enums.State;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
@@ -17,8 +17,10 @@ import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
+import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Spellbook;
 import net.runelite.client.plugins.microbot.util.magic.Runes;
+import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.npc.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
@@ -26,52 +28,42 @@ import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 import net.runelite.client.plugins.microbot.util.security.Login;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
-import net.runelite.client.plugins.microbot.util.math.Rs2Random;
-import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
-import net.runelite.api.coords.WorldPoint;
 
 import javax.inject.Inject;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 public class MmCavesScript extends Script {
-    private final MmCavesPlugin plugin;
-
-    @Inject
-    public MmCavesScript(MmCavesPlugin plugin) {
-        this.plugin = plugin;
-    }
-
-    private MmCavesConfig config;
-    private Mode mode;
     public static State state = State.WALK_TO_START;
-    public Instant startTime;
     public static long lastAggroResetTime = System.currentTimeMillis();
-    private long lastAttackTime = System.currentTimeMillis();
-
-    public void setConfig(MmCavesConfig config) {
-        this.config = config;
-        this.mode = config.combatStyle() == CombatStyle.RANGING ? Mode.RANGE : Mode.MAGIC;
-    }
-
+    private final MmCavesPlugin plugin;
     private final WorldPoint START_TILE = new WorldPoint(2572, 9168, 1); // Upstairs
     private final WorldPoint FIGHTING_TILE_A = new WorldPoint(2452, 9159, 1);
     private final WorldPoint FIGHTING_TILE_B = new WorldPoint(2451, 9158, 1);
     private final WorldPoint AGGRO_RESET_TILE = new WorldPoint(2414, 9164, 1);
     private final WorldPoint EXIT_TILE = new WorldPoint(2381, 9168, 1);
-
     private final int cavesUpstairs = 10383;
     private final long AGGRO_RESET_COOLDOWN = 10 * 60 * 1000; // RESET EVERY 10 MINUTES
-
+    public Instant startTime;
+    public boolean caveIsEmpty = false;
+    private MmCavesConfig config;
+    private Mode mode;
+    private long lastAttackTime = System.currentTimeMillis();
     private boolean onTileA = true;
-
     private boolean firstFightStarted = false;
     private boolean resettingAggro = false;
-    public boolean caveIsEmpty = false;
+    @Inject
+    public MmCavesScript(MmCavesPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    public void setConfig(MmCavesConfig config) {
+        this.config = config;
+        this.mode = config.combatStyle() == CombatStyle.RANGING ? Mode.RANGE : Mode.MAGIC;
+    }
 
     @Override
     public boolean run() {
@@ -135,7 +127,7 @@ public class MmCavesScript extends Script {
         if (mode == Mode.MAGIC) {
             if (
                     !Rs2Magic.hasRequiredRunes(config.magicSpell().getSpell()) &&
-                    !Rs2Magic.isSpellbook(Rs2Spellbook.ANCIENT)
+                            !Rs2Magic.isSpellbook(Rs2Spellbook.ANCIENT)
             ) {
                 Microbot.log("Player does not have enough runes to cast selected spell: " + config.magicSpell().getSpell().getName());
 
@@ -156,49 +148,50 @@ public class MmCavesScript extends Script {
         }
 
         // We need to stop the script if the inventory has no prayer potions
-        if (!Rs2Inventory.all().stream().anyMatch(name -> name.getName().toLowerCase().contains("prayer potion"))) return State.STOP;
+        if (!Rs2Inventory.all().stream().anyMatch(name -> name.getName().toLowerCase().contains("prayer potion")))
+            return State.STOP;
 
         // If not in the cave and far from starting tile -> walk to starting tile
         if (
                 !isDownstairs() &&
-                plugin.getMyWorldPoint().distanceTo(START_TILE) > 5
+                        plugin.getMyWorldPoint().distanceTo(START_TILE) > 5
         ) return State.WALK_TO_START;
 
         // If close to starter tile and world is not checked -> check if cave is empty
         if (
                 plugin.getMyWorldPoint().distanceTo(START_TILE) < 5 &&
-                !plugin.isWorldChecked(Microbot.getClient().getWorld()) &&
-                !isDownstairs()
+                        !plugin.isWorldChecked(Microbot.getClient().getWorld()) &&
+                        !isDownstairs()
         ) return State.CHECK_EMPTY_CAVE;
 
         //  If close to starter tile and world is checked but is not empty and is not downstairs -> world hop
         if (
                 plugin.getMyWorldPoint().distanceTo(START_TILE) < 5 &&
-                plugin.isWorldChecked(Microbot.getClient().getWorld()) &&
-                !caveIsEmpty &&
-                !isDownstairs()
+                        plugin.isWorldChecked(Microbot.getClient().getWorld()) &&
+                        !caveIsEmpty &&
+                        !isDownstairs()
         ) return State.WORLD_HOP;
 
         //  If close to starter tile and world is checked and is empty and is not downstairs -> enter cave
         if (
                 plugin.getMyWorldPoint().distanceTo(START_TILE) < 5 &&
-                plugin.isWorldChecked(Microbot.getClient().getWorld()) &&
-                caveIsEmpty &&
-                !isDownstairs()
+                        plugin.isWorldChecked(Microbot.getClient().getWorld()) &&
+                        caveIsEmpty &&
+                        !isDownstairs()
         ) return State.ENTER_CAVE;
 
         // If downstairs but not close to fighting spot -> walk to tile A
         if (
                 isDownstairs() &&
-                plugin.getMyWorldPoint().distanceTo(FIGHTING_TILE_A ) > 5 &&
-                plugin.getMyWorldPoint().distanceTo(FIGHTING_TILE_B ) > 5 &&
-                !resettingAggro
+                        plugin.getMyWorldPoint().distanceTo(FIGHTING_TILE_A) > 5 &&
+                        plugin.getMyWorldPoint().distanceTo(FIGHTING_TILE_B) > 5 &&
+                        !resettingAggro
         ) return State.WALK_TO_FIGHT_SPOT;
 
         // Lost aggro
         if (
                 firstFightStarted &&
-                System.currentTimeMillis() - lastAggroResetTime > AGGRO_RESET_COOLDOWN
+                        System.currentTimeMillis() - lastAggroResetTime > AGGRO_RESET_COOLDOWN
         ) {
             resettingAggro = true;
             lastAggroResetTime = System.currentTimeMillis();
@@ -288,7 +281,7 @@ public class MmCavesScript extends Script {
                         Microbot.log("Picking up potion from the ground");
                         int previousAmount = Rs2Inventory.count(143);
                         Rs2GroundItem.pickup(143);
-                        sleepUntil(() -> Rs2Inventory.hasItemAmount(143, previousAmount+1), 3000);
+                        sleepUntil(() -> Rs2Inventory.hasItemAmount(143, previousAmount + 1), 3000);
                     }
                 }
             }
@@ -310,7 +303,7 @@ public class MmCavesScript extends Script {
         Microbot.log("Resetting aggro...");
         if (
                 plugin.getMyWorldPoint().distanceTo(AGGRO_RESET_TILE) > 2 &&
-                resettingAggro
+                        resettingAggro
         ) {
             Rs2Walker.walkTo(AGGRO_RESET_TILE, 0);
             sleepUntil(() -> plugin.getMyWorldPoint().distanceTo(AGGRO_RESET_TILE) < 2, 1000);
@@ -330,7 +323,7 @@ public class MmCavesScript extends Script {
             Rs2Walker.walkTo(EXIT_TILE, 2);
             sleepUntil(() -> plugin.getMyWorldPoint().distanceTo(EXIT_TILE) < 3, 1000);
 
-            if ( plugin.getMyWorldPoint().distanceTo(EXIT_TILE) < 3) {
+            if (plugin.getMyWorldPoint().distanceTo(EXIT_TILE) < 3) {
                 GameObject rope = Rs2GameObject.getGameObject(28775);
                 if (rope != null) {
                     Rs2GameObject.interact(rope, "Climb-up");
@@ -352,8 +345,7 @@ public class MmCavesScript extends Script {
         return region == tunnel || region == openArea;
     }
 
-    private void walkBetweenTiles()
-    {
+    private void walkBetweenTiles() {
         WorldPoint targetTile = onTileA ? FIGHTING_TILE_A : FIGHTING_TILE_B;
 
         int runEnergy = Rs2Player.getRunEnergy();
@@ -406,21 +398,21 @@ public class MmCavesScript extends Script {
         }
 
         // Mode specific delays if not using custom delay config
-         if (!config.useCustomDelay() && ((now - lastAttackTime < 1800) && mode.equals(Mode.RANGE))) {
-             Microbot.log(String.format(
-                     "Too soon to attack again. Elapsed=%.2fs, required=%.2fs.",
-                     elapsedSeconds, requiredDelay / 1000.0
-             ));
-             return false;
-         }
+        if (!config.useCustomDelay() && ((now - lastAttackTime < 1800) && mode.equals(Mode.RANGE))) {
+            Microbot.log(String.format(
+                    "Too soon to attack again. Elapsed=%.2fs, required=%.2fs.",
+                    elapsedSeconds, requiredDelay / 1000.0
+            ));
+            return false;
+        }
 
-         if (!config.useCustomDelay() && ((now - lastAttackTime < 3000) && mode.equals(Mode.MAGIC))) {
-             Microbot.log(String.format(
-                     "Too soon to attack again. Elapsed=%.2fs, required=%.2fs.",
-                     elapsedSeconds, requiredDelay / 1000.0
-             ));
-             return false;
-         }
+        if (!config.useCustomDelay() && ((now - lastAttackTime < 3000) && mode.equals(Mode.MAGIC))) {
+            Microbot.log(String.format(
+                    "Too soon to attack again. Elapsed=%.2fs, required=%.2fs.",
+                    elapsedSeconds, requiredDelay / 1000.0
+            ));
+            return false;
+        }
 
         if (!config.shouldAutoCast()) {
             attacked = Rs2Magic.castOn(config.magicSpell().getSpell(), target);

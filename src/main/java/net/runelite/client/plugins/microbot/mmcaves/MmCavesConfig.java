@@ -12,18 +12,18 @@ public interface MmCavesConfig extends Config {
 
 
     @ConfigItem(
-        keyName = "combatStyle",
-        name = "Combat Style",
-        description = "Choose between ranging (chinning) or maging (spells)"
+            keyName = "combatStyle",
+            name = "Combat Style",
+            description = "Choose between ranging (chinning) or maging (spells)"
     )
     default CombatStyle combatStyle() {
         return CombatStyle.RANGING;
     }
 
     @ConfigItem(
-        keyName = "magicSpell",
-        name = "Magic Spell",
-        description = "If using magic, choose which spell to cast"
+            keyName = "magicSpell",
+            name = "Magic Spell",
+            description = "If using magic, choose which spell to cast"
     )
     default MagicSpell magicSpell() {
         return MagicSpell.ICE_BURST;

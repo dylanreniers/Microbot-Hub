@@ -52,10 +52,10 @@ public enum HerblorePotion {
     WEAPON_POISON_PLUS_PLUS("Weapon poison++", 82, ItemID.VIAL_COCONUT_MILK, ItemID.NIGHTSHADE),
     ZAMORAK_BREW("Zamorak brew", 78, ItemID.TORSTOLVIAL, ItemID.JANGERBERRIES);
 
-    private final String displayName;
     public final int level;
     public final int unfinished;
     public final int secondary;
+    private final String displayName;
 
     HerblorePotion(String displayName, int level, int unfinished, int secondary) {
         this.displayName = displayName;

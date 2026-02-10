@@ -6,11 +6,14 @@ import net.runelite.api.ChatMessageType;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
 import net.runelite.api.NPC;
-import net.runelite.api.events.*;
-import net.runelite.client.config.ConfigDescriptor;
+import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.GameObjectDespawned;
+import net.runelite.api.events.GameObjectSpawned;
+import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.NpcDespawned;
+import net.runelite.api.events.NpcSpawned;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.Microbot;
@@ -42,23 +45,21 @@ import java.util.regex.Matcher;
 @Slf4j
 public class GotrPlugin extends Plugin {
     public static final String version = "1.5.0";
-
+    @Inject
+    GotrScript gotrScript;
     @Inject
     private GotrConfig config;
-
-    @Provides
-    GotrConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(GotrConfig.class);
-    }
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private GotrOverlay gotrOverlay;
     @Inject
     private PouchOverlay pouchOverlay;
-    @Inject
-    GotrScript gotrScript;
+
+    @Provides
+    GotrConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(GotrConfig.class);
+    }
 
     public GotrConfig getConfig() {
         return config;
@@ -76,11 +77,11 @@ public class GotrPlugin extends Plugin {
             overlayManager.add(gotrOverlay);
         }
 
-        // Initialize pre/post schedule tasks        
+        // Initialize pre/post schedule tasks
         if (Microbot.isLoggedIn()) {
-                log.info("GOTR Plugin started in Normal Mode");
-                // In normal mode, start the script directly                
-                gotrScript.run(config);
+            log.info("GOTR Plugin started in Normal Mode");
+            // In normal mode, start the script directly
+            gotrScript.run(config);
         }
     }
 

@@ -14,6 +14,7 @@ public class MmCavesOverlay extends OverlayPanel {
 
     private final MmCavesPlugin plugin;
     private final MmCavesConfig config;
+
     @Inject
     MmCavesOverlay(MmCavesPlugin plugin, MmCavesConfig config) {
         super(plugin);
@@ -48,7 +49,7 @@ public class MmCavesOverlay extends OverlayPanel {
             panelComponent.getChildren().add(LineComponent.builder()
                     .left("TOTAL TIME: " + formatDuration(plugin.startTime))
                     .build());
-        } catch(Exception ex) {
+        } catch (Exception ex) {
             System.out.println(ex.getMessage());
         }
         return super.render(graphics);

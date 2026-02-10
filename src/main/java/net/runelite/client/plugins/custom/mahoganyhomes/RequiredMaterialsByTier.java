@@ -4,8 +4,7 @@ package net.runelite.client.plugins.custom.mahoganyhomes;
 import lombok.AllArgsConstructor;
 
 @AllArgsConstructor
-public enum RequiredMaterialsByTier
-{
+public enum RequiredMaterialsByTier {
     // East Ardy
     JESS(new RequiredMaterials(9, 11, 0, 1),
             new RequiredMaterials(9, 11, 0, 1),
@@ -68,10 +67,8 @@ public enum RequiredMaterialsByTier
     private final RequiredMaterials adept;
     private final RequiredMaterials expert;
 
-    public RequiredMaterials getByTier(final int tier)
-    {
-        switch (tier)
-        {
+    public RequiredMaterials getByTier(final int tier) {
+        switch (tier) {
             case 1:
                 return beginner;
             case 2:

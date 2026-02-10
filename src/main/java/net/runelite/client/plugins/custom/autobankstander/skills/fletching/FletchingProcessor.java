@@ -73,7 +73,7 @@ public class FletchingProcessor implements BankStandingProcessor {
                 }
                 if (level < selectedDart.getLevelRequired()) {
                     log.info("Insufficient fletching level for {}: need {}, have {}",
-                        selectedDart.getName(), selectedDart.getLevelRequired(), level);
+                            selectedDart.getName(), selectedDart.getLevelRequired(), level);
                     return false;
                 }
                 break;
@@ -84,7 +84,7 @@ public class FletchingProcessor implements BankStandingProcessor {
                 }
                 if (level < selectedBolt.getLevelRequired()) {
                     log.info("Insufficient fletching level for {}: need {}, have {}",
-                        selectedBolt.getName(), selectedBolt.getLevelRequired(), level);
+                            selectedBolt.getName(), selectedBolt.getLevelRequired(), level);
                     return false;
                 }
                 break;
@@ -95,7 +95,7 @@ public class FletchingProcessor implements BankStandingProcessor {
                 }
                 if (level < selectedArrow.getLevelRequired()) {
                     log.info("Insufficient fletching level for {}: need {}, have {}",
-                        selectedArrow.getName(), selectedArrow.getLevelRequired(), level);
+                            selectedArrow.getName(), selectedArrow.getLevelRequired(), level);
                     return false;
                 }
                 break;
@@ -106,7 +106,7 @@ public class FletchingProcessor implements BankStandingProcessor {
                 }
                 if (level < selectedJavelin.getLevelRequired()) {
                     log.info("Insufficient fletching level for {}: need {}, have {}",
-                        selectedJavelin.getName(), selectedJavelin.getLevelRequired(), level);
+                            selectedJavelin.getName(), selectedJavelin.getLevelRequired(), level);
                     return false;
                 }
                 break;
@@ -117,7 +117,7 @@ public class FletchingProcessor implements BankStandingProcessor {
                 }
                 if (level < selectedBow.getLevelRequired()) {
                     log.info("Insufficient fletching level for {}: need {}, have {}",
-                        selectedBow.getName(), selectedBow.getLevelRequired(), level);
+                            selectedBow.getName(), selectedBow.getLevelRequired(), level);
                     return false;
                 }
                 break;
@@ -128,7 +128,7 @@ public class FletchingProcessor implements BankStandingProcessor {
                 }
                 if (level < selectedCrossbow.getLevelRequired()) {
                     log.info("Insufficient fletching level for {}: need {}, have {}",
-                        selectedCrossbow.getName(), selectedCrossbow.getLevelRequired(), level);
+                            selectedCrossbow.getName(), selectedCrossbow.getLevelRequired(), level);
                     return false;
                 }
                 break;
@@ -139,7 +139,7 @@ public class FletchingProcessor implements BankStandingProcessor {
                 }
                 if (level < selectedShield.getLevelRequired()) {
                     log.info("Insufficient fletching level for {}: need {}, have {}",
-                        selectedShield.getName(), selectedShield.getLevelRequired(), level);
+                            selectedShield.getName(), selectedShield.getLevelRequired(), level);
                     return false;
                 }
                 break;
@@ -206,32 +206,32 @@ public class FletchingProcessor implements BankStandingProcessor {
         switch (mode) {
             case DARTS:
                 return selectedDart != null &&
-                       Rs2Inventory.hasItem(selectedDart.getTipId()) &&
-                       Rs2Inventory.hasItem(selectedDart.getFeatherId());
+                        Rs2Inventory.hasItem(selectedDart.getTipId()) &&
+                        Rs2Inventory.hasItem(selectedDart.getFeatherId());
             case BOLTS:
                 return selectedBolt != null &&
-                       Rs2Inventory.hasItem(selectedBolt.getMaterialOneId()) &&
-                       Rs2Inventory.hasItem(selectedBolt.getMaterialTwoId());
+                        Rs2Inventory.hasItem(selectedBolt.getMaterialOneId()) &&
+                        Rs2Inventory.hasItem(selectedBolt.getMaterialTwoId());
             case ARROWS:
                 return selectedArrow != null &&
-                       Rs2Inventory.hasItem(selectedArrow.getMaterialOneId()) &&
-                       Rs2Inventory.hasItem(selectedArrow.getMaterialTwoId());
+                        Rs2Inventory.hasItem(selectedArrow.getMaterialOneId()) &&
+                        Rs2Inventory.hasItem(selectedArrow.getMaterialTwoId());
             case JAVELINS:
                 return selectedJavelin != null &&
-                       Rs2Inventory.hasItem(selectedJavelin.getHeadId()) &&
-                       Rs2Inventory.hasItem(selectedJavelin.getShaftId());
+                        Rs2Inventory.hasItem(selectedJavelin.getHeadId()) &&
+                        Rs2Inventory.hasItem(selectedJavelin.getShaftId());
             case BOWS:
                 return selectedBow != null &&
-                       Rs2Inventory.hasItem(selectedBow.getMaterialOneId()) &&
-                       Rs2Inventory.hasItem(selectedBow.getMaterialTwoId());
+                        Rs2Inventory.hasItem(selectedBow.getMaterialOneId()) &&
+                        Rs2Inventory.hasItem(selectedBow.getMaterialTwoId());
             case CROSSBOWS:
                 return selectedCrossbow != null &&
-                       Rs2Inventory.hasItem(selectedCrossbow.getMaterialOneId()) &&
-                       Rs2Inventory.hasItem(selectedCrossbow.getMaterialTwoId());
+                        Rs2Inventory.hasItem(selectedCrossbow.getMaterialOneId()) &&
+                        Rs2Inventory.hasItem(selectedCrossbow.getMaterialTwoId());
             case SHIELDS:
                 return selectedShield != null &&
-                       Rs2Inventory.hasItem(selectedShield.getLogId()) &&
-                       Rs2Inventory.hasItem(selectedShield.getKnifeId());
+                        Rs2Inventory.hasItem(selectedShield.getLogId()) &&
+                        Rs2Inventory.hasItem(selectedShield.getKnifeId());
         }
         return false;
     }
@@ -325,32 +325,32 @@ public class FletchingProcessor implements BankStandingProcessor {
         switch (mode) {
             case DARTS:
                 return selectedDart != null &&
-                       (hasRequiredItems() ||
-                        (Rs2Bank.hasItem(selectedDart.getTipId()) && Rs2Bank.hasItem(selectedDart.getFeatherId())));
+                        (hasRequiredItems() ||
+                                (Rs2Bank.hasItem(selectedDart.getTipId()) && Rs2Bank.hasItem(selectedDart.getFeatherId())));
             case BOLTS:
                 return selectedBolt != null &&
-                       (hasRequiredItems() ||
-                        (Rs2Bank.hasItem(selectedBolt.getMaterialOneId()) && Rs2Bank.hasItem(selectedBolt.getMaterialTwoId())));
+                        (hasRequiredItems() ||
+                                (Rs2Bank.hasItem(selectedBolt.getMaterialOneId()) && Rs2Bank.hasItem(selectedBolt.getMaterialTwoId())));
             case ARROWS:
                 return selectedArrow != null &&
-                       (hasRequiredItems() ||
-                        (Rs2Bank.hasItem(selectedArrow.getMaterialOneId()) && Rs2Bank.hasItem(selectedArrow.getMaterialTwoId())));
+                        (hasRequiredItems() ||
+                                (Rs2Bank.hasItem(selectedArrow.getMaterialOneId()) && Rs2Bank.hasItem(selectedArrow.getMaterialTwoId())));
             case JAVELINS:
                 return selectedJavelin != null &&
-                       (hasRequiredItems() ||
-                        (Rs2Bank.hasItem(selectedJavelin.getHeadId()) && Rs2Bank.hasItem(selectedJavelin.getShaftId())));
+                        (hasRequiredItems() ||
+                                (Rs2Bank.hasItem(selectedJavelin.getHeadId()) && Rs2Bank.hasItem(selectedJavelin.getShaftId())));
             case BOWS:
                 return selectedBow != null &&
-                       (hasRequiredItems() ||
-                        (Rs2Bank.hasItem(selectedBow.getMaterialOneId()) && Rs2Bank.hasItem(selectedBow.getMaterialTwoId())));
+                        (hasRequiredItems() ||
+                                (Rs2Bank.hasItem(selectedBow.getMaterialOneId()) && Rs2Bank.hasItem(selectedBow.getMaterialTwoId())));
             case CROSSBOWS:
                 return selectedCrossbow != null &&
-                       (hasRequiredItems() ||
-                        (Rs2Bank.hasItem(selectedCrossbow.getMaterialOneId()) && Rs2Bank.hasItem(selectedCrossbow.getMaterialTwoId())));
+                        (hasRequiredItems() ||
+                                (Rs2Bank.hasItem(selectedCrossbow.getMaterialOneId()) && Rs2Bank.hasItem(selectedCrossbow.getMaterialTwoId())));
             case SHIELDS:
                 return selectedShield != null &&
-                       (hasRequiredItems() ||
-                        (Rs2Bank.hasItem(selectedShield.getLogId()) && Rs2Bank.hasItem(selectedShield.getKnifeId())));
+                        (hasRequiredItems() ||
+                                (Rs2Bank.hasItem(selectedShield.getLogId()) && Rs2Bank.hasItem(selectedShield.getKnifeId())));
         }
         return false;
     }
@@ -376,8 +376,8 @@ public class FletchingProcessor implements BankStandingProcessor {
         Rs2Bank.withdrawX(selectedDart.getFeatherId(), withdrawnAmount);
 
         return sleepUntil(() ->
-            Rs2Inventory.hasItem(selectedDart.getTipId()) &&
-            Rs2Inventory.hasItem(selectedDart.getFeatherId()), 3000);
+                Rs2Inventory.hasItem(selectedDart.getTipId()) &&
+                        Rs2Inventory.hasItem(selectedDart.getFeatherId()), 3000);
     }
 
     private boolean bankForBolts() {
@@ -392,8 +392,8 @@ public class FletchingProcessor implements BankStandingProcessor {
         Rs2Bank.withdrawX(selectedBolt.getMaterialTwoId(), withdrawnAmount);
 
         return sleepUntil(() ->
-            Rs2Inventory.hasItem(selectedBolt.getMaterialOneId()) &&
-            Rs2Inventory.hasItem(selectedBolt.getMaterialTwoId()), 3000);
+                Rs2Inventory.hasItem(selectedBolt.getMaterialOneId()) &&
+                        Rs2Inventory.hasItem(selectedBolt.getMaterialTwoId()), 3000);
     }
 
     private boolean bankForArrows() {
@@ -408,8 +408,8 @@ public class FletchingProcessor implements BankStandingProcessor {
         Rs2Bank.withdrawX(selectedArrow.getMaterialTwoId(), withdrawnAmount);
 
         return sleepUntil(() ->
-            Rs2Inventory.hasItem(selectedArrow.getMaterialOneId()) &&
-            Rs2Inventory.hasItem(selectedArrow.getMaterialTwoId()), 3000);
+                Rs2Inventory.hasItem(selectedArrow.getMaterialOneId()) &&
+                        Rs2Inventory.hasItem(selectedArrow.getMaterialTwoId()), 3000);
     }
 
     private boolean bankForJavelins() {
@@ -424,8 +424,8 @@ public class FletchingProcessor implements BankStandingProcessor {
         Rs2Bank.withdrawX(selectedJavelin.getShaftId(), withdrawnAmount);
 
         return sleepUntil(() ->
-            Rs2Inventory.hasItem(selectedJavelin.getHeadId()) &&
-            Rs2Inventory.hasItem(selectedJavelin.getShaftId()), 3000);
+                Rs2Inventory.hasItem(selectedJavelin.getHeadId()) &&
+                        Rs2Inventory.hasItem(selectedJavelin.getShaftId()), 3000);
     }
 
     private boolean bankForBows() {
@@ -440,8 +440,8 @@ public class FletchingProcessor implements BankStandingProcessor {
         Rs2Bank.withdrawX(selectedBow.getMaterialTwoId(), withdrawnAmount);
 
         return sleepUntil(() ->
-            Rs2Inventory.hasItem(selectedBow.getMaterialOneId()) &&
-            Rs2Inventory.hasItem(selectedBow.getMaterialTwoId()), 3000);
+                Rs2Inventory.hasItem(selectedBow.getMaterialOneId()) &&
+                        Rs2Inventory.hasItem(selectedBow.getMaterialTwoId()), 3000);
     }
 
     private boolean bankForCrossbows() {
@@ -456,8 +456,8 @@ public class FletchingProcessor implements BankStandingProcessor {
         Rs2Bank.withdrawX(selectedCrossbow.getMaterialTwoId(), withdrawnAmount);
 
         return sleepUntil(() ->
-            Rs2Inventory.hasItem(selectedCrossbow.getMaterialOneId()) &&
-            Rs2Inventory.hasItem(selectedCrossbow.getMaterialTwoId()), 3000);
+                Rs2Inventory.hasItem(selectedCrossbow.getMaterialOneId()) &&
+                        Rs2Inventory.hasItem(selectedCrossbow.getMaterialTwoId()), 3000);
     }
 
     private boolean bankForShields() {
@@ -473,8 +473,8 @@ public class FletchingProcessor implements BankStandingProcessor {
         Rs2Bank.withdrawOne(selectedShield.getKnifeId());
 
         return sleepUntil(() ->
-            Rs2Inventory.hasItem(selectedShield.getLogId()) &&
-            Rs2Inventory.hasItem(selectedShield.getKnifeId()), 3000);
+                Rs2Inventory.hasItem(selectedShield.getLogId()) &&
+                        Rs2Inventory.hasItem(selectedShield.getKnifeId()), 3000);
     }
 
     private boolean processDarts() {
@@ -592,7 +592,7 @@ public class FletchingProcessor implements BankStandingProcessor {
 
         // wait for dialogue to appear
         boolean dialogueAppeared = sleepUntil(() -> Rs2Dialogue.hasQuestion("How many") ||
-                                                   Rs2Dialogue.hasCombinationDialogue(), 3000);
+                Rs2Dialogue.hasCombinationDialogue(), 3000);
 
         if (!dialogueAppeared) {
             log.info("No dialogue appeared within timeout");

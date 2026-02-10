@@ -63,9 +63,6 @@ public class FletchingScript extends Script {
                 if (Rs2AntibanSettings.actionCooldownActive)
                     return;
 
-//                if (config.Afk() && Random.random(1, 100) == 2)
-//                    sleep(1000, 60000);
-
                 boolean hasRequirementsToFletch;
                 boolean hasRequirementsToBank;
                 primaryItemToFletch = fletchingMode.getItemName();
@@ -150,10 +147,17 @@ public class FletchingScript extends Script {
 
         // Check if the secondary item is available
         if (!Rs2Bank.hasItem(secondaryItemToFletch)) {
-            if (fletchingMode == FletchingMode.UNSTRUNG_STRUNG && Rs2Bank.hasBankItem("bow string")) {
-                Rs2Bank.depositAll();
-                fletchingMode = FletchingMode.STRUNG;
-                return;
+            if (fletchingMode == FletchingMode.UNSTRUNG_STRUNG) {
+                if (config.bowStringSpool() && Rs2Inventory.contains("Bow string spool")) {
+                    Rs2Bank.depositAllExcept("Bow string spool");
+                    fletchingMode = FletchingMode.STRUNG;
+                    return;
+                }
+                if (Rs2Bank.hasBankItem("bow string")) {
+                    Rs2Bank.depositAll();
+                    fletchingMode = FletchingMode.STRUNG;
+                    return;
+                }
             }
             Rs2Bank.closeBank();
             Microbot.status = "[Shutting down] - Reason: " + secondaryItemToFletch + " not found in the bank.";

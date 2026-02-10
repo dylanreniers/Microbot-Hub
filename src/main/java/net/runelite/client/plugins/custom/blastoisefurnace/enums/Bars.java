@@ -11,6 +11,7 @@ import static net.runelite.api.gameval.ItemID.GOLD_ORE;
 import static net.runelite.api.gameval.ItemID.IRON_ORE;
 import static net.runelite.api.gameval.ItemID.MITHRIL_ORE;
 import static net.runelite.api.gameval.ItemID.RUNITE_ORE;
+import static net.runelite.api.gameval.ItemID.SILVER_ORE;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_ADAMANTITE_BARS;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_ADAMANTITE_ORE;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_COAL;
@@ -21,6 +22,8 @@ import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_MITHRIL_BARS;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_MITHRIL_ORE;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_RUNITE_BARS;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_RUNITE_ORE;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_SILVER_BARS;
+import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_SILVER_ORE;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_STEEL_BARS;
 
 @Getter
@@ -28,6 +31,16 @@ import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_STEEL_BARS;
 
 public enum Bars {
 
+    SILVER_BAR(ItemID.SILVER_BAR,
+            SILVER_ORE,
+            1,
+            SILVER_ORE,
+            1,
+            BLAST_FURNACE_SILVER_BARS,
+            BLAST_FURNACE_SILVER_ORE,
+            null,
+            false,
+            false),
     STEEL_BAR(
             ItemID.STEEL_BAR,
             IRON_ORE,

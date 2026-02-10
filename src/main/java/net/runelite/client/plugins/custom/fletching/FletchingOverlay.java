@@ -12,12 +12,12 @@ import java.awt.*;
 
 public class FletchingOverlay extends OverlayPanel {
     @Inject
-    FletchingOverlay(FletchingPlugin plugin)
-    {
+    FletchingOverlay(FletchingPlugin plugin) {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
         setNaughty();
     }
+
     @Override
     public Dimension render(Graphics2D graphics) {
         try {
@@ -31,7 +31,7 @@ public class FletchingOverlay extends OverlayPanel {
                     .left(Microbot.status)
                     .right("Version: " + FletchingPlugin.version)
                     .build());
-        } catch(Exception ex) {
+        } catch (Exception ex) {
             System.out.println(ex.getMessage());
         }
         return super.render(graphics);

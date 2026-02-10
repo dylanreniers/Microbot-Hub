@@ -46,11 +46,11 @@ enum Home {
             NpcID.SARAH_10416, new WorldPoint(3235, 3384, 0), RequiredMaterialsByTier.SARAH, HotspotObjects.SARAH);
 
 
+    private static final Set<Integer> LADDERS = Set.of(17026, 16685, 15645, 15648, 16683, 16679, 24075, 24076, 24082, 24085, 11794, 11802, 11797, 11799, 11789, 11793);
     private final WorldArea area;
     private final String hint;
     private final int npcId;
     private final WorldPoint location;
-
     private final RequiredMaterialsByTier requiredMaterialsByTier;
     private final HotspotObjects hotspotObjects;
 
@@ -62,6 +62,17 @@ enum Home {
         this.location = location;
         this.hotspotObjects = hotspotObjects;
         this.requiredMaterialsByTier = requiredMaterials;
+    }
+
+    static boolean isLadder(final int objID) {
+        return isLadder(objID, false);
+    }
+
+    static boolean isLadder(final int objID, boolean withLog) {
+        if (withLog && objID > 11000) {
+            log.info("Looking for objID {}", objID);
+        }
+        return LADDERS.contains(objID);
     }
 
     String getName() {
@@ -86,19 +97,6 @@ enum Home {
     int getRequiredSteelBars(int tier) {
         RequiredMaterials requiredMaterials = this.requiredMaterialsByTier.getByTier(tier);
         return requiredMaterials != null ? requiredMaterials.getMaxSteelBars() : 0;
-    }
-
-    private static final Set<Integer> LADDERS = Set.of(17026, 16685, 15645, 15648, 16683, 16679, 24075, 24076, 24082, 24085, 11794, 11802, 11797, 11799, 11789, 11793);
-
-    static boolean isLadder(final int objID) {
-        return isLadder(objID, false);
-    }
-
-    static boolean isLadder(final int objID, boolean withLog) {
-        if (withLog && objID > 11000) {
-            log.info("Looking for objID {}", objID);
-        }
-        return LADDERS.contains(objID);
     }
 
     public boolean isInside(final WorldPoint point) {

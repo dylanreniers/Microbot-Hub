@@ -45,6 +45,37 @@ public final class BossHandler {
     }
 
     /**
+     * Turns on Player's best offensive melee prayer and returns true
+     */
+    public static void meleePrayerOn() {
+        Rs2Prayer.toggle(Objects.requireNonNull(Rs2Prayer.getBestMeleePrayer()), true);
+    }
+
+    /**
+     * Returns true if the sigil NPC (the highlighted attack tile) is present
+     */
+    public static boolean isNormalAttackSequence() { //TODO remove this if this approach works
+        return Objects.nonNull(MoonsOfPerilScript.sigilNpc.get());
+    }
+
+    /**
+     * True if the WorldPoint param is located on a dangerous tile
+     */
+    public static boolean inDanger(WorldPoint location) {
+        return Rs2Tile.getDangerousGraphicsObjectTiles().containsKey(location);
+    }
+
+    /**
+     * If current run energy is less than 80%, recharges run energy at a campfire located on the world canvas
+     */
+    public static void rechargeRunEnergy() {
+        if (Rs2GameObject.getGameObject(ObjectID.PMOON_RANGE) != null && Rs2Player.getRunEnergy() <= 80) {
+            Rs2GameObject.interact(ObjectID.PMOON_RANGE, "Make-cuppa");
+            sleep(600);
+        }
+    }
+
+    /**
      * Walks to the chosen boss lobby.
      */
     public void walkToBoss(Rs2InventorySetup inventorySetup, String bossName, WorldPoint bossWorldPoint) {
@@ -173,20 +204,6 @@ public final class BossHandler {
     }
 
     /**
-     * Turns on Player's best offensive melee prayer and returns true
-     */
-    public static void meleePrayerOn() {
-        Rs2Prayer.toggle(Objects.requireNonNull(Rs2Prayer.getBestMeleePrayer()), true);
-    }
-
-    /**
-     * Returns true if the sigil NPC (the highlighted attack tile) is present
-     */
-    public static boolean isNormalAttackSequence() { //TODO remove this if this approach works
-        return Objects.nonNull(MoonsOfPerilScript.sigilNpc.get());
-    }
-
-    /**
      * “Normal” attack phase: follow ≤ 3 sigil squares, stand on the
      * matching attack tile, and keep attacking the boss.
      *
@@ -194,8 +211,8 @@ public final class BossHandler {
      * @param attackTiles WorldPoints from Locations enum
      */
     public void normalAttackSequence(
-                                     int bossNpcID,
-                                     WorldPoint[] attackTiles, Rs2InventorySetup inventorySetup) {
+            int bossNpcID,
+            WorldPoint[] attackTiles, Rs2InventorySetup inventorySetup) {
         if (debugLogging) {
             Microbot.log("Script has entered the normal attack sequence loop");
         }
@@ -267,13 +284,6 @@ public final class BossHandler {
     }
 
     /**
-     * True if the WorldPoint param is located on a dangerous tile
-     */
-    public static boolean inDanger(WorldPoint location) {
-        return Rs2Tile.getDangerousGraphicsObjectTiles().containsKey(location);
-    }
-
-    /**
      * Runs the player out of the arena
      */
     public void bossBailOut(WorldPoint bailOutLocation) {
@@ -297,16 +307,6 @@ public final class BossHandler {
         }
         if (debugLogging) {
             Microbot.log("Timeout: Failed to bail out of the boss arena after 10 seconds.");
-        }
-    }
-
-    /**
-     * If current run energy is less than 80%, recharges run energy at a campfire located on the world canvas
-     */
-    public static void rechargeRunEnergy() {
-        if (Rs2GameObject.getGameObject(ObjectID.PMOON_RANGE) != null && Rs2Player.getRunEnergy() <= 80) {
-            Rs2GameObject.interact(ObjectID.PMOON_RANGE, "Make-cuppa");
-            sleep(600);
         }
     }
 }

@@ -23,15 +23,6 @@ public class DriftNetMakerScript extends AbstractScript {
     //private static final WorldPoint IN_FRONT_OF_LOOM = new WorldPoint(1370, 3361, 0); //AUBURN
     private static final WorldPoint IN_FRONT_OF_LOOM = new WorldPoint(3731, 3822, 0);
 
-    private final AtomicBoolean isCreatingDriftNets = new AtomicBoolean(false);
-
-    private enum State {
-        BANKING,
-        GOING_TO_LOOM,
-        INTERACTING_WITH_LOOM,
-        CREATING
-    }
-
     static {
         Microbot.enableAutoRunOn = false;
         Rs2Antiban.activateAntiban();
@@ -52,6 +43,8 @@ public class DriftNetMakerScript extends AbstractScript {
         Rs2AntibanSettings.moveMouseRandomlyChance = 0.04;
         Rs2Antiban.setActivityIntensity(MODERATE);
     }
+
+    private final AtomicBoolean isCreatingDriftNets = new AtomicBoolean(false);
 
     @Override
     public void tick() {
@@ -138,6 +131,13 @@ public class DriftNetMakerScript extends AbstractScript {
         sleep(3500, 4500);
         Rs2Keyboard.keyPress('2');
         sleep(1800, 2400);
+    }
+
+    private enum State {
+        BANKING,
+        GOING_TO_LOOM,
+        INTERACTING_WITH_LOOM,
+        CREATING
     }
 
 }

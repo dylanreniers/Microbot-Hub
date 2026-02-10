@@ -7,36 +7,31 @@ import net.runelite.client.plugins.microbot.util.misc.Operation;
 
 import java.util.List;
 
-public class ApeAtollCourse implements AgilityCourseHandler
-{
-	@Override
-	public WorldPoint getStartPoint()
-	{
-		return new WorldPoint(2754, 2742, 0);
-	}
+public class ApeAtollCourse implements AgilityCourseHandler {
+    @Override
+    public WorldPoint getStartPoint() {
+        return new WorldPoint(2754, 2742, 0);
+    }
 
-	@Override
-	public List<AgilityObstacleModel> getObstacles()
-	{
-		return List.of(
-			new AgilityObstacleModel(ObjectID._100_ILM_STEPPING_STONE, 2755, 2741, Operation.GREATER_EQUAL, Operation.GREATER_EQUAL),
-			new AgilityObstacleModel(ObjectID._100_ILM_CLIMBABLE_TREE, 2753, 2742, Operation.LESS_EQUAL, Operation.GREATER_EQUAL),
-			new AgilityObstacleModel(ObjectID._100_ILM_MONKEYBARS_START),
-			new AgilityObstacleModel(ObjectID._100_ILM_CLIFF_CLIMB_1),
-			new AgilityObstacleModel(ObjectID._100_ILM_ROPE_SWING, 2752, -1, Operation.LESS_EQUAL, Operation.GREATER),
-			new AgilityObstacleModel(ObjectID._100_ILM_AGILITY_TREE_BASE, 2756, -1, Operation.GREATER_EQUAL, Operation.GREATER)
-		);
-	}
+    @Override
+    public List<AgilityObstacleModel> getObstacles() {
+        return List.of(
+                new AgilityObstacleModel(ObjectID._100_ILM_STEPPING_STONE, 2755, 2741, Operation.GREATER_EQUAL, Operation.GREATER_EQUAL),
+                new AgilityObstacleModel(ObjectID._100_ILM_CLIMBABLE_TREE, 2753, 2742, Operation.LESS_EQUAL, Operation.GREATER_EQUAL),
+                new AgilityObstacleModel(ObjectID._100_ILM_MONKEYBARS_START),
+                new AgilityObstacleModel(ObjectID._100_ILM_CLIFF_CLIMB_1),
+                new AgilityObstacleModel(ObjectID._100_ILM_ROPE_SWING, 2752, -1, Operation.LESS_EQUAL, Operation.GREATER),
+                new AgilityObstacleModel(ObjectID._100_ILM_AGILITY_TREE_BASE, 2756, -1, Operation.GREATER_EQUAL, Operation.GREATER)
+        );
+    }
 
-	@Override
-	public Integer getRequiredLevel()
-	{
-		return 48;
-	}
+    @Override
+    public Integer getRequiredLevel() {
+        return 48;
+    }
 
-	@Override
-	public boolean canBeBoosted()
-	{
-		return false;
-	}
+    @Override
+    public boolean canBeBoosted() {
+        return false;
+    }
 }

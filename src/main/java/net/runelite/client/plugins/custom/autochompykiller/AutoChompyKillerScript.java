@@ -48,7 +48,7 @@ public class AutoChompyKillerScript extends Script {
         Rs2WorldPoint playerLocation = new Rs2WorldPoint(Rs2Player.getWorldLocation());
         return Rs2Npc.getNpcs(npc -> npc.getId() == npcId)
                 .min(java.util.Comparator.comparingInt(npc ->
-                    playerLocation.distanceToPath(npc.getWorldLocation())))
+                        playerLocation.distanceToPath(npc.getWorldLocation())))
                 .orElse(null);
     }
 
@@ -224,7 +224,7 @@ public class AutoChompyKillerScript extends Script {
                 }
 
                 if (Rs2Player.isMoving() || (Rs2Player.isAnimating() && state != AutoChompyKillerState.INFLATING && state != AutoChompyKillerState.ATTACKING) ||
-                    (Rs2Player.isInteracting() && state != AutoChompyKillerState.INFLATING && state != AutoChompyKillerState.ATTACKING)) {
+                        (Rs2Player.isInteracting() && state != AutoChompyKillerState.INFLATING && state != AutoChompyKillerState.ATTACKING)) {
                     return;
                 }
 

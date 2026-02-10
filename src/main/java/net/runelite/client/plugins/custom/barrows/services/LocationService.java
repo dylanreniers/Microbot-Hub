@@ -30,6 +30,10 @@ public class LocationService {
 
     private final Rs2TileObjectCache rs2TileObjectCache;
 
+    public static boolean isNearFerox() {
+        return Rs2Player.getWorldLocation().distanceTo(BankLocation.FEROX_ENCLAVE.getWorldPoint()) <= 50;
+    }
+
     private void teleportToHouse() {
         log.info("Teleporting to house.");
         Rs2Magic.cast(MagicAction.TELEPORT_TO_HOUSE);
@@ -72,10 +76,6 @@ public class LocationService {
             sleepUntil(() -> !Rs2Player.isAnimating());
             sleepUntil(LocationService::isNearFerox);
         }
-    }
-
-    public static boolean isNearFerox() {
-        return Rs2Player.getWorldLocation().distanceTo(BankLocation.FEROX_ENCLAVE.getWorldPoint()) <= 50;
     }
 
     public boolean needsTravelToBarrows() {

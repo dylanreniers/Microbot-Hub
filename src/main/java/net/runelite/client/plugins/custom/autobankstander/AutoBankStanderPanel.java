@@ -3,21 +3,21 @@ package net.runelite.client.plugins.custom.autobankstander;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Skill;
 import net.runelite.client.game.SkillIconManager;
-import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.ArrowType;
-import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.BowType;
-import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.DartType;
-import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.FletchingMode;
-import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.ShieldType;
-import net.runelite.client.plugins.custom.autobankstander.skills.herblore.enums.CleanHerbMode;
-import net.runelite.client.plugins.custom.autobankstander.skills.magic.MagicMethod;
-import net.runelite.client.plugins.custom.autobankstander.skills.magic.enchanting.BoltType;
 import net.runelite.client.plugins.custom.autobankstander.config.ConfigData;
 import net.runelite.client.plugins.custom.autobankstander.processors.SkillType;
+import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.ArrowType;
+import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.BowType;
 import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.CrossbowType;
+import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.DartType;
+import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.FletchingMode;
 import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.JavelinType;
+import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.ShieldType;
+import net.runelite.client.plugins.custom.autobankstander.skills.herblore.enums.CleanHerbMode;
 import net.runelite.client.plugins.custom.autobankstander.skills.herblore.enums.HerblorePotion;
 import net.runelite.client.plugins.custom.autobankstander.skills.herblore.enums.Mode;
 import net.runelite.client.plugins.custom.autobankstander.skills.herblore.enums.UnfinishedPotionMode;
+import net.runelite.client.plugins.custom.autobankstander.skills.magic.MagicMethod;
+import net.runelite.client.plugins.custom.autobankstander.skills.magic.enchanting.BoltType;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
@@ -32,28 +32,8 @@ import java.awt.*;
 @Slf4j
 public class AutoBankStanderPanel extends PluginPanel {
 
-    // available skills for bank standing
-    private enum BankStandingSkill {
-        CRAFTING(Skill.CRAFTING),
-        MAGIC(Skill.MAGIC),
-        FLETCHING(Skill.FLETCHING),
-        HERBLORE(Skill.HERBLORE),
-        COOKING(Skill.COOKING);
-
-        private final Skill skill;
-
-        BankStandingSkill(Skill skill) {
-            this.skill = skill;
-        }
-
-        public Skill getSkill() {
-            return skill;
-        }
-    }
-
     private final AutoBankStanderPlugin plugin;
     private final SkillIconManager iconManager;
-
     // ui components
     private JLabel titleLabel;
     private MaterialTabGroup skillTabGroup;
@@ -62,12 +42,10 @@ public class AutoBankStanderPanel extends PluginPanel {
     private JPanel configurationPanel;
     private JButton startStopButton;
     private JLabel statusLabel;
-
     // current configuration state
     private ConfigData currentConfig = new ConfigData();
     private BankStandingSkill selectedBankSkill = BankStandingSkill.MAGIC;
     private JButton selectedMethodButton = null;
-
     @Inject
     public AutoBankStanderPanel(AutoBankStanderPlugin plugin, SkillIconManager iconManager) {
         super();
@@ -428,7 +406,7 @@ public class AutoBankStanderPanel extends PluginPanel {
 
             case BOLTS:
                 JComboBox<net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.BoltType> fletchingBoltDropdown =
-                    new JComboBox<>(net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.BoltType.values());
+                        new JComboBox<>(net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.BoltType.values());
                 fletchingBoltDropdown.setSelectedItem(currentConfig.getFletchingBoltType());
                 fletchingBoltDropdown.addActionListener(e -> {
                     currentConfig.setFletchingBoltType((net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.BoltType) fletchingBoltDropdown.getSelectedItem());
@@ -553,7 +531,6 @@ public class AutoBankStanderPanel extends PluginPanel {
         button.setBackground(ColorScheme.BRAND_ORANGE);
     }
 
-
     private void onStartStopClicked() {
         if (plugin.getScript().isRunning()) {
             // stop the script
@@ -565,8 +542,8 @@ public class AutoBankStanderPanel extends PluginPanel {
         } else {
             // only allow starting for implemented skills
             if (selectedBankSkill != BankStandingSkill.MAGIC &&
-                selectedBankSkill != BankStandingSkill.HERBLORE &&
-                selectedBankSkill != BankStandingSkill.FLETCHING) {
+                    selectedBankSkill != BankStandingSkill.HERBLORE &&
+                    selectedBankSkill != BankStandingSkill.FLETCHING) {
                 log.info("Skill {} not yet implemented", selectedBankSkill);
                 statusLabel.setText("Skill not yet implemented");
                 return;
@@ -619,5 +596,24 @@ public class AutoBankStanderPanel extends PluginPanel {
 
     public ConfigData getCurrentConfig() {
         return new ConfigData(currentConfig); // return a copy
+    }
+
+    // available skills for bank standing
+    private enum BankStandingSkill {
+        CRAFTING(Skill.CRAFTING),
+        MAGIC(Skill.MAGIC),
+        FLETCHING(Skill.FLETCHING),
+        HERBLORE(Skill.HERBLORE),
+        COOKING(Skill.COOKING);
+
+        private final Skill skill;
+
+        BankStandingSkill(Skill skill) {
+            this.skill = skill;
+        }
+
+        public Skill getSkill() {
+            return skill;
+        }
     }
 }

@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
+
 @Slf4j
 public class HivesEvent implements BlockingEvent {
 
@@ -37,7 +38,7 @@ public class HivesEvent implements BlockingEvent {
 
     @Override
     public boolean validate() {
-        try{
+        try {
             if (plugin == null || !Microbot.isPluginEnabled(plugin)) return false;
             if (Microbot.getClient() == null || !Microbot.isLoggedIn()) return false;
             var beehives = Rs2Npc.getNpcs(x -> x.getId() == net.runelite.api.gameval.NpcID.GATHERING_EVENT_BEES_BEEBOX_1 || x.getId() == net.runelite.api.gameval.NpcID.GATHERING_EVENT_BEES_BEEBOX_2);
@@ -69,9 +70,9 @@ public class HivesEvent implements BlockingEvent {
 
             // find available beehives, excluding ones we've already completed
             List<Rs2NpcModel> availableBeehives = Rs2Npc.getNpcs(x ->
-                    (x.getId() == net.runelite.api.gameval.NpcID.GATHERING_EVENT_BEES_BEEBOX_1 ||
-                     x.getId() == net.runelite.api.gameval.NpcID.GATHERING_EVENT_BEES_BEEBOX_2) &&
-                    !completedBeehives.contains(x.getIndex()))
+                            (x.getId() == net.runelite.api.gameval.NpcID.GATHERING_EVENT_BEES_BEEBOX_1 ||
+                                    x.getId() == net.runelite.api.gameval.NpcID.GATHERING_EVENT_BEES_BEEBOX_2) &&
+                                    !completedBeehives.contains(x.getIndex()))
                     .collect(Collectors.toList());
 
             if (availableBeehives.isEmpty()) {
@@ -147,7 +148,7 @@ public class HivesEvent implements BlockingEvent {
                 }
 
                 // brief pause between interactions to appear more natural
-                sleepUntil(() -> false, Constants.GAME_TICK_LENGTH/2 + (int)(Math.random() * Constants.GAME_TICK_LENGTH*3/2)); // 300 - 900 ms
+                sleepUntil(() -> false, Constants.GAME_TICK_LENGTH / 2 + (int) (Math.random() * Constants.GAME_TICK_LENGTH * 3 / 2)); // 300 - 900 ms
             } else {
                 log.warn("Failed to interact with beehive {}", targetBeehive.getIndex());
                 // brief delay before trying again

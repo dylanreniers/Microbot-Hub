@@ -37,8 +37,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.time.Instant;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
@@ -50,13 +48,18 @@ import static net.runelite.client.plugins.microbot.Microbot.log;
  */
 public class GotrScript extends Script {
 
+    // Static game data (TODO: Move to state service)
+    public static final Map<Integer, GuardianPortalInfo> guardianPortalInfo = new HashMap<>();
+    public static final List<GameObject> activeGuardianPortals = new ArrayList<>();
+    public static int elementalRewardPoints;
+    public static int catalyticRewardPoints;
+    public final Set<GameObject> guardians = new HashSet<>();
     // Injected services
     private final LocationService locationService;
     private final TimerService timerService;
     private final MiningService miningService;
     private final PouchService pouchService;
     private final AltarService altarService;
-
     // Game state
     private GotrState currentState;
     private GotrConfig config;
@@ -64,13 +67,6 @@ public class GotrScript extends Script {
     private boolean shouldMineGuardianRemains = true;
     private boolean initializationComplete = false;
     private long totalTime = 0;
-
-    // Static game data (TODO: Move to state service)
-    public static final Map<Integer, GuardianPortalInfo> guardianPortalInfo = new HashMap<>();
-    public final Set<GameObject> guardians = new HashSet<>();
-    public static final List<GameObject> activeGuardianPortals = new ArrayList<>();
-    public static int elementalRewardPoints;
-    public static int catalyticRewardPoints;
 
     @Inject
     public GotrScript(LocationService locationService, TimerService timerService, MiningService miningService, PouchService pouchService, AltarService altarService) {
@@ -464,29 +460,29 @@ public class GotrScript extends Script {
         super.shutdown();
     }
 
-    // Plugin integration methods
-    public void setState(GotrState state) {
-        this.currentState = state;
-    }
-
     public GotrState getState() {
         return this.currentState;
     }
 
-    public void setElementalRewardPoints(int points) {
-        elementalRewardPoints = points;
-    }
-
-    public void setCatalyticRewardPoints(int points) {
-        catalyticRewardPoints = points;
+    // Plugin integration methods
+    public void setState(GotrState state) {
+        this.currentState = state;
     }
 
     public int getElementalRewardPoints() {
         return elementalRewardPoints;
     }
 
+    public void setElementalRewardPoints(int points) {
+        elementalRewardPoints = points;
+    }
+
     public int getCatalyticRewardPoints() {
         return catalyticRewardPoints;
+    }
+
+    public void setCatalyticRewardPoints(int points) {
+        catalyticRewardPoints = points;
     }
 
     public void addGuardian(GameObject guardian) {

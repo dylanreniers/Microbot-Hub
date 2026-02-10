@@ -20,18 +20,6 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 @Singleton
 public class KarambwanBankService {
 
-    public void handleBanking() {
-        openBank();
-        bankRefill();
-        closeBank();
-    }
-
-    private void bankRefill() {
-        Rs2Bank.depositAll("Raw karambwan");
-        sleepUntil(() -> !Rs2Inventory.contains("Raw karambwan"));
-        checkRingOfDueling();
-    }
-
     private static void openBank() {
         if (!Rs2Bank.isOpen()) {
             log.info("Opening bank.");
@@ -45,6 +33,18 @@ public class KarambwanBankService {
             Rs2Bank.closeBank();
             sleepUntil(() -> !Rs2Bank.isOpen(), 3000);
         }
+    }
+
+    public void handleBanking() {
+        openBank();
+        bankRefill();
+        closeBank();
+    }
+
+    private void bankRefill() {
+        Rs2Bank.depositAll("Raw karambwan");
+        sleepUntil(() -> !Rs2Inventory.contains("Raw karambwan"));
+        checkRingOfDueling();
     }
 
     private void checkRingOfDueling() {

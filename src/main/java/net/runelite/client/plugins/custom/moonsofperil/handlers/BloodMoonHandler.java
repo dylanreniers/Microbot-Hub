@@ -41,13 +41,13 @@ public class BloodMoonHandler implements BaseHandler {
     private static final int bossStatueObjectID = GameObjects.BLOOD_MOON_STATUE_ID.getID();
     private static final WorldPoint bossLobbyLocation = Locations.BLOOD_LOBBY.getWorldPoint();
     private static final WorldPoint[] ATTACK_TILES = Locations.bloodAttackTiles();
+    private static final WorldPoint afterRainTile = Locations.BLOOD_ATTACK_6.getWorldPoint();
     private final boolean enableBoss;
     private final boolean disableGroundCancelClick;
     private final Rs2InventorySetup equipmentNormal;
-    private static final WorldPoint afterRainTile = Locations.BLOOD_ATTACK_6.getWorldPoint();
-    public boolean arrived = false;
     private final BossHandler boss;
     private final boolean debugLogging;
+    public boolean arrived = false;
 
     public BloodMoonHandler(MoonsOfPerilConfig cfg, Rs2InventorySetup equipmentNormal) {
         this.enableBoss = cfg.enableBlood();
@@ -55,6 +55,43 @@ public class BloodMoonHandler implements BaseHandler {
         this.boss = new BossHandler(cfg);
         this.debugLogging = cfg.debugLogging();
         this.disableGroundCancelClick = cfg.DisableGroundCancelClick();
+    }
+
+    /**
+     * Returns a random safe WorldPoint within {@code distance} tiles of the player.
+     * A tile is unsafe if it contains a GameObject with {@code dangerousId}.
+     * Returns {@code null} when no safe tile exists.
+     */
+    public static WorldPoint getRandomSafeTile(int dangerousId, int distance) {
+        // ── 1. player location ──
+        WorldPoint centre = Rs2Player.getWorldLocation();
+        if (centre == null) return null;
+
+        // ── 2. collect all dangerous tiles within radius ──
+        Set<WorldPoint> dangerTiles = Rs2GameObject
+                .getGameObjects(o -> o.getId() == dangerousId, distance)
+                .stream()
+                .map(GameObject::getWorldLocation)
+                .collect(Collectors.toSet());
+
+        // ── 3. enumerate every tile in the square centred on the player ──
+        List<WorldPoint> candidates = new ArrayList<>();
+        for (int dx = -distance; dx <= distance; dx++) {
+            for (int dy = -distance; dy <= distance; dy++) {
+                WorldPoint wp = new WorldPoint(
+                        centre.getX() + dx,
+                        centre.getY() + dy,
+                        centre.getPlane());
+                if (!dangerTiles.contains(wp)) {
+                    candidates.add(wp);
+                }
+            }
+        }
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        // ── 4. pick one at random ──
+        return candidates.get(ThreadLocalRandom.current().nextInt(candidates.size()));
     }
 
     @Override
@@ -252,42 +289,5 @@ public class BloodMoonHandler implements BaseHandler {
             }
             sleep(333);   // OnGameTick method in MoonsOfPerilPlugin.java handles the game ticks
         }
-    }
-
-    /**
-     * Returns a random safe WorldPoint within {@code distance} tiles of the player.
-     * A tile is unsafe if it contains a GameObject with {@code dangerousId}.
-     * Returns {@code null} when no safe tile exists.
-     */
-    public static WorldPoint getRandomSafeTile(int dangerousId, int distance) {
-        // ── 1. player location ──
-        WorldPoint centre = Rs2Player.getWorldLocation();
-        if (centre == null) return null;
-
-        // ── 2. collect all dangerous tiles within radius ──
-        Set<WorldPoint> dangerTiles = Rs2GameObject
-                .getGameObjects(o -> o.getId() == dangerousId, distance)
-                .stream()
-                .map(GameObject::getWorldLocation)
-                .collect(Collectors.toSet());
-
-        // ── 3. enumerate every tile in the square centred on the player ──
-        List<WorldPoint> candidates = new ArrayList<>();
-        for (int dx = -distance; dx <= distance; dx++) {
-            for (int dy = -distance; dy <= distance; dy++) {
-                WorldPoint wp = new WorldPoint(
-                        centre.getX() + dx,
-                        centre.getY() + dy,
-                        centre.getPlane());
-                if (!dangerTiles.contains(wp)) {
-                    candidates.add(wp);
-                }
-            }
-        }
-        if (candidates.isEmpty()) {
-            return null;
-        }
-        // ── 4. pick one at random ──
-        return candidates.get(ThreadLocalRandom.current().nextInt(candidates.size()));
     }
 }

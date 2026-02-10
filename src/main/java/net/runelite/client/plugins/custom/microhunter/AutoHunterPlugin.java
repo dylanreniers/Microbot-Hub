@@ -56,19 +56,17 @@ public class AutoHunterPlugin extends Plugin {
 
     @Inject
     private AutoHunterConfig config;
+    @Inject
+    private OverlayManager overlayManager;
+    @Inject
+    private AutoHunterOverlay autoHunterOverlay;
+    @Inject
+    private AutoChinScript autoChinScript;
 
     @Provides
     AutoHunterConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(AutoHunterConfig.class);
     }
-
-    @Inject
-    private OverlayManager overlayManager;
-    @Inject
-    private AutoHunterOverlay autoHunterOverlay;
-
-    @Inject
-    private AutoChinScript autoChinScript;
 
     @Override
     protected void startUp() throws AWTException {

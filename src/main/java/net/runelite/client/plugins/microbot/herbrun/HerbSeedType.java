@@ -35,11 +35,11 @@ public enum HerbSeedType {
         this.itemId = itemId;
         this.levelRequired = levelRequired;
     }
-    
+
     /**
      * Gets all herb types that can be planted at the given farming level,
      * sorted by level requirement (highest first)
-     * 
+     *
      * @param farmingLevel The player's farming level
      * @return List of plantable herbs sorted by level (highest first)
      */
@@ -49,17 +49,17 @@ public enum HerbSeedType {
                 .sorted(Comparator.comparingInt(HerbSeedType::getLevelRequired).reversed())
                 .collect(Collectors.toList());
     }
-    
+
     /**
      * Checks if this herb type can be planted at the given farming level
-     * 
+     *
      * @param farmingLevel The player's farming level
      * @return true if the herb can be planted
      */
     public boolean canPlant(int farmingLevel) {
         return this != BEST && farmingLevel >= this.levelRequired;
     }
-    
+
     @Override
     public String toString() {
         return seedName;

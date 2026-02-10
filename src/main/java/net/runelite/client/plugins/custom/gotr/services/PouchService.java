@@ -2,7 +2,6 @@ package net.runelite.client.plugins.custom.gotr.services;
 
 import net.runelite.api.ItemID;
 import net.runelite.api.NpcID;
-import net.runelite.client.plugins.custom.gotr.GotrConstants;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.util.Global;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
@@ -41,6 +40,7 @@ public class PouchService {
 
     /**
      * Repairs degraded pouches using the best available method
+     *
      * @return true if repair was attempted or completed
      */
     public boolean repairPouches() {
@@ -58,6 +58,7 @@ public class PouchService {
 
     /**
      * Fills pouches with essence if inventory is full and pouches are empty
+     *
      * @return true if pouches were filled
      */
     public boolean fillPouchesIfNeeded(int guardianPower) {

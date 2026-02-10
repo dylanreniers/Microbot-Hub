@@ -1,20 +1,20 @@
 package net.runelite.client.plugins.custom.autobankstander.config;
 
 import com.google.gson.Gson;
+import net.runelite.client.plugins.custom.autobankstander.processors.SkillType;
 import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.ArrowType;
 import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.BowType;
+import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.CrossbowType;
 import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.DartType;
 import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.FletchingMode;
+import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.JavelinType;
 import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.ShieldType;
 import net.runelite.client.plugins.custom.autobankstander.skills.herblore.enums.CleanHerbMode;
+import net.runelite.client.plugins.custom.autobankstander.skills.herblore.enums.HerblorePotion;
+import net.runelite.client.plugins.custom.autobankstander.skills.herblore.enums.Mode;
 import net.runelite.client.plugins.custom.autobankstander.skills.herblore.enums.UnfinishedPotionMode;
 import net.runelite.client.plugins.custom.autobankstander.skills.magic.MagicMethod;
 import net.runelite.client.plugins.custom.autobankstander.skills.magic.enchanting.BoltType;
-import net.runelite.client.plugins.custom.autobankstander.processors.SkillType;
-import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.CrossbowType;
-import net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.JavelinType;
-import net.runelite.client.plugins.custom.autobankstander.skills.herblore.enums.HerblorePotion;
-import net.runelite.client.plugins.custom.autobankstander.skills.herblore.enums.Mode;
 
 public class ConfigData {
 
@@ -44,7 +44,8 @@ public class ConfigData {
     private ShieldType shieldType = ShieldType.OAK_SHIELD;
 
     // Default constructor
-    public ConfigData() {}
+    public ConfigData() {
+    }
 
     // Copy constructor
     public ConfigData(ConfigData other) {
@@ -66,66 +67,146 @@ public class ConfigData {
         this.shieldType = other.shieldType;
     }
 
-    // Getters and Setters
-    public SkillType getSkill() { return skill; }
-    public void setSkill(SkillType skill) { this.skill = skill; }
-
-    public MagicMethod getMagicMethod() { return magicMethod; }
-    public void setMagicMethod(MagicMethod magicMethod) { this.magicMethod = magicMethod; }
-
-    public BoltType getBoltType() { return boltType; }
-    public void setBoltType(BoltType boltType) { this.boltType = boltType; }
-
-    public Mode getHerbloreMode() { return herbloreMode; }
-    public void setHerbloreMode(Mode herbloreMode) { this.herbloreMode = herbloreMode; }
-
-    public CleanHerbMode getCleanHerbMode() { return cleanHerbMode; }
-    public void setCleanHerbMode(CleanHerbMode cleanHerbMode) { this.cleanHerbMode = cleanHerbMode; }
-
-    public UnfinishedPotionMode getUnfinishedPotionMode() { return unfinishedPotionMode; }
-    public void setUnfinishedPotionMode(UnfinishedPotionMode unfinishedPotionMode) { this.unfinishedPotionMode = unfinishedPotionMode; }
-
-    public HerblorePotion getFinishedPotion() { return finishedPotion; }
-    public void setFinishedPotion(HerblorePotion finishedPotion) { this.finishedPotion = finishedPotion; }
-
-    public boolean isUseAmuletOfChemistry() { return useAmuletOfChemistry; }
-    public void setUseAmuletOfChemistry(boolean useAmuletOfChemistry) { this.useAmuletOfChemistry = useAmuletOfChemistry; }
-
-    public FletchingMode getFletchingMode() { return fletchingMode; }
-    public void setFletchingMode(FletchingMode fletchingMode) { this.fletchingMode = fletchingMode; }
-
-    public DartType getDartType() { return dartType; }
-    public void setDartType(DartType dartType) { this.dartType = dartType; }
-
-    public net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.BoltType getFletchingBoltType() { return fletchingBoltType; }
-    public void setFletchingBoltType(net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.BoltType fletchingBoltType) { this.fletchingBoltType = fletchingBoltType; }
-
-    public ArrowType getArrowType() { return arrowType; }
-    public void setArrowType(ArrowType arrowType) { this.arrowType = arrowType; }
-
-    public JavelinType getJavelinType() { return javelinType; }
-    public void setJavelinType(JavelinType javelinType) { this.javelinType = javelinType; }
-
-    public BowType getBowType() { return bowType; }
-    public void setBowType(BowType bowType) { this.bowType = bowType; }
-
-    public CrossbowType getCrossbowType() { return crossbowType; }
-    public void setCrossbowType(CrossbowType crossbowType) { this.crossbowType = crossbowType; }
-
-    public ShieldType getShieldType() { return shieldType; }
-    public void setShieldType(ShieldType shieldType) { this.shieldType = shieldType; }
-
-    // JSON serialization
-    public String toJson() {
-        return new Gson().toJson(this);
-    }
-
     public static ConfigData fromJson(String json) {
         try {
             return new Gson().fromJson(json, ConfigData.class);
         } catch (Exception e) {
             return new ConfigData(); // return default config if parsing fails
         }
+    }
+
+    // Getters and Setters
+    public SkillType getSkill() {
+        return skill;
+    }
+
+    public void setSkill(SkillType skill) {
+        this.skill = skill;
+    }
+
+    public MagicMethod getMagicMethod() {
+        return magicMethod;
+    }
+
+    public void setMagicMethod(MagicMethod magicMethod) {
+        this.magicMethod = magicMethod;
+    }
+
+    public BoltType getBoltType() {
+        return boltType;
+    }
+
+    public void setBoltType(BoltType boltType) {
+        this.boltType = boltType;
+    }
+
+    public Mode getHerbloreMode() {
+        return herbloreMode;
+    }
+
+    public void setHerbloreMode(Mode herbloreMode) {
+        this.herbloreMode = herbloreMode;
+    }
+
+    public CleanHerbMode getCleanHerbMode() {
+        return cleanHerbMode;
+    }
+
+    public void setCleanHerbMode(CleanHerbMode cleanHerbMode) {
+        this.cleanHerbMode = cleanHerbMode;
+    }
+
+    public UnfinishedPotionMode getUnfinishedPotionMode() {
+        return unfinishedPotionMode;
+    }
+
+    public void setUnfinishedPotionMode(UnfinishedPotionMode unfinishedPotionMode) {
+        this.unfinishedPotionMode = unfinishedPotionMode;
+    }
+
+    public HerblorePotion getFinishedPotion() {
+        return finishedPotion;
+    }
+
+    public void setFinishedPotion(HerblorePotion finishedPotion) {
+        this.finishedPotion = finishedPotion;
+    }
+
+    public boolean isUseAmuletOfChemistry() {
+        return useAmuletOfChemistry;
+    }
+
+    public void setUseAmuletOfChemistry(boolean useAmuletOfChemistry) {
+        this.useAmuletOfChemistry = useAmuletOfChemistry;
+    }
+
+    public FletchingMode getFletchingMode() {
+        return fletchingMode;
+    }
+
+    public void setFletchingMode(FletchingMode fletchingMode) {
+        this.fletchingMode = fletchingMode;
+    }
+
+    public DartType getDartType() {
+        return dartType;
+    }
+
+    public void setDartType(DartType dartType) {
+        this.dartType = dartType;
+    }
+
+    public net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.BoltType getFletchingBoltType() {
+        return fletchingBoltType;
+    }
+
+    public void setFletchingBoltType(net.runelite.client.plugins.custom.autobankstander.skills.fletching.enums.BoltType fletchingBoltType) {
+        this.fletchingBoltType = fletchingBoltType;
+    }
+
+    public ArrowType getArrowType() {
+        return arrowType;
+    }
+
+    public void setArrowType(ArrowType arrowType) {
+        this.arrowType = arrowType;
+    }
+
+    public JavelinType getJavelinType() {
+        return javelinType;
+    }
+
+    public void setJavelinType(JavelinType javelinType) {
+        this.javelinType = javelinType;
+    }
+
+    public BowType getBowType() {
+        return bowType;
+    }
+
+    public void setBowType(BowType bowType) {
+        this.bowType = bowType;
+    }
+
+    public CrossbowType getCrossbowType() {
+        return crossbowType;
+    }
+
+    public void setCrossbowType(CrossbowType crossbowType) {
+        this.crossbowType = crossbowType;
+    }
+
+    public ShieldType getShieldType() {
+        return shieldType;
+    }
+
+    public void setShieldType(ShieldType shieldType) {
+        this.shieldType = shieldType;
+    }
+
+    // JSON serialization
+    public String toJson() {
+        return new Gson().toJson(this);
     }
 
     // Validation

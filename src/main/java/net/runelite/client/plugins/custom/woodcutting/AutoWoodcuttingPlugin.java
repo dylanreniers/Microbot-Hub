@@ -19,20 +19,20 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.custom.woodcutting.Forestry.FlowersEvent;
-import net.runelite.client.plugins.custom.woodcutting.Forestry.LeprechaunEvent;
-import net.runelite.client.plugins.microbot.Microbot;
-import net.runelite.client.plugins.microbot.PluginConstants;
-import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
 import net.runelite.client.plugins.custom.woodcutting.Forestry.EggEvent;
 import net.runelite.client.plugins.custom.woodcutting.Forestry.EntlingsEvent;
+import net.runelite.client.plugins.custom.woodcutting.Forestry.FlowersEvent;
 import net.runelite.client.plugins.custom.woodcutting.Forestry.FoxEvent;
 import net.runelite.client.plugins.custom.woodcutting.Forestry.HivesEvent;
+import net.runelite.client.plugins.custom.woodcutting.Forestry.LeprechaunEvent;
 import net.runelite.client.plugins.custom.woodcutting.Forestry.RitualEvent;
 import net.runelite.client.plugins.custom.woodcutting.Forestry.RootEvent;
 import net.runelite.client.plugins.custom.woodcutting.Forestry.StrugglingSaplingEvent;
 import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
 import net.runelite.client.plugins.custom.woodcutting.enums.WoodcuttingTree;
+import net.runelite.client.plugins.microbot.Microbot;
+import net.runelite.client.plugins.microbot.PluginConstants;
+import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.InteractOrder;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
@@ -63,16 +63,25 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 @Slf4j
 public class AutoWoodcuttingPlugin extends Plugin {
     public static final String version = "2.0.0";
+    private static final Pattern WOOD_CUT_PATTERN = Pattern.compile("You get (?:some|an)[\\w ]+(?:logs?|mushrooms)\\.");
+    // Forestry event variables
+    public final List<Rs2NpcModel> ritualCircles = new ArrayList<>();
+    public final GameObject[] saplingOrder = new GameObject[3];
+    public final List<GameObject> saplingIngredients = new ArrayList<>(5);
+    // thread-safe counter for completed forestry events
+    private final AtomicInteger completedForestryEvents = new AtomicInteger(0);
     @Inject
     @Getter(AccessLevel.MODULE)
     public AutoWoodcuttingScript autoWoodcuttingScript;
     @Inject
     public AutoWoodcuttingConfig config;
+    public ForestryEvents currentForestryEvent = ForestryEvents.NONE;
+    @Inject
+    public Rs2TileObjectCache rs2TileObjectCache;
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private AutoWoodcuttingOverlay woodcuttingOverlay;
-
     private EggEvent eggEvent;
     private EntlingsEvent entlingsEvent;
     private FlowersEvent flowersEvent;
@@ -82,20 +91,6 @@ public class AutoWoodcuttingPlugin extends Plugin {
     private RitualEvent ritualEvent;
     private RootEvent rootEvent;
     private StrugglingSaplingEvent saplingEvent;
-
-    // Forestry event variables
-    public final List<Rs2NpcModel> ritualCircles = new ArrayList<>();
-    public ForestryEvents currentForestryEvent = ForestryEvents.NONE;
-    public final GameObject[] saplingOrder = new GameObject[3];
-    public final List<GameObject> saplingIngredients = new ArrayList<>(5);
-
-    // thread-safe counter for completed forestry events
-    private final AtomicInteger completedForestryEvents = new AtomicInteger(0);
-
-    private static final Pattern WOOD_CUT_PATTERN = Pattern.compile("You get (?:some|an)[\\w ]+(?:logs?|mushrooms)\\.");
-
-    @Inject
-    public Rs2TileObjectCache rs2TileObjectCache;
 
     @Provides
     AutoWoodcuttingConfig provideConfig(ConfigManager configManager) {
@@ -311,7 +306,7 @@ public class AutoWoodcuttingPlugin extends Plugin {
     }
 
     @Subscribe
-    public void onConfigChanged (ConfigChanged ev){
+    public void onConfigChanged(ConfigChanged ev) {
         if (ev.getGroup().equals(AutoWoodcuttingConfig.CONFIG_GROUP)) {
             if (ev.getKey().equals("enableForestry")) {
                 if (config.enableForestry()) {
@@ -324,15 +319,14 @@ public class AutoWoodcuttingPlugin extends Plugin {
                 var value = ev.getNewValue();
                 if (value != null && value.equals("true")) {
                     this.addEvent(key);
-                }
-                else if (value != null && value.equals("false")) {
+                } else if (value != null && value.equals("false")) {
                     this.removeEvent(key);
                 }
             }
         }
     }
 
-    private void addEvent(String key){
+    private void addEvent(String key) {
         var eventManager = Microbot.getBlockingEventManager();
         switch (key) {
             case "eggEvent":
@@ -451,6 +445,7 @@ public class AutoWoodcuttingPlugin extends Plugin {
 
     /**
      * Ensures inventory has space for forestry event rewards by dropping logs if needed
+     *
      * @param requiredSlots minimum number of free slots needed
      * @return true if enough space was made available
      */
@@ -479,7 +474,7 @@ public class AutoWoodcuttingPlugin extends Plugin {
         boolean success = (28 - Rs2Inventory.count()) >= requiredSlots;
         if (!success) {
             log.warn("Failed to create enough inventory space: dropped {} logs but still need {} slots",
-                actualDropped, requiredSlots);
+                    actualDropped, requiredSlots);
         }
 
         return success;

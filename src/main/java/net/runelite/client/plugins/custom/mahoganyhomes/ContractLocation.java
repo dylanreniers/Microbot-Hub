@@ -1,4 +1,5 @@
 package net.runelite.client.plugins.custom.mahoganyhomes;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import net.runelite.api.coords.WorldPoint;
