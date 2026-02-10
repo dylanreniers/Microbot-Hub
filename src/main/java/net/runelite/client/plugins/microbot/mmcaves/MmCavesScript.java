@@ -1,6 +1,7 @@
 package net.runelite.client.plugins.microbot.mmcaves;
 
 import com.google.common.collect.Table;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
 import net.runelite.api.GroundObject;
@@ -36,6 +37,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 public class MmCavesScript extends Script {
     public static State state = State.WALK_TO_START;
     public static long lastAggroResetTime = System.currentTimeMillis();
@@ -107,7 +109,7 @@ public class MmCavesScript extends Script {
                         break;
                 }
             } catch (Exception ex) {
-                Microbot.log("Error in MM Caves script: " + ex.getMessage());
+                log.info("Error in MM Caves script: ", ex);
             }
         }, 0, 600, TimeUnit.MILLISECONDS);
 

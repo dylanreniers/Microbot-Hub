@@ -2,7 +2,9 @@ package net.runelite.client.plugins.custom.microhunter;
 
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.custom.microhunter.scripts.AutoChinScript;
@@ -81,4 +83,8 @@ public class AutoHunterPlugin extends Plugin {
         overlayManager.remove(autoHunterOverlay);
     }
 
+    @Subscribe
+    public void onGameObjectSpawned(GameObjectSpawned event) {
+        autoChinScript.onGameObjectSpawn(event.getGameObject());
+    }
 }

@@ -1,6 +1,7 @@
 package net.runelite.client.plugins.custom.microhunter.scripts;
 
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.GameObject;
 import net.runelite.api.ItemID;
 import net.runelite.api.ObjectID;
 import net.runelite.api.Skill;
@@ -47,6 +48,8 @@ public class AutoChinScript extends AbstractScript {
     private final List<WorldPoint> allBoxesOriginalPoints = new ArrayList<>();
     private boolean pickedUpTraps = true;
     private boolean isExecutingTickManipulation;
+
+    private final ArrayList<GameObject> gameObjects = new ArrayList<>();
 
     @Override
     public void tick() {
@@ -120,6 +123,13 @@ public class AutoChinScript extends AbstractScript {
         super.shutdown();
     }
 
+    public void onGameObjectSpawn(GameObject gameObject) {
+        if (BOXES_IDS.contains(gameObject.getId())) {
+            log.info("Box spawned.");
+            gameObjects.add(gameObject);
+        }
+    }
+
     private State getState() {
         try {
             Rs2TileItemModel nearestCollapsedBoxTrap = rs2TileItemCache
@@ -171,16 +181,13 @@ public class AutoChinScript extends AbstractScript {
     }
 
     private void handleCatchingState() {
-        BOXES_IDS.forEach(boxId -> {
-            Rs2TileObjectModel nearestBoxTrap = rs2TileObjectCache
-                    .query()
-                    .withId(boxId)
-                    .where(box -> boxTiles.contains(box.getWorldLocation()))
-                    .nearestOnClientThread();
-            if (nearestBoxTrap != null && nearestBoxTrap.click("reset")) {
+        if (!gameObjects.isEmpty()) {
+            Rs2TileObjectModel nearestBoxTrap = new Rs2TileObjectModel(gameObjects.remove(0));
+            if (nearestBoxTrap.click("reset")) {
+                log.info("Resetting box trap.");
                 sleep(config.minSleepAfterCatch(), config.maxSleepAfterCatch());
             }
-        });
+        }
     }
 
     private void handleLayingState() {
