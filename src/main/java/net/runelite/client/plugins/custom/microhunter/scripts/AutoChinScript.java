@@ -6,11 +6,12 @@ import net.runelite.api.ItemID;
 import net.runelite.api.ObjectID;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.ItemSpawned;
 import net.runelite.client.plugins.custom.microhunter.AutoHunterConfig;
 import net.runelite.client.plugins.microbot.Microbot;
-import net.runelite.client.plugins.microbot.api.tileitem.models.Rs2TileItemModel;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.breakhandler.BreakHandlerScript;
+import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
@@ -20,6 +21,10 @@ import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.EXTREME;
+import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.MODERATE;
 
 @Slf4j
 public class AutoChinScript extends AbstractScript {
@@ -31,7 +36,7 @@ public class AutoChinScript extends AbstractScript {
             ObjectID.SHAKING_BOX,
             ObjectID.BOX_TRAP_9385
     );
-    public static final int[] BOX_ID_ARRAY = BOXES_IDS.stream().mapToInt(i -> i).toArray();
+
     private static final List<Integer> TRAP_IDS = Arrays.asList(
             ObjectID.BOX_TRAP_9380,
             ObjectID.BOX_TRAP_9385,
@@ -44,51 +49,48 @@ public class AutoChinScript extends AbstractScript {
     @Inject
     private AutoHunterConfig config;
 
-    private final List<WorldPoint> boxTiles = new ArrayList<>();
-    private final List<WorldPoint> allBoxesOriginalPoints = new ArrayList<>();
     private boolean pickedUpTraps = true;
-    private boolean isExecutingTickManipulation;
 
-    private final ArrayList<GameObject> gameObjects = new ArrayList<>();
+    private List<WorldPoint> boxTiles;
+    private List<WorldPoint> allBoxesOriginalPoints;
+
+    private ArrayList<GameObject> triggeredTraps;
+    private AtomicBoolean hasTrapBeenLaid;
+    private boolean initiated;
 
     @Override
     public void tick() {
-        if (isExecutingTickManipulation) {
-            log.info("Executing tick manipulation");
-            return;
-        }
-
-        if (!takingBreak()) {
-            if (pickedUpTraps) {
-                layTraps();
-                pickedUpTraps = false;
-            }
-
-            switch (getState()) {
+        if (!takingBreak() && initiated) {
+            var state = getState();
+            log.info("State: {}", state);
+            switch (state) {
                 case DROPPING:
                     handleDroppingState();
                     break;
                 case CATCHING:
                     handleCatchingState();
                     break;
-                case LAYING:
-                    handleLayingState();
-                    break;
                 case TICK_MANIPULATION:
                     handleTickManipulationState();
                     break;
             }
+
         }
     }
 
     @Override
     public void initialize() {
-        allBoxesOriginalPoints.clear();
-        boxTiles.clear();
+        boxTiles = new ArrayList<>();
+        allBoxesOriginalPoints = new ArrayList<>();
+        triggeredTraps = new ArrayList<>();
+
+        hasTrapBeenLaid = new AtomicBoolean(false);
+
         int numberOfBoxes = Microbot.getClient().getRealSkillLevel(Skill.HUNTER) / 20 + 1;
 
         //square pattern
         WorldPoint firstBoxPoint = Rs2Player.getWorldLocation();
+
         log.info("First box point: {}", firstBoxPoint);
 
         WorldPoint secondBoxPoint = firstBoxPoint.dx(2);
@@ -109,6 +111,12 @@ public class AutoChinScript extends AbstractScript {
             WorldPoint fifthBoxPoint = firstBoxPoint.dx(1).dy(1); //in the center of the boxes
             allBoxesOriginalPoints.add(fifthBoxPoint);
         }
+
+        layTraps();
+
+        if (config.tickManipulation()) {
+            Rs2Antiban.setActivityIntensity(EXTREME);
+        }
     }
 
     @Override
@@ -119,48 +127,42 @@ public class AutoChinScript extends AbstractScript {
     @Override
     public void shutdown() {
         pickUpBoxTraps();
+        initiated = false;
         pickedUpTraps = true;
         super.shutdown();
     }
 
+    @Override
+    public int getTickDelay() {
+        return 600;
+    }
+
     public void onGameObjectSpawn(GameObject gameObject) {
-        if (BOXES_IDS.contains(gameObject.getId())) {
+        if (initiated && BOXES_IDS.contains(gameObject.getId())) {
             log.info("Box spawned.");
-            gameObjects.add(gameObject);
+            triggeredTraps.add(gameObject);
+        } else if (gameObject.getId() == ObjectID.BOX_TRAP_9380) {
+            log.info("Trap has been laid");
+            hasTrapBeenLaid.set(true);
         }
+    }
+
+    public void onItemSpawned(ItemSpawned itemSpawned) {
+
     }
 
     private State getState() {
         try {
-            Rs2TileItemModel nearestCollapsedBoxTrap = rs2TileItemCache
-                    .query()
-                    .withId(ItemID.BOX_TRAP)
-                    .where(box -> boxTiles.contains(box.getWorldLocation()))
-                    .nearestOnClientThread();
-
-            // If there are box traps on the floor, interact with them first
-            if (nearestCollapsedBoxTrap != null) {
-                return State.LAYING;
-            }
-
-            // If our inventory is full of ferrets
             if (Rs2Inventory.emptySlotCount() <= 1 && Rs2Inventory.contains(ItemID.FERRET)) {
-                // ferrets have the option release and not drop
                 return State.DROPPING;
             }
 
-            for (Integer boxId : BOXES_IDS) {
-                Rs2TileObjectModel nearestBoxTrap = rs2TileObjectCache
-                        .query()
-                        .withId(boxId)
-                        .where(box -> boxTiles.contains(box.getWorldLocation()))
-                        .nearestOnClientThread();
-                if (nearestBoxTrap != null) {
-                    if (hasKnifeAndLogs() && config.tickManipulation() && !isExecutingTickManipulation) {
-                        return State.TICK_MANIPULATION;
-                    }
-                    return State.CATCHING;
+            if (!triggeredTraps.isEmpty()) {
+                log.info("Triggered traps not empty.");
+                if (hasKnifeAndLogs() && config.tickManipulation()) {
+                    return State.TICK_MANIPULATION;
                 }
+                return State.CATCHING;
             }
         } catch (Exception ex) {
             Microbot.log(ex.getMessage());
@@ -173,32 +175,17 @@ public class AutoChinScript extends AbstractScript {
         while (Rs2Inventory.contains(ItemID.FERRET)) {
             Rs2Inventory.interact(ItemID.FERRET, "Release");
             sleep(0, 750);
-            if (!Rs2Inventory.contains(ItemID.FERRET)) {
-                break;
-            }
         }
         sleep(config.minSleepAfterLay(), config.maxSleepAfterLay());
     }
 
     private void handleCatchingState() {
-        if (!gameObjects.isEmpty()) {
-            Rs2TileObjectModel nearestBoxTrap = new Rs2TileObjectModel(gameObjects.remove(0));
+        if (!triggeredTraps.isEmpty()) {
+            Rs2TileObjectModel nearestBoxTrap = new Rs2TileObjectModel(triggeredTraps.remove(0));
             if (nearestBoxTrap.click("reset")) {
                 log.info("Resetting box trap.");
                 sleep(config.minSleepAfterCatch(), config.maxSleepAfterCatch());
             }
-        }
-    }
-
-    private void handleLayingState() {
-        Rs2TileItemModel nearestCollapsedBoxTrap = rs2TileItemCache
-                .query()
-                .withId(ItemID.BOX_TRAP)
-                .where(box -> boxTiles.contains(box.getWorldLocation()))
-                .nearestOnClientThread();
-
-        if (nearestCollapsedBoxTrap != null && nearestCollapsedBoxTrap.click("lay")) {
-            sleep(config.minSleepAfterLay(), config.maxSleepAfterLay());
         }
     }
 
@@ -216,8 +203,11 @@ public class AutoChinScript extends AbstractScript {
             sleep(600, 2000);
             boxTiles.add(boxTrapLocation);
             Rs2Inventory.interact("Box trap", "Lay");
-            sleep(2400, 3000);
+            sleepUntil(hasTrapBeenLaid::get);
+            hasTrapBeenLaid.set(false);
         });
+
+        initiated = true;
     }
 
     private boolean boxSpotIsAvailable(WorldPoint point) {
@@ -257,7 +247,7 @@ public class AutoChinScript extends AbstractScript {
                     WorldPoint location = trap.getWorldLocation();
                     if (Rs2Player.getWorldLocation().distanceTo(location) < 8) {
                         if (trap.click("Dismantle") || trap.click("Release")) {
-                            sleep(1000, 3000);
+                            Rs2Inventory.waitForInventoryChanges(8000);
                         }
                     }
                 }));
@@ -268,69 +258,56 @@ public class AutoChinScript extends AbstractScript {
     }
 
     private void handleTickManipulationState() {
-        Rs2TileObjectModel nearestBoxTrap = rs2TileObjectCache
-                .query()
-                .withIds(BOXES_IDS.stream().mapToInt(i->i).toArray())
-                .where(box -> boxTiles.contains(box.getWorldLocation()))
-                .nearestOnClientThread();
+        Rs2TileObjectModel firstBoxTrap = new Rs2TileObjectModel(triggeredTraps.remove(0));
 
-        if (nearestBoxTrap != null) {
+        Rs2Walker.walkFastCanvas(firstBoxTrap.getWorldLocation(), true);
+        sleepUntil(() -> Rs2Player.getWorldLocation().equals(firstBoxTrap.getWorldLocation()));
 
-            Rs2Walker.walkFastCanvas(nearestBoxTrap.getWorldLocation(), true);
-            sleepUntil(() -> Rs2Player.getWorldLocation().equals(nearestBoxTrap.getWorldLocation()));
-
-            if (nearestBoxTrap.click("check")) {
-                log.info("Checking first trap");
-                Rs2Inventory.waitForInventoryChanges(2400);
-                sleep(600, 1200);
-            }
-
-            if (Rs2Inventory.interact("Knife", "Use")) {
-                sleep(50, 150);
-                Rs2Inventory.interact("Teak logs");
-                log.info("Using knife on logs");
-                sleep(600);
-                Rs2Walker.walkFastCanvas(nearestBoxTrap.getWorldLocation(), true);
-                sleep(600);
-                Rs2Inventory.interact("Box trap", "Lay");
-                log.info("Laying box trap");
-
-                Rs2TileObjectModel box = rs2TileObjectCache
-                        .query()
-                        .withIds(BOX_ID_ARRAY)
-                        .where(potentialBox -> boxTiles.contains(potentialBox.getWorldLocation()))
-                        .nearestOnClientThread();
-
-                while (box != null) {
-                    sleep(1800);
-                    log.info("Walking to next trap");
-                    Rs2Walker.walkFastCanvas(box.getWorldLocation(), true);
-                    sleep(600);
-                    log.info("Checking trap");
-                    box.click("check");
-                    Rs2Inventory.waitForInventoryChanges(2400);
-                    log.info("Laying new trap");
-                    Rs2Inventory.interact("Box trap", "Lay");
-                    log.info("Sleeping to lay new box for 1800ms");
-                    box = rs2TileObjectCache
-                            .query()
-                            .withIds(BOX_ID_ARRAY)
-                            .where(potentialBox -> boxTiles.contains(potentialBox.getWorldLocation()))
-                            .nearestOnClientThread();
-                    log.info("Has new box? {}", box != null);
-
-                }
-            }
+        if (firstBoxTrap.click("check")) {
+            log.info("Checking first trap");
+            Rs2Inventory.waitForInventoryChanges(3000);
         }
 
-        isExecutingTickManipulation = false;
+        Rs2Inventory.interact("Knife", "Use");
+        sleep(50, 150);
+        Rs2Inventory.interact("Teak logs");
+        log.info("Using knife on logs");
+        sleepUntil(Rs2Player::isAnimating);
+        layFirstTrap(firstBoxTrap);
+
+        while (!triggeredTraps.isEmpty()) {
+            var box = new Rs2TileObjectModel(triggeredTraps.remove(0));
+            layTrap(box, false);
+            log.info("Has new box? {}", !triggeredTraps.isEmpty());
+        }
+    }
+
+    private void layFirstTrap(Rs2TileObjectModel nearestBoxTrap) {
+        layTrap(nearestBoxTrap, true);
+    }
+
+    private void layTrap(Rs2TileObjectModel box, boolean isFirst) {
+        log.info("Walking to next trap");
+        Rs2Walker.walkFastCanvas(box.getWorldLocation(), true);
+        sleepUntil(() -> Rs2Player.getWorldLocation().equals(box.getWorldLocation()));
+        if (!isFirst) {
+            log.info("Checking trap");
+            box.click("check");
+            Rs2Inventory.waitForInventoryChanges(2400);
+        }
+        log.info("Laying new trap");
+        Rs2Inventory.interact("Box trap", "Lay");
+        log.info("Sleeping until trap has been laid");
+        double time = System.currentTimeMillis();
+        hasTrapBeenLaid.set(false);
+        sleepUntil(hasTrapBeenLaid::get);
+        log.info("Take taken to lay trap: {}", System.currentTimeMillis() - time);
     }
 
     private enum State {
         IDLE,
         CATCHING,
         DROPPING,
-        LAYING,
         TICK_MANIPULATION
     }
 }
