@@ -6,9 +6,11 @@ import net.runelite.api.ItemID;
 import net.runelite.api.ObjectID;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.ItemDespawned;
 import net.runelite.api.events.ItemSpawned;
 import net.runelite.client.plugins.custom.microhunter.AutoHunterConfig;
 import net.runelite.client.plugins.microbot.Microbot;
+import net.runelite.client.plugins.microbot.api.tileitem.models.Rs2TileItemModel;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.breakhandler.BreakHandlerScript;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
@@ -24,7 +26,6 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.EXTREME;
-import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.MODERATE;
 
 @Slf4j
 public class AutoChinScript extends AbstractScript {
@@ -55,8 +56,10 @@ public class AutoChinScript extends AbstractScript {
     private List<WorldPoint> allBoxesOriginalPoints;
 
     private ArrayList<GameObject> triggeredTraps;
+    private ArrayList<ItemSpawned> boxesOnFloor;
     private AtomicBoolean hasTrapBeenLaid;
     private boolean initiated;
+    private double timeSinceLastReset;
 
     @Override
     public void tick() {
@@ -70,8 +73,16 @@ public class AutoChinScript extends AbstractScript {
                 case CATCHING:
                     handleCatchingState();
                     break;
+                case LAYING:
+                    handleLayingState();
+                    break;
                 case TICK_MANIPULATION:
                     handleTickManipulationState();
+                    break;
+                case RESET:
+                    pickUpBoxTraps();
+                    layTraps();
+                    timeSinceLastReset = System.currentTimeMillis();
                     break;
             }
 
@@ -83,6 +94,7 @@ public class AutoChinScript extends AbstractScript {
         boxTiles = new ArrayList<>();
         allBoxesOriginalPoints = new ArrayList<>();
         triggeredTraps = new ArrayList<>();
+        boxesOnFloor = new ArrayList<>();
 
         hasTrapBeenLaid = new AtomicBoolean(false);
 
@@ -117,6 +129,8 @@ public class AutoChinScript extends AbstractScript {
         if (config.tickManipulation()) {
             Rs2Antiban.setActivityIntensity(EXTREME);
         }
+
+        timeSinceLastReset = System.currentTimeMillis();
     }
 
     @Override
@@ -126,7 +140,9 @@ public class AutoChinScript extends AbstractScript {
 
     @Override
     public void shutdown() {
-        pickUpBoxTraps();
+        if (Microbot.isLoggedIn()) {
+            pickUpBoxTraps();
+        }
         initiated = false;
         pickedUpTraps = true;
         super.shutdown();
@@ -148,11 +164,29 @@ public class AutoChinScript extends AbstractScript {
     }
 
     public void onItemSpawned(ItemSpawned itemSpawned) {
+        if (initiated && itemSpawned.getItem().getId() == ItemID.BOX_TRAP && hasTrapBeenLaid.get()) {
+            boxesOnFloor.add(itemSpawned);
+        }
+    }
 
+    public void onItemDespawned(ItemDespawned itemDespawned) {
+        if (initiated && itemDespawned.getItem().getId() == ItemID.BOX_TRAP) {
+            var matchingBox = boxesOnFloor.stream().filter(event -> event.getTile().equals(itemDespawned.getTile())).findFirst();
+            matchingBox.ifPresent(itemSpawned -> boxesOnFloor.remove(itemSpawned));
+        }
     }
 
     private State getState() {
         try {
+            if (timeSinceLastReset + 3600000 < System.currentTimeMillis()) {
+                return State.RESET;
+            }
+
+            if (!boxesOnFloor.isEmpty()) {
+                log.info("boxes on floor not empty");
+                return State.LAYING;
+            }
+
             if (Rs2Inventory.emptySlotCount() <= 1 && Rs2Inventory.contains(ItemID.FERRET)) {
                 return State.DROPPING;
             }
@@ -185,6 +219,16 @@ public class AutoChinScript extends AbstractScript {
             if (nearestBoxTrap.click("reset")) {
                 log.info("Resetting box trap.");
                 sleep(config.minSleepAfterCatch(), config.maxSleepAfterCatch());
+            }
+        }
+    }
+
+    private void handleLayingState() {
+        if (!boxesOnFloor.isEmpty()) {
+            ItemSpawned boxOnFloor = boxesOnFloor.remove(0);
+            Rs2TileItemModel nearestCollapsedBoxTrap = new Rs2TileItemModel(boxOnFloor.getTile(), boxOnFloor.getItem());
+            if (nearestCollapsedBoxTrap.click("lay")) {
+                sleep(config.minSleepAfterLay(), config.maxSleepAfterLay());
             }
         }
     }
@@ -308,6 +352,8 @@ public class AutoChinScript extends AbstractScript {
         IDLE,
         CATCHING,
         DROPPING,
-        TICK_MANIPULATION
+        LAYING,
+        TICK_MANIPULATION,
+        RESET
     }
 }

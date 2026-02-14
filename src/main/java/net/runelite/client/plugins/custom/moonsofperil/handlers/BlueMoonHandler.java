@@ -1,9 +1,12 @@
 package net.runelite.client.plugins.custom.moonsofperil.handlers;
 
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.AnimationID;
 import net.runelite.api.gameval.NpcID;
+import net.runelite.api.gameval.ObjectID;
 import net.runelite.client.plugins.custom.moonsofperil.MoonsOfPerilConfig;
+import net.runelite.client.plugins.custom.moonsofperil.MoonsOfPerilPlugin;
 import net.runelite.client.plugins.custom.moonsofperil.MoonsOfPerilScript;
 import net.runelite.client.plugins.custom.moonsofperil.enums.GameObjects;
 import net.runelite.client.plugins.custom.moonsofperil.enums.Locations;
@@ -13,6 +16,7 @@ import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.breakhandler.BreakHandlerScript;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
+import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.npc.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
@@ -113,12 +117,28 @@ public class BlueMoonHandler implements BaseHandler {
         if (debugLogging) {
             Microbot.log("Running to safe tile and waiting out the sequence");
         }
+
+        /* var braziers = Microbot.getRs2TileObjectCache()
+                .query()
+                .withIds(52993, 52992).toListOnClientThread();
+
+        if (braziers.size() == 2) {
+            braziers.get(0).click();
+            Microbot.log("Clicked brazier");
+            sleep(5000);
+
+            boss.eatIfNeeded();
+            boss.drinkIfNeeded();
+
+            braziers.get(1).click();
+            Microbot.log("Clicked brazier");
+            sleep(5000);
+        } */
+
         Rs2Walker.walkFastCanvas(AFTER_TORNADO, true);
         boss.eatIfNeeded();
         boss.drinkIfNeeded();
-        if (debugLogging) {
-            Microbot.log("Sleeping until the special attack sequence is over");
-        }
+
         sleepUntil(() -> MoonsOfPerilScript.sigilNpc.get() != null || !Rs2Widget.isWidgetVisible(bossHealthBarWidgetID), 35_000);
     }
 
@@ -163,103 +183,89 @@ public class BlueMoonHandler implements BaseHandler {
         final long PHASE_TIMEOUT_MS = 32_000;
         final WorldPoint SAFE_SPOT = new WorldPoint(1440, 9681, 0);
 
-        java.util.function.Supplier<String> ts =
-                () -> "[" + System.currentTimeMillis() + "] ";
-
-        if (debugLogging) {
-            Microbot.log(ts.get() + "specialAttack2Sequence() START");
-        }
         Rs2Walker.walkFastCanvas(bossArenaCenter, true);
 
         /* ---------- 1. Identify the animated icicle ----------------------- */
         List<Rs2NpcModel> matches = Collections.emptyList();
         long pollStart = System.currentTimeMillis();
 
-        while (isSpecialAttack2Sequence() && matches.isEmpty() &&
-                System.currentTimeMillis() - pollStart < POLL_TIMEOUT_MS) {
+        while (isSpecialAttack2Sequence() && matches.isEmpty() && System.currentTimeMillis() - pollStart < POLL_TIMEOUT_MS) {
             matches = Rs2Npc.getNpcs(n ->
                             n.getId() == ICICLE_NPC_ID &&
                                     n.getAnimation() == ICICLE_ANIM_ID)
                     .collect(Collectors.toList());
-            if (matches.isEmpty()) sleep(300);
+            if (matches.isEmpty()) {
+                sleep(300);
+            }
         }
 
         if (matches.isEmpty()) {
-            if (debugLogging) {
-                Microbot.log(ts.get() + "Timed-out waiting for animated icicle — aborting");
-            }
-            return;
-        }
-        if (!isSpecialAttack2Sequence()) {
             return;
         }
 
         Rs2NpcModel icicle = matches.get(0);
-        if (debugLogging) {
-            Microbot.log(ts.get() + "Icicle found at " + icicle.getWorldLocation());
-        }
 
         /* ---------- 2. Attack + dodge loop ------------------------------- */
 
-        long phaseStart = System.currentTimeMillis();
+         long phaseStart = System.currentTimeMillis();
 
-        if (debugLogging) {
-            Microbot.log(ts.get() + "Entering attack-and-dodge loop (timeout " + PHASE_TIMEOUT_MS + " ms)");
-        }
         Rs2Prayer.disableAllPrayers();
 
-        Rs2InventorySetup invSetup = equipmentNormal;
+        while (phaseStart + PHASE_TIMEOUT_MS > System.currentTimeMillis() && icicle.getAnimation() == ICICLE_ANIM_ID) {
+            Microbot.log("starting loop.");
+            if (!Rs2Combat.inCombat()) {
+                Microbot.log("attacking icicle");
+                Rs2Npc.attack(icicle);
+            }
+
+            LocalPoint attackTile = Rs2Player.getLocalLocation();
+            sleepUntil(() -> MoonsOfPerilPlugin.icicles.contains(attackTile));
+            Microbot.log("In danger");
+            sleep(1200, 1800);
+            var surroundingTiles = Rs2Tile.getWalkableTilesAroundPlayer(5);
+            var safeTile = surroundingTiles.stream().filter(tile -> !MoonsOfPerilPlugin.icicles.contains(LocalPoint.fromWorld(Microbot.getClient().getTopLevelWorldView(), tile.getX(), tile.getY()))).findFirst();
+
+            //var safeTiles = Rs2Tile.getSafeTiles(4);
+            if (safeTile.isPresent()) {
+                Rs2Walker.walkFastCanvas(safeTile.get(), true);
+                sleepUntil(() -> Rs2Player.getWorldLocation().equals(safeTile.get()));
+                Microbot.log("Safe");
+                MoonsOfPerilPlugin.icicles.clear();
+            }
+        }
+
+        Rs2Walker.walkFastCanvas(SAFE_SPOT, true);
+        boss.eatIfNeeded();
+        boss.drinkIfNeeded();
+
+        sleepUntil(() -> Rs2Npc.getNpc(ICICLE_NPC_ID) == null);
+        MoonsOfPerilPlugin.icicles.clear();
+        /* Rs2InventorySetup invSetup = equipmentNormal;
         while (!invSetup.doesEquipmentMatch() &&
                 System.currentTimeMillis() - phaseStart < PHASE_TIMEOUT_MS) {
             if (!Rs2Combat.inCombat()) {
                 Rs2Npc.attack(icicle);
             }
             WorldPoint attackTile = Rs2Player.getWorldLocation();
-            if (debugLogging) {
-                Microbot.log(ts.get() + "Attack location calculated as: " + attackTile);
-            }
             sleepUntil(() -> BossHandler.inDanger(attackTile) || invSetup.doesEquipmentMatch(), 3_000);
             if (invSetup.doesEquipmentMatch()) {
                 break;
             }
             if (BossHandler.inDanger(attackTile)) {
-                if (debugLogging) {
-                    Microbot.log(ts.get() + "Standing on dangerous tile: " + attackTile);
-                }
                 WorldPoint safeTile = Rs2Tile.getSafeTiles(1).get(0);
-                if (debugLogging) {
-                    Microbot.log(ts.get() + "Safe tile calculated to be: " + safeTile);
-                }
 
                 if (safeTile != null) {
                     Rs2Walker.walkFastCanvas(safeTile, true);
-                    if (debugLogging) {
-                        Microbot.log(ts.get() + "Now standing on safe tile: " + safeTile);
-                    }
                     sleepUntil(() -> !BossHandler.inDanger(attackTile));
-                    if (debugLogging) {
-                        Microbot.log(ts.get() + "Attack tile now calculated as safe: " + attackTile);
-                    }
                 }
             }
         }
 
-        /* ---------- 3. Retreat to safespot ------------------------------- */
-        if (debugLogging) {
-            Microbot.log(ts.get() + "Retreating to SAFE_SPOT " + SAFE_SPOT);
-        }
         Rs2Walker.walkFastCanvas(SAFE_SPOT, true);
         boss.eatIfNeeded();
         boss.drinkIfNeeded();
 
-        if (debugLogging) {
-            Microbot.log(ts.get() + "Waiting for all icicles to despawn…");
-        }
-        sleepUntil(() -> Rs2Npc.getNpc(ICICLE_NPC_ID) == null);
-
-        if (debugLogging) {
-            Microbot.log(ts.get() + "specialAttack2Sequence() COMPLETE");
-        }
+        sleepUntil(() -> Rs2Npc.getNpc(ICICLE_NPC_ID) == null); */
     }
 
 }

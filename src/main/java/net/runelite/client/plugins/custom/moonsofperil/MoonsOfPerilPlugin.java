@@ -2,12 +2,19 @@ package net.runelite.client.plugins.custom.moonsofperil;
 
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.DecorativeObject;
 import net.runelite.api.GameObject;
 import net.runelite.api.GraphicsObject;
+import net.runelite.api.GroundObject;
 import net.runelite.api.NPC;
+import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.events.DecorativeObjectDespawned;
+import net.runelite.api.events.DecorativeObjectSpawned;
+import net.runelite.api.events.GameObjectDespawned;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GraphicsObjectCreated;
+import net.runelite.api.events.GroundObjectSpawned;
 import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.gameval.ObjectID;
@@ -17,6 +24,7 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.custom.moonsofperil.enums.GameObjects;
+import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
 import net.runelite.client.plugins.microbot.util.tile.Rs2Tile;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -24,6 +32,9 @@ import net.runelite.client.ui.overlay.OverlayManager;
 import javax.inject.Inject;
 import java.awt.*;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 @PluginDescriptor(
         name = "Donder's Moons of Peril",
@@ -43,6 +54,7 @@ public class MoonsOfPerilPlugin extends Plugin {
     static final String version = "2.0.0";
     public static int bloodPoolTick;
     public static Instant scriptStartTime;
+
     @Inject
     MoonsOfPerilScript moonsOfPerilScript;
     @Inject
@@ -53,6 +65,7 @@ public class MoonsOfPerilPlugin extends Plugin {
     private MoonsOfPerilOverlay moonsOfPerilOverlay;
     @Inject
     private MoonsOfPerilConfig moonsOfPerilConfig;
+    public static List<LocalPoint> icicles;
 
     @Provides
     MoonsOfPerilConfig provideConfig(ConfigManager configManager) {
@@ -61,6 +74,7 @@ public class MoonsOfPerilPlugin extends Plugin {
 
     @Override
     protected void startUp() throws AWTException {
+        icicles = new CopyOnWriteArrayList<>();
         if (overlayManager != null) {
             overlayManager.add(moonsOfPerilOverlay);
         }
@@ -73,17 +87,29 @@ public class MoonsOfPerilPlugin extends Plugin {
     public void onGraphicsObjectCreated(GraphicsObjectCreated event) {
         final GraphicsObject graphicEvent = event.getGraphicsObject();
         if (graphicEvent.getId() == SpotanimID.VFX_DJINN_ICE_FLOOR_SPAWN_01) {
-            Rs2Tile.addDangerousGraphicsObjectTile(graphicEvent, 600 * 3);
+            icicles.add(graphicEvent.getLocation());
+        } else if (graphicEvent.getId() == 2771) {
+            icicles.add(graphicEvent.getLocation());
         }
     }
 
     @Subscribe
     public void onGameObjectSpawned(GameObjectSpawned event) {
-        final GameObject bloodPool = event.getGameObject();
-        if (bloodPool.getId() == ObjectID.PMOON_BOSS_BLOOD_POOL) {
+        final GameObject gameObject = event.getGameObject();
+        if (gameObject.getId() == ObjectID.PMOON_BOSS_BLOOD_POOL) {
             bloodPoolTick = 0;
         }
     }
+
+    @Subscribe
+    public void onGroundObjectSpawned(GroundObjectSpawned event) {
+        final GroundObject gameObject = event.getGroundObject();
+
+        if (gameObject.getId() == ObjectID.PMOON_BOSS_BRAZIER_UNLIT) {
+            Microbot.log("Found a brazier!: " + gameObject.getWorldLocation());
+        }
+    }
+
 
     protected void shutDown() {
         moonsOfPerilScript.shutdown();

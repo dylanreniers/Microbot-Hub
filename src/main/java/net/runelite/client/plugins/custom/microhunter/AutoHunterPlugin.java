@@ -3,6 +3,7 @@ package net.runelite.client.plugins.custom.microhunter;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.events.GameObjectSpawned;
+import net.runelite.api.events.ItemDespawned;
 import net.runelite.api.events.ItemSpawned;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -92,5 +93,10 @@ public class AutoHunterPlugin extends Plugin {
     @Subscribe
     public void onItemSpawned(ItemSpawned event) {
         autoChinScript.onItemSpawned(event);
+    }
+
+    @Subscribe
+    public void onItemDespawned(ItemDespawned event) {
+        autoChinScript.onItemDespawned(event);
     }
 }
