@@ -37,14 +37,11 @@ public class PotionManagerScript extends Script {
                     Rs2Player.waitForAnimation();
                 }
 
-                log.info("Drinking prayer potion?");
                 // Always attempt to drink prayer potion
                 if (Rs2Player.drinkPrayerPotion()) {
-                    log.info("Drank prayer potion");
                     Rs2Player.waitForAnimation();
+                    Rs2Inventory.dropAll("Butterfly jar");
                 }
-
-                drinkPrayerPot();
 
                 // Only drink combat potions when in combat
                 if (Rs2Combat.inCombat()) {
@@ -85,24 +82,6 @@ public class PotionManagerScript extends Script {
             }
         }, 0, 600, TimeUnit.MILLISECONDS);
         return true;
-    }
-
-    public void drinkPrayerPot() {
-        if (Rs2Player.getBoostedSkillLevel(Skill.PRAYER) <= Rs2Random.between(8, 15)) {
-            if (Rs2Inventory.contains(it -> it != null && it.getName().contains("Prayer potion") || it.getName().contains("Moonlight moth"))) {
-                Rs2ItemModel prayerpotion = Rs2Inventory.get(it -> it != null && it.getName().contains("Prayer potion") || it.getName().contains("Moonlight moth"));
-                String action = "Drink";
-                if (prayerpotion.getName().equals("Moonlight moth")) {
-                    action = "Release";
-                }
-
-                if (Rs2Inventory.interact(prayerpotion, action)) {
-                    sleep(0, 750);
-                }
-
-                Rs2Inventory.dropAll("Butterfly jar");
-            }
-        }
     }
 
     // shutdown

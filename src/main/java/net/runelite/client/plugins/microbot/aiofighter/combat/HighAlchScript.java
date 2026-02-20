@@ -1,5 +1,6 @@
 package net.runelite.client.plugins.microbot.aiofighter.combat;
 
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.aiofighter.AIOFighterConfig;
@@ -20,6 +21,7 @@ import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 public class HighAlchScript extends Script
 {
 
@@ -37,7 +39,7 @@ public class HighAlchScript extends Script
 				{
 					return;
 				}
-                                List<Rs2ItemModel> items = Rs2Inventory.getList(Rs2ItemModel::isHaProfitable);
+                                List<Rs2ItemModel> items = Rs2Inventory.getList((item) -> this.isHaProfitable(item, 200));
                                 items.removeIf(item -> AIOFighterPlugin.isHighAlchBlacklisted(item.getName()));
 
 				if (items.isEmpty())
@@ -50,7 +52,6 @@ public class HighAlchScript extends Script
 				}
 
 				int currentTick = Microbot.getClient().getTickCount();
-
 				if (lastAlchCheckTick != -1 && currentTick - lastAlchCheckTick < nextAlchIntervalTicks)
 				{
 					return;
@@ -59,20 +60,7 @@ public class HighAlchScript extends Script
 				lastAlchCheckTick = currentTick;
 				nextAlchIntervalTicks = Rs2Random.nextInt(MIN_TICKS, MAX_TICKS, 1.5, true);
 
-				if (Rs2ExplorersRing.hasRing() && Rs2ExplorersRing.hasCharges())
-				{
-					for (Rs2ItemModel item : items)
-					{
-						if (!isRunning())
-						{
-							break;
-						}
-
-						Rs2ExplorersRing.highAlch(item);
-					}
-					Rs2ExplorersRing.closeInterface();
-				}
-				else if (Rs2Magic.canCast(Rs2Spells.HIGH_LEVEL_ALCHEMY))
+				if (Rs2Magic.canCast(Rs2Spells.HIGH_LEVEL_ALCHEMY))
 				{
 					for (Rs2ItemModel item : items)
 					{
@@ -93,6 +81,20 @@ public class HighAlchScript extends Script
 						Rs2Player.waitForAnimation();
 					}
 				}
+
+				else if (Rs2ExplorersRing.hasRing() && Rs2ExplorersRing.hasCharges())
+				{
+					for (Rs2ItemModel item : items)
+					{
+						if (!isRunning())
+						{
+							break;
+						}
+
+						Rs2ExplorersRing.highAlch(item);
+					}
+					Rs2ExplorersRing.closeInterface();
+				}
 			}
 			catch (Exception ex)
 			{
@@ -106,5 +108,9 @@ public class HighAlchScript extends Script
 	public void shutdown()
 	{
 		super.shutdown();
+	}
+
+	public boolean isHaProfitable(Rs2ItemModel item, int deficit) {
+		return item.getHaPrice() > 1000 && item.getHaPrice() + deficit > item.getPrice() / item.getQuantity() && item.isTradeable();
 	}
 }

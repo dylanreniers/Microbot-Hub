@@ -7,7 +7,7 @@ import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 
-@ConfigInformation("Automated Herb Runs across all patches<br/><br/>" +
+@ConfigInformation("Automated Herb Runs across all patches with optional limpwurt farming<br/><br/>" +
         "<b>Two Setup Options:</b><br/>" +
         "1. Inventory Setup: Use your custom inventory configuration<br/>" +
         "2. Auto Banking: Let the plugin handle everything!<br/><br/>" +
@@ -15,6 +15,7 @@ import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
         "• Farming tools (rake, spade, seed dibber, magic secateurs)<br/>" +
         "• Teleportation runes (law, air, earth, fire, water)<br/>" +
         "• Your selected herb seeds<br/>" +
+        "• Limpwurt seeds (if enabled)<br/>" +
         "• Your selected compost type<br/>" +
         "• Ectophial (if Morytania is enabled)<br/><br/>" +
         "Credits to liftedmango and See1Duck")
@@ -120,6 +121,28 @@ public interface HerbrunConfig extends Config {
     )
     default boolean dropEmptyBuckets() {
         return true;
+    }
+
+    @ConfigItem(
+            keyName = "enableLimpwurt",
+            name = "Enable Limpwurt Seeds",
+            description = "Plant limpwurt seeds in flower patches during herb run",
+            section = autoSection,
+            position = 4
+    )
+    default boolean enableLimpwurt() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "enableWhiteberries",
+            name = "Enable picking whiteberries",
+            description = "Pick your whiteberries at the end of your run.",
+            section = autoSection,
+            position = 5
+    )
+    default boolean enableWhiteberries() {
+        return false;
     }
 
     @ConfigItem(

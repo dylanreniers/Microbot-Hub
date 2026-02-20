@@ -4,7 +4,6 @@ import lombok.Getter;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.questhelper.helpers.mischelpers.farmruns.CropState;
 import net.runelite.client.plugins.microbot.questhelper.helpers.mischelpers.farmruns.FarmingHandler;
-import net.runelite.client.plugins.microbot.questhelper.helpers.mischelpers.farmruns.FarmingPatch;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.enums.Herbs;
 
@@ -12,19 +11,21 @@ import java.util.HashMap;
 import java.util.Objects;
 
 @Getter
-public class HerbPatch {
-    private final FarmingPatch patch;
+public class FarmingPatch {
+    private final net.runelite.client.plugins.microbot.questhelper.helpers.mischelpers.farmruns.FarmingPatch patch;
     private final String regionName;
     private final CropState prediction;
     private final WorldPoint location;
     private final HashMap<String, Integer> items = new HashMap<>();
     private boolean enabled;
+    private final boolean isFlowerPatch;
 
-    public HerbPatch(FarmingPatch patch, HerbrunConfig config, FarmingHandler farmingHandler) {
+    public FarmingPatch(net.runelite.client.plugins.microbot.questhelper.helpers.mischelpers.farmruns.FarmingPatch patch, HerbrunConfig config, FarmingHandler farmingHandler, boolean isFlowerPatch) {
         this.patch = patch;
         this.regionName = patch.getRegion().getName();
         this.prediction = farmingHandler.predictPatch(patch);
         this.location = getHerbFromName(regionName).getWorldPoint();
+        this.isFlowerPatch = isFlowerPatch;
         switch (regionName) {
             case "Ardougne":
 //                if (Rs2Bank.hasItem("Ardougne cloak")) {
@@ -106,4 +107,10 @@ public class HerbPatch {
         return this.regionName.equals(regionName);
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        FarmingPatch herbPatch = (FarmingPatch) o;
+        return Objects.equals(patch, herbPatch.patch) && Objects.equals(regionName, herbPatch.regionName);
+    }
 }

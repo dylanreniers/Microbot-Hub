@@ -10,15 +10,26 @@ import net.runelite.client.plugins.microbot.agility.MicroAgilityPlugin;
 import net.runelite.client.plugins.microbot.aiofighter.AIOFighterPlugin;
 import net.runelite.client.plugins.microbot.autogauntletprayer.AutoGauntletPrayerPlugin;
 import net.runelite.client.plugins.microbot.cannonballsmelter.CannonballSmelterPlugin;
+import net.runelite.client.plugins.microbot.herbrun.HerbrunPlugin;
 import net.runelite.client.plugins.microbot.mmcaves.MmCavesPlugin;
 import net.runelite.client.plugins.microbot.nmz.NmzPlugin;
+import net.runelite.client.plugins.microbot.pestcontrol.PestControlPlugin;
 import net.runelite.client.plugins.microbot.plankrunner.PlankRunnerPlugin;
 import net.runelite.client.plugins.microbot.sulphurnaguafigther.SulphurNaguaPlugin;
 
 public class Microbot {
 
 	private static final Class<?>[] debugPlugins = {
-            AIOFighterPlugin.class, AgilityPlugin.class, PlankRunnerPlugin.class, SulphurNaguaPlugin.class, NmzPlugin.class, CannonballSmelterPlugin.class, MicroAgilityPlugin.class, AutoGauntletPrayerPlugin.class, MmCavesPlugin.class
+            AIOFighterPlugin.class,
+            AgilityPlugin.class,
+            PlankRunnerPlugin.class,
+            SulphurNaguaPlugin.class,
+            CannonballSmelterPlugin.class,
+            MicroAgilityPlugin.class,
+            AutoGauntletPrayerPlugin.class,
+            MmCavesPlugin.class,
+            HerbrunPlugin.class,
+            PestControlPlugin.class,
 	};
 
     public static void main(String[] args) throws Exception {

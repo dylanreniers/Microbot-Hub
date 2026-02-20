@@ -600,7 +600,6 @@ public class AIOFighterPlugin extends Plugin {
             addMenuEntry(event, SET, CENTER_TILE, 1);
         }
         if (Microbot.getClient().isKeyPressed(KeyCode.KC_SHIFT) && event.getOption().equals(WALK_HERE) && event.getTarget().isEmpty()) {
-            log.info("Added menu entry?");
             addMenuEntry(event, SET, SAFE_SPOT, 1);
         }
         if (event.getOption().equals(ATTACK) && config.attackableNpcs().contains(getNpcNameFromMenuEntry(Text.removeTags(event.getTarget())))) {

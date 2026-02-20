@@ -69,6 +69,9 @@ public class LootScript extends Script {
                 if (config.looterStyle() == DefaultLooterStyle.GE_PRICE_RANGE || config.looterStyle() == DefaultLooterStyle.MIXED) builder.addByValue();
                 if (config.toggleBuryBones())       builder.addBones();
                 if (config.toggleScatter())         builder.addAshes();
+                if (config.toggleLootCoins()) {
+                    log.info("Looting coins...");
+                }
                 if (config.toggleLootCoins())       builder.addCoins();
                 if (config.toggleLootUntradables()) builder.addUntradables();
                 if (config.toggleLootArrows())      builder.addArrows(DEFAULT_MIN_STACK_EXCLUSIVE_ARROWS);
