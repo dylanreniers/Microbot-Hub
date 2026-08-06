@@ -8,6 +8,7 @@ import net.runelite.api.GameObject;
 import net.runelite.api.NPC;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.AnimationChanged;
+import net.runelite.api.events.DecorativeObjectSpawned;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.client.config.ConfigManager;
@@ -16,13 +17,13 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.custom.zulrah.rotationutils.RotationType;
 import net.runelite.client.plugins.custom.zulrah.rotationutils.ZulrahPhase;
+import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 
 @PluginDescriptor(
         name = "Zulrah Slayer",
@@ -38,7 +39,7 @@ import java.util.concurrent.atomic.AtomicReference;
 )
 @Slf4j
 public class ZulrahPlugin extends Plugin {
-    public static final String version = "1.0.0";
+    public static final String version = "1.0.2";
     public static final int GOING_UNDER_WATER = 5072;
     public static final int ATTACK_ANIMATION = 5069;
     public static final int START_ANIMATION = 5071;
@@ -49,9 +50,12 @@ public class ZulrahPlugin extends Plugin {
     private ZulrahScript zulrahScript;
     @Inject
     private Client client;
+    @Inject
+    private ZulrahConfig config;
 
+    // Instance state: a static field would leak across plugin restarts.
     @Getter
-    private static boolean zulrahReset;
+    private boolean zulrahReset;
     @Getter
     private int stage = 0;
     @Getter
@@ -66,6 +70,11 @@ public class ZulrahPlugin extends Plugin {
 
     @Override
     protected void startUp() {
+        if (config.mageInventorySetup() == null || config.rangeInventorySetup() == null) {
+            Microbot.showMessage("Zulrah: configure both the Mage and Range inventory setups before starting.");
+            Microbot.stopPlugin(this);
+            return;
+        }
         zulrahScript.run();
     }
 
@@ -83,9 +92,14 @@ public class ZulrahPlugin extends Plugin {
         log.info("Zulrah Reset!");
     }
 
+    @Nullable
     private RotationType getRotation(NPC npc) {
         if (currentRotation == null) {
             potentialRotations = RotationType.findPotentialRotations(npc, stage);
+            if (potentialRotations.isEmpty()) {
+                log.warn("No potential rotations for stage {} / npc {}", stage, npc.getId());
+                return null;
+            }
             var firstRotation = potentialRotations.get(0);
             currentRotation = potentialRotations.size() == 1 ? firstRotation : null;
             log.info("Trying rotation {}", firstRotation.getRotationName());
@@ -106,6 +120,16 @@ public class ZulrahPlugin extends Plugin {
             log.info("Found toxic cloud at {}", obj.getWorldLocation());
             log.info("Found toxic cloud at local location {}", obj.getLocalLocation());
         }
+    }
+
+    @Subscribe
+    private void onDecorativeObjectSpawned(DecorativeObjectSpawned event) {
+        var obj = event.getDecorativeObject();
+        if (obj == null || obj.getLocalLocation() == null) {
+            return;
+        }
+        log.info("DecorativeObject created: id={} at {}", obj.getId(),
+                WorldPoint.fromLocalInstance(client, obj.getLocalLocation()));
     }
 
     @Subscribe
@@ -180,8 +204,11 @@ public class ZulrahPlugin extends Plugin {
     }
 
     @Nullable
-    private ZulrahPhase getCurrentPhase(RotationType type) {
-        return stage >= type.getZulrahPhases().size() ? null : type.getZulrahPhases().get(stage);
+    private ZulrahPhase getCurrentPhase(@Nullable RotationType type) {
+        if (type == null || stage < 0 || stage >= type.getZulrahPhases().size()) {
+            return null;
+        }
+        return type.getZulrahPhases().get(stage);
     }
 
     private boolean isLastPhase(RotationType type) {

@@ -35,6 +35,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static net.runelite.api.gameval.ItemID.COAL;
 import static net.runelite.api.gameval.ItemID.COINS;
@@ -58,10 +59,12 @@ import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_MITHRIL_BARS;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_RUNITE_BARS;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_SILVER_BARS;
 import static net.runelite.api.gameval.VarbitID.BLAST_FURNACE_STEEL_BARS;
-import static net.runelite.client.plugins.microbot.util.misc.Rs2UiHelper.ITEM_NAME_SUFFIX_PATTERN;
 
 @Slf4j
 public class BlastoiseFurnaceScript extends Script {
+    // Matches an item name with a trailing dose suffix, e.g. "Prayer potion(4)".
+    // Group 1 = base name, group 2 = dose number.
+    private static final Pattern ITEM_NAME_SUFFIX_PATTERN = Pattern.compile("^(.*?)\\s*\\((\\d+)\\)\\s*$");
     static final int coalBag = 12019;
     private static final int MAX_ORE_PER_INTERACTION = 27;
     private static final int MAX_ORE_PER_HYBRID_INTERACTION = 26;
@@ -376,7 +379,7 @@ public class BlastoiseFurnaceScript extends Script {
                 boolean equipped = Rs2Inventory.interact(ICE_GLOVES, "Wear")
                         || Rs2Inventory.interact(SMITHING_UNIFORM_GLOVES_ICE, "Wear");
                 if (!equipped) {
-                    Microbot.showMessage("Ice gloves or smith gloves required to loot the hot bars.");
+                    Microbot.showMessage("Ice gloves or smith gloves required to loot tche hot bars.");
                     Rs2Player.logout();
                     Microbot.stopPlugin(plugin);
                     return;

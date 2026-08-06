@@ -14,7 +14,8 @@ public final class ZulrahNpc {
     private final boolean jad;
 
     public static ZulrahNpc valueOf(NPC zulrah, boolean jad) {
-        return new ZulrahNpc(Objects.requireNonNull(ZulrahType.valueOf(zulrah.getId())), jad);
+        ZulrahType type = ZulrahType.valueOf(zulrah.getId());
+        return type == null ? null : new ZulrahNpc(type, jad);
     }
 
     @Override
@@ -22,5 +23,10 @@ public final class ZulrahNpc {
         if (o == null || getClass() != o.getClass()) return false;
         ZulrahNpc zulrahNpc = (ZulrahNpc) o;
         return jad == zulrahNpc.jad && type == zulrahNpc.type;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(type, jad);
     }
 }

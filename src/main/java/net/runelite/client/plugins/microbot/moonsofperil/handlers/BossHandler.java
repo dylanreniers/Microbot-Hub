@@ -10,6 +10,8 @@ import net.runelite.client.plugins.microbot.moonsofperil.MoonsOfPerilConfig;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
+import net.runelite.client.plugins.microbot.globval.enums.InterfaceTab;
+import net.runelite.client.plugins.microbot.util.tabs.Rs2Tab;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
@@ -247,5 +249,24 @@ public final class BossHandler {
             Microbot.getRs2TileObjectCache().query().interact(ObjectID.PMOON_RANGE, "Make-cuppa");
             sleep(600);
         }
+    }
+
+    /** Switches the current combat tab to the attack option matching the given style (e.g. "Stab"). */
+    public void changeAttackStyle(String preferredStyle) {
+        WeaponAttackType weaponAttackType = WeaponAttackType.getById(Microbot.getVarbitValue(Varbits.EQUIPPED_WEAPON_TYPE));
+        Optional<AttackOption> attackOptionToSwitchTo = weaponAttackType.getAttackOptions().stream().filter(attackOption -> attackOption.getAttackStyle().equals(preferredStyle)).findFirst();
+        if (attackOptionToSwitchTo.isPresent()) {
+            int index = weaponAttackType.getAttackOptions().indexOf(attackOptionToSwitchTo.get());
+            List<WidgetInfo> combatStyleWidgets = List.of(WidgetInfo.COMBAT_STYLE_ONE, WidgetInfo.COMBAT_STYLE_TWO, WidgetInfo.COMBAT_STYLE_THREE, WidgetInfo.COMBAT_STYLE_FOUR);
+            changeAttackStyle(combatStyleWidgets.get(index));
+        }
+    }
+
+    private void changeAttackStyle(WidgetInfo attackStyleWidgetInfo) {
+        if (Rs2Tab.getCurrentTab() != InterfaceTab.COMBAT) {
+            Rs2Tab.switchToCombatOptionsTab();
+            sleepUntil(() -> Rs2Tab.getCurrentTab() == InterfaceTab.COMBAT, 2000);
+        }
+        Rs2Combat.setAttackStyle(attackStyleWidgetInfo);
     }
 }

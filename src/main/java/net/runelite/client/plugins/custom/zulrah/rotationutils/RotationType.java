@@ -26,7 +26,9 @@ public enum RotationType {
                     add(ZulrahType.RANGE, StandLocation.EAST_PILLAR_N, null),
                     add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
                     addJad(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
-                    add(ZulrahType.MELEE, StandLocation.NORTHEAST_NORTH, null))),
+                    add(ZulrahType.MELEE, StandLocation.NORTHEAST_NORTH, null),
+                    // Final phase (wiki Rotation 1 phase 11): green in the middle, ranged x5.
+                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE))),
     ROT_B("Rotation B",
             ImmutableList.of(
                     add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, null),
@@ -38,7 +40,9 @@ public enum RotationType {
                     add(ZulrahType.RANGE, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
                     add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
                     addJad(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
-                    add(ZulrahType.MELEE, StandLocation.NORTHEAST_NORTH, null))),
+                    add(ZulrahType.MELEE, StandLocation.NORTHEAST_NORTH, null),
+                    // Final phase (wiki Rotation 2 phase 11): green in the middle, ranged x5.
+                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE))),
     ROT_C("Rotation C",
             ImmutableList.of(
                     add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, null),
@@ -51,7 +55,9 @@ public enum RotationType {
                     add(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
                     add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
                     addJad(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
-                    add(ZulrahType.MAGIC, StandLocation.NORTHEAST_NORTH, null))),
+                    add(ZulrahType.MAGIC, StandLocation.NORTHEAST_NORTH, null),
+                    // Final phase (wiki Rotation 3 phase 12): green in the middle, ranged x5.
+                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE))),
     ROT_D("Rotation D",
             ImmutableList.of(
                     add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, null),
@@ -65,7 +71,9 @@ public enum RotationType {
                     add(ZulrahType.RANGE, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
                     add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
                     addJad(ZulrahType.MAGIC, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
-                    add(ZulrahType.MAGIC, StandLocation.NORTHEAST_NORTH, null)));
+                    add(ZulrahType.MAGIC, StandLocation.NORTHEAST_NORTH, null),
+                    // Final phase (wiki Rotation 4 phase 13): green in the middle, ranged x5.
+                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE)));
 
     private static final List<RotationType> lookup = new ArrayList<>();
 
@@ -85,7 +93,15 @@ public enum RotationType {
 
     public static List<RotationType> findPotentialRotations(NPC npc, int stage) {
         log.info("Finding potential rotations");
-        return lookup.stream().filter(type -> type.getZulrahPhases().get(stage).getZulrahNpc().equals(ZulrahNpc.valueOf(npc, false))).collect(Collectors.toList());
+        ZulrahNpc observed = ZulrahNpc.valueOf(npc, false);
+        if (observed == null || stage < 0) {
+            log.warn("Cannot match rotations: observed={} stage={}", observed, stage);
+            return new ArrayList<>();
+        }
+        return lookup.stream()
+                .filter(type -> stage < type.getZulrahPhases().size())
+                .filter(type -> type.getZulrahPhases().get(stage).getZulrahNpc().equals(observed))
+                .collect(Collectors.toList());
     }
 
     private static ZulrahPhase add(ZulrahType type, StandLocation standLocation, Rs2PrayerEnum prayer) {

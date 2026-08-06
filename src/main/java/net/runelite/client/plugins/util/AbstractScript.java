@@ -8,12 +8,11 @@ import net.runelite.client.plugins.microbot.api.tileitem.Rs2TileItemCache;
 import net.runelite.client.plugins.microbot.api.tileobject.Rs2TileObjectCache;
 
 import javax.inject.Inject;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 
 @Slf4j
 public abstract class AbstractScript extends Script {
@@ -25,7 +24,8 @@ public abstract class AbstractScript extends Script {
     @Inject
     protected Rs2TileItemCache rs2TileItemCache;
 
-    private List<Future<?>> futures;
+    // Thread-safe: futures are submitted from both the tick thread and worker threads.
+    private final List<Future<?>> futures = new CopyOnWriteArrayList<>();
 
     public abstract void tick();
 
@@ -39,12 +39,12 @@ public abstract class AbstractScript extends Script {
 
     @Override
     public void shutdown() {
-        /* this.futures.forEach(future -> {
+        futures.forEach(future -> {
             if (future != null && !future.isCancelled()) {
-                log.info("Stopping future.");
                 future.cancel(true);
             }
-        }); */
+        });
+        futures.clear();
 
         onShutdown();
         super.shutdown();
@@ -57,7 +57,7 @@ public abstract class AbstractScript extends Script {
     @Override
     public boolean run() {
         initialize();
-        futures = new ArrayList<>();
+        futures.clear();
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
                 if (!Microbot.isLoggedIn() || !super.run()) {
