@@ -18,8 +18,26 @@ import net.runelite.http.api.worlds.WorldType;
 
 import java.util.concurrent.TimeUnit;
 
+import static net.runelite.client.plugins.microbot.util.player.Rs2Player.getBoostedSkillLevel;
+
 @Slf4j
 public class PotionManagerScript extends Script {
+
+    private static void usePrayerRestoration() {
+        Rs2ItemModel restore = Rs2Inventory.get(it ->
+                it != null && it.getName().equals("Moonlight moth"));
+
+        if (restore == null) {
+            log.info("Couldn't find moonlight moth.");
+            return;
+        }
+
+        log.info("Restoring prayer.");
+        Rs2Inventory.interact(restore, "Release");
+        sleep(0, 750);
+        Rs2Inventory.dropAll("Butterfly jar");
+    }
+
     public boolean run(AIOFighterConfig config) {
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
@@ -35,6 +53,10 @@ public class PotionManagerScript extends Script {
                 // Always attempt to drink antifire potion
                 if (Rs2Player.drinkAntiFirePotion()) {
                     Rs2Player.waitForAnimation();
+                }
+
+                if (getBoostedSkillLevel(Skill.PRAYER) < Rs2Random.between(8, 15)) {
+                    usePrayerRestoration();
                 }
 
                 // Always attempt to drink prayer potion
