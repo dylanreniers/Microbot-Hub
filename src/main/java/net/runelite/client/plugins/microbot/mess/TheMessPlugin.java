@@ -24,7 +24,7 @@ import java.time.Instant;
 
 @PluginDescriptor(
         name = PluginConstants.BOLADO + "The Mess",
-        authors = {"Bolado"},
+        authors = { "Bolado" },
         version = TheMessPlugin.version,
         minClientVersion = "1.9.8",
         description = "A plugin to automate cooking in The Mess hall.",
@@ -38,43 +38,54 @@ import java.time.Instant;
 @Slf4j
 public class TheMessPlugin extends Plugin {
 
-    static final String version = "1.0.2";
-    @Inject
-    TheMessScript theMessScript;
-    @Inject
-    private TheMessConfig config;
-    @Inject
-    private OverlayManager overlayManager;
+    static final String version = "1.1.0";
 
     @Inject
-    private TheMessOverlay overlay;
-    @Getter
-    @Setter
-    private Instant startTime;
-    @Getter
-    @Setter
-    private long runningTime;
-    @Getter
-    @Setter
-    private Integer startXp = 0;
-    @Getter
-    @Setter
-    private Integer xpGained = 0;
-    @Getter
-    @Setter
-    private Integer currentLevel = 0;
-    @Getter
-    @Setter
-    private Integer xpPerHour = 0;
-    @Getter
-    @Setter
-    private Level defaultLoggerLevel;
-    private Logger logger;
+    private TheMessConfig config;
 
     @Provides
     TheMessConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(TheMessConfig.class);
     }
+
+    @Inject
+    private OverlayManager overlayManager;
+
+    @Inject
+    private TheMessOverlay overlay;
+
+    @Inject
+    TheMessScript theMessScript;
+
+    @Getter
+    @Setter
+    private Instant startTime;
+
+    @Getter
+    @Setter
+    private long runningTime;
+
+    @Getter
+    @Setter
+    private Integer startXp = 0;
+
+    @Getter
+    @Setter
+    private Integer xpGained = 0;
+
+    @Getter
+    @Setter
+    private Integer currentLevel = 0;
+
+    @Getter
+    @Setter
+    private Integer xpPerHour = 0;
+
+    @Getter
+    @Setter
+    private Level defaultLoggerLevel;
+
+    private Logger logger;
 
     @Override
     protected void startUp() throws AWTException {
@@ -86,7 +97,7 @@ public class TheMessPlugin extends Plugin {
             logger.setLevel(Level.DEBUG);
         }
 
-        Microbot.log(org.slf4j.event.Level.INFO, "The Mess Plugin is starting up...");
+        Microbot.log(org.slf4j.event.Level.INFO,"The Mess Plugin is starting up...");
 
         setStartTime(Instant.now());
         setStartXp(Microbot.getClient().getSkillExperience(Skill.COOKING));
@@ -98,7 +109,7 @@ public class TheMessPlugin extends Plugin {
     }
 
     protected void shutDown() {
-        Microbot.log(org.slf4j.event.Level.INFO, "The Mess Plugin is shutting down...");
+        Microbot.log(org.slf4j.event.Level.INFO,"The Mess Plugin is shutting down...");
         if (logger != null && defaultLoggerLevel != null) {
             logger.setLevel(defaultLoggerLevel);
         }

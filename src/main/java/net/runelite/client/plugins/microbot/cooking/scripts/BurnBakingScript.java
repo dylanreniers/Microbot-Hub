@@ -1,10 +1,6 @@
 package net.runelite.client.plugins.microbot.cooking.scripts;
 
-import net.runelite.api.AnimationID;
-import net.runelite.api.GameObject;
-import net.runelite.api.NPC;
-import net.runelite.api.ObjectID;
-import net.runelite.api.Skill;
+import net.runelite.api.*;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
@@ -19,8 +15,7 @@ import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.keyboard.Rs2Keyboard;
-import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
-import net.runelite.client.plugins.microbot.util.npc.Rs2NpcModel;
+import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
@@ -33,44 +28,14 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import static net.runelite.api.ItemID.BUCKET_OF_MILK;
-import static net.runelite.api.ItemID.BUCKET_OF_WATER;
-import static net.runelite.api.ItemID.POT_OF_FLOUR;
+import static net.runelite.api.ItemID.*;
 import static net.runelite.api.gameval.ItemID.CAKE_TIN;
 import static net.runelite.api.gameval.ItemID.EGG;
-import static net.runelite.client.plugins.microbot.util.npc.Rs2Npc.getNpcs;
 import static net.runelite.client.plugins.microbot.util.player.Rs2Player.toggleRunEnergy;
 
 
 public class BurnBakingScript extends Script {
     private boolean cookingBread;
-
-    public static Rs2NpcModel getBankerNPC() {
-        return Rs2Npc.getNpcs()
-                .filter(npc -> npc.getComposition() != null && npc.getComposition().getActions() != null &&
-                        Arrays.asList(npc.getComposition().getActions()).contains("Bank"))
-                .min(Comparator.comparingInt(npc -> npc.getWorldLocation().distanceTo(Microbot.getClient().getLocalPlayer().getWorldLocation())))
-                .orElse(null);
-    }
-
-    public static List<Rs2NpcModel> getBankerNPCs() {
-        return getNpcs()
-                .filter(value -> (value.getComposition() != null && value.getComposition().getActions() != null &&
-                        Arrays.asList(value.getComposition().getActions()).contains("Bank")))
-                .limit(4) // Collect only up to 4 bankers
-                .collect(Collectors.toList());
-    }
-
-    public static void manageRunEnergy() {
-        int energy = Microbot.getClient().getEnergy();  // Get current run energy level
-        boolean isRunEnabled = Microbot.getVarbitPlayerValue(173) == 1;  // Check if run is enabled
-
-        if (energy > 25 && !isRunEnabled) {
-            toggleRunEnergy(true);  // Enable run if energy is above 60% and run is not enabled
-        } else if (energy <= 25 && isRunEnabled) {
-            toggleRunEnergy(false);  // Disable run if energy is 60% or lower and run is enabled
-        }
-    }
 
     public boolean run(AutoCookingConfig config) {
         Microbot.enableAutoRunOn = false;
@@ -84,151 +49,146 @@ public class BurnBakingScript extends Script {
                 if (!super.run()) return;
                 long startTime = System.currentTimeMillis();
 
-                int currentCookingLevel = Microbot.getClient().getRealSkillLevel(Skill.COOKING);
+                    int currentCookingLevel = Microbot.getClient().getRealSkillLevel(Skill.COOKING);
 
-                // If the target cooking level is reached, stop the script
-                if (currentCookingLevel >= targetCookingLevel) {
-                    walkToBanker();
-                    if (!Rs2Bank.isOpen()) {
-                        openNearestBank();
-                    }
-                    sleepUntil(Rs2Bank::isOpen, 30000);
-
-                    Rs2Bank.depositAll();
-                    sleep(1200);
-                    Rs2Bank.setWithdrawAsNote();
-                    sleep(1200);
-
-                    if (Rs2Bank.hasWithdrawAsNote()) {
-                        withdrawAndCheck("Pot");
-                        withdrawAndCheck("Bucket");
-                        withdrawAndCheck("Cake tin");
-                        withdrawAndCheck("Uncooked cake");
-                        withdrawAndCheck("Uncooked stew");
-                        withdrawAndCheck("Bread dough");
-                        withdrawAndCheck("Cake");
-                        withdrawAndCheck("Bread");
-                        withdrawAndCheck("Stew");
-                        withdrawAndCheck("Burnt bread");
-                        withdrawAndCheck("Burnt cake");
-                        withdrawAndCheck("Burnt stew");
-                    }
-
-                    sleep(1200);
-                    Rs2Player.logout();
-                    sleep(5000);
-                    shutdown();
-                    System.out.println(targetCookingLevel + " cooking, opened bank, withdrew all items and stopped");
-                    return;
-                }
-
-
-                // If cooking level is between 25 and 40, decide to cook stew
-                if (currentCookingLevel < 41 && currentCookingLevel >= 25 && shouldCookStew() && Rs2Inventory.hasItem("Uncooked stew")) {
-                    System.out.println("WeShouldCookStew");
-                    Microbot.log("You've tried to prepare cake between level 25 and 40 so maybe you wanna make stew. Making stew now.");
-                    manageRunEnergy();
-                    cookItem("Uncooked stew");
-                    Microbot.naturalMouse.moveOffScreen();
-                    sleepUntilIngredientHasRunOut("Uncooked stew");
-                    return;// Placeholder for your cooking stew logic
-                }
-
-                // If cooking level is below 25, decide to cook bread
-                if (currentCookingLevel < 25) {
-                    prepareBread();
-                    return;
-                }
-
-                // If cooking level is exactly 25, prepare stew
-                if (currentCookingLevel == 25) {
-                    System.out.println("WeShouldPrepareStew");
-                    prepareStew();  // Placeholder for your stew preparation logic
-                    return;
-                }
-
-                // Check if bank is open and we are in the intermediate level range (40 to target level)
-                if (Rs2Bank.isOpen() && currentCookingLevel >= 40 && Rs2Bank.hasItem(1944)) {
-                    System.out.println("Cooking level is between 40 and " + targetCookingLevel + " and Egg is in the bank");
-                    if (Rs2Inventory.contains("Bucket", "Pot") || Rs2Inventory.isEmpty()) {
-                        prepareCake();
-                    }
-                } else if (!Rs2Bank.isOpen()) {
-                    // Check if inventory has required items
-                    if (Rs2Inventory.contains(1944) && Rs2Inventory.contains("Bucket of milk") &&
-                            Rs2Inventory.contains("Pot of flour") && Rs2Inventory.contains("Cake tin")) {
-                        prepareCake();
-                    } else if (Rs2Inventory.contains("Cake") && Rs2Inventory.contains("Burnt cake") || !Rs2Inventory.hasItem("Uncooked cake")) {
-                        System.out.println("Cake and burnt cake found and no uncooked cake, opening bank");
+                    // If the target cooking level is reached, stop the script
+                    if (currentCookingLevel >= targetCookingLevel) {
                         walkToBanker();
                         if (!Rs2Bank.isOpen()) {
                             openNearestBank();
                         }
                         sleepUntil(Rs2Bank::isOpen, 30000);
-                        if (Rs2Bank.isOpen()) {
-                            Rs2Bank.depositAll();
-                            sleepUntil(Rs2Inventory::isEmpty, 5000);
-                            if (Rs2Bank.hasItem("Uncooked cake") && !Rs2Bank.hasItem("Egg")) {
-                                Rs2Bank.withdrawX("Uncooked cake", 14);
-                                sleepUntil(() -> Rs2Inventory.hasItem("Uncooked cake"), 5000);
 
-                                sleep(400, 900);
-                                Rs2Bank.closeBank();
-                                manageRunEnergy();
-                                if (Rs2Inventory.hasItem("Uncooked cake")) {
-                                    cookItem("Uncooked cake");
-                                }  // Placeholder for your cake cooking logic
-                            }
-                        } else if (Rs2Bank.hasItem("Egg") && Rs2Bank.hasItem("Cake tin") && Rs2Bank.hasItem("Bucket of milk") && Rs2Bank.hasItem("Pot of flour")) {
-                            prepareCake();
+                        Rs2Bank.depositAll();
+                        sleep(1200);
+                        Rs2Bank.setWithdrawAsNote();
+                        sleep(1200);
+
+                        if (Rs2Bank.hasWithdrawAsNote()) {
+                            withdrawAndCheck("Pot");
+                            withdrawAndCheck("Bucket");
+                            withdrawAndCheck("Cake tin");
+                            withdrawAndCheck("Uncooked cake");
+                            withdrawAndCheck("Uncooked stew");
+                            withdrawAndCheck("Bread dough");
+                            withdrawAndCheck("Cake");
+                            withdrawAndCheck("Bread");
+                            withdrawAndCheck("Stew");
+                            withdrawAndCheck("Burnt bread");
+                            withdrawAndCheck("Burnt cake");
+                            withdrawAndCheck("Burnt stew");
                         }
 
+                        sleep(1200);
+                        Rs2Player.logout();
+                        sleep(5000);
+                        shutdown();
+                        System.out.println(targetCookingLevel + " cooking, opened bank, withdrew all items and stopped");
+                        return;
+                    }
+
+
+                    // If cooking level is between 25 and 40, decide to cook stew
+                    if (currentCookingLevel < 41 && currentCookingLevel >= 25 && shouldCookStew() && Rs2Inventory.hasItem("Uncooked stew")) {
+                        System.out.println("WeShouldCookStew");
+                        Microbot.log("You've tried to prepare cake between level 25 and 40 so maybe you wanna make stew. Making stew now.");
+                        manageRunEnergy();
+                        cookItem("Uncooked stew");
+                        Microbot.naturalMouse.moveOffScreen();
+                        sleepUntilIngredientHasRunOut("Uncooked stew");
+                        return;// Placeholder for your cooking stew logic
+                    }
+
+                    // If cooking level is below 25, decide to cook bread
+                    if (currentCookingLevel < 25) {
+                        prepareBread();
+                        return;
+                    }
+
+                    // If cooking level is exactly 25, prepare stew
+                    if (currentCookingLevel == 25) {
+                        System.out.println("WeShouldPrepareStew");
+                        prepareStew();  // Placeholder for your stew preparation logic
+                        return;
+                    }
+
+                    // Check if bank is open and we are in the intermediate level range (40 to target level)
+                    if (Rs2Bank.isOpen() && currentCookingLevel >= 40 && Rs2Bank.hasItem(1944)) {
+                        System.out.println("Cooking level is between 40 and " + targetCookingLevel + " and Egg is in the bank");
+                        if (Rs2Inventory.contains("Bucket", "Pot") || Rs2Inventory.isEmpty()) {
+                            prepareCake();
+                        }
+                    } else if (!Rs2Bank.isOpen()) {
+                        // Check if inventory has required items
+                        if (Rs2Inventory.contains(1944) && Rs2Inventory.contains("Bucket of milk") &&
+                                Rs2Inventory.contains("Pot of flour") && Rs2Inventory.contains("Cake tin")) {
+                            prepareCake();
+                        } else if (Rs2Inventory.contains("Cake") && Rs2Inventory.contains("Burnt cake") || !Rs2Inventory.hasItem("Uncooked cake")) {
+                            System.out.println("Cake and burnt cake found and no uncooked cake, opening bank");
+                            walkToBanker();
+                            if (!Rs2Bank.isOpen()) {
+                                openNearestBank();
+                            }
+                            sleepUntil(Rs2Bank::isOpen, 30000);
+                            if (Rs2Bank.isOpen()) {
+                                Rs2Bank.depositAll();
+                                sleepUntil(Rs2Inventory::isEmpty, 5000);
+                                if (Rs2Bank.hasItem("Uncooked cake") && !Rs2Bank.hasItem("Egg")) {
+                                    Rs2Bank.withdrawX("Uncooked cake", 14);
+                                    sleepUntil(() -> Rs2Inventory.hasItem("Uncooked cake"), 5000);
+
+                                    sleep(400, 900);
+                                    Rs2Bank.closeBank();
+                                    manageRunEnergy();
+                                    if (Rs2Inventory.hasItem("Uncooked cake")) {
+                                        cookItem("Uncooked cake");
+                                    }  // Placeholder for your cake cooking logic
+                                }
+                            } else if (Rs2Bank.hasItem("Egg") && Rs2Bank.hasItem("Cake tin") && Rs2Bank.hasItem("Bucket of milk") && Rs2Bank.hasItem("Pot of flour"))
+                            {prepareCake();}
+
+                            if (Rs2Inventory.itemQuantity("Uncooked cake") == 7 && currentCookingLevel >= 40) {
+                                prepareCake();
+                            }
+                        }
                         if (Rs2Inventory.itemQuantity("Uncooked cake") == 7 && currentCookingLevel >= 40) {
                             prepareCake();
                         }
-                    }
-                    if (Rs2Inventory.itemQuantity("Uncooked cake") == 7 && currentCookingLevel >= 40) {
-                        prepareCake();
-                    }
 
-                    if (Rs2Inventory.itemQuantity("Uncooked cake") == 14 && currentCookingLevel >= 40) {
-                        cookItem("Uncooked cake");
-                        sleep(10000);
-                    }
-                }
-
-                // Additional check if the bank is open
-                if (Rs2Bank.isOpen() && currentCookingLevel >= 40 && Rs2Bank.hasItem(1944)) {
-                    System.out.println("Egg found after opening bank.");
-                    prepareCake();
-                } else if (Rs2Bank.isOpen() && currentCookingLevel >= 40) {
-                    if (Rs2Bank.hasItem("Uncooked cake")) {
-                        System.out.println("bank has uncooked cake, withdrawing to cook");
-                        Rs2Bank.depositAll();
-                        Rs2Bank.withdrawX("Uncooked cake", 14);
-                        sleep(400, 900);
-                        Rs2Bank.closeBank();
-                        manageRunEnergy();
-                        cookItem("Uncooked cake");
-                    }
-                }
-
-                // If cooking level is between 25 and 40, and inventory doesn't have uncooked stew, prepare stew
-                if (currentCookingLevel < 40 && !Rs2Inventory.contains("Uncooked stew")) {
-                    System.out.println("entering prepare stew");
-                    if (!Rs2Player.isAnimating()) {
-                        walkToBanker();
-                        Rs2Npc.getBankerNPC();
-                        if (!Rs2Bank.isOpen()) {
-                            openNearestBank();
+                        if (Rs2Inventory.itemQuantity("Uncooked cake") == 14 && currentCookingLevel >= 40) {
+                            cookItem("Uncooked cake");
+                            sleep(10000);
                         }
-                        sleepUntil(Rs2Bank::isOpen, 30000);
                     }
-                    sleep(1200, 1600);
-                    prepareStew();  // Call the prepareStew method if the conditions are met
-                }
 
-                System.out.println("End of loop");
+                    // Additional check if the bank is open
+                    if (Rs2Bank.isOpen() && currentCookingLevel >= 40 && Rs2Bank.hasItem(1944)) {
+                        System.out.println("Egg found after opening bank.");
+                        prepareCake();
+                    } else if (Rs2Bank.isOpen() && currentCookingLevel >= 40){
+                        if (Rs2Bank.hasItem("Uncooked cake")) {
+                            System.out.println("bank has uncooked cake, withdrawing to cook");
+                            Rs2Bank.depositAll();
+                            Rs2Bank.withdrawX("Uncooked cake", 14);
+                            sleep(400,900);
+                            Rs2Bank.closeBank();
+                            manageRunEnergy();
+                            cookItem("Uncooked cake");
+                        }
+                    }
+
+                    // If cooking level is between 25 and 40, and inventory doesn't have uncooked stew, prepare stew
+                    if (currentCookingLevel < 40 && !Rs2Inventory.contains("Uncooked stew")) {
+                        System.out.println("entering prepare stew");
+                        if (!Rs2Player.isAnimating()) { walkToBanker();
+                            getBankerNPC();
+                            if (!Rs2Bank.isOpen()) {openNearestBank();}
+                            sleepUntil(Rs2Bank::isOpen, 30000);}
+                        sleep(1200, 1600);
+                        prepareStew();  // Call the prepareStew method if the conditions are met
+                    }
+
+                    System.out.println("End of loop");
 
 
                 long endTime = System.currentTimeMillis();
@@ -268,9 +228,8 @@ public class BurnBakingScript extends Script {
             return;
         }
 
-        // Select a random banker from the list
-        NPC banker = bankers.get(random.nextInt(bankers.size()));
-        LocalPoint bankerLocation = banker.getLocalLocation();
+        Rs2NpcModel banker = bankers.get(random.nextInt(bankers.size()));
+        LocalPoint bankerLocation = banker.getNpc().getLocalLocation();
 
         if (bankerLocation == null) {
             Microbot.log("Failed to get the banker's location.");
@@ -278,7 +237,7 @@ public class BurnBakingScript extends Script {
         }
 
         WorldPoint bankerWorldLocation = WorldPoint.fromLocal(Microbot.getClient(), bankerLocation);
-        WorldPoint playerWorldLocation = Microbot.getClient().getLocalPlayer().getWorldLocation();
+        WorldPoint playerWorldLocation = Microbot.getClientThread().invoke(() -> Microbot.getClient().getLocalPlayer().getWorldLocation());
 
         // Check if the player is within 4 tiles of the banker
         if (playerWorldLocation.distanceTo(bankerWorldLocation) <= 4) {
@@ -320,11 +279,19 @@ public class BurnBakingScript extends Script {
         }
     }
 
+    public static Rs2NpcModel getBankerNPC() {
+        return Microbot.getRs2NpcCache().query()
+                .where(npc -> npc.getNpc() != null && npc.getNpc().getComposition() != null
+                        && npc.getNpc().getComposition().getActions() != null
+                        && Arrays.asList(npc.getNpc().getComposition().getActions()).contains("Bank"))
+                .nearest();
+    }
+
     public void openNearestBank() {
         if (!Rs2Bank.isOpen()) {
-            Rs2NpcModel nearestBanker = getBankerNPC();  // Find the closest NPC that has "Bank" action
+            Rs2NpcModel nearestBanker = getBankerNPC();
             if (nearestBanker != null) {
-                Rs2Npc.interact(nearestBanker, "Bank");
+                nearestBanker.click("Bank");
                 sleepUntil(Rs2Bank::isOpen, 5000);
             }
         }
@@ -354,6 +321,18 @@ public class BurnBakingScript extends Script {
         System.out.println("Player has stopped walking.");
     }
 
+
+
+    public static List<Rs2NpcModel> getBankerNPCs() {
+        List<Rs2NpcModel> bankers = Microbot.getRs2NpcCache().query()
+                .where(npc -> npc.getNpc() != null && npc.getNpc().getComposition() != null
+                        && npc.getNpc().getComposition().getActions() != null
+                        && Arrays.asList(npc.getNpc().getComposition().getActions()).contains("Bank"))
+                .toList();
+        return bankers.size() > 4 ? bankers.subList(0, 4) : bankers;
+    }
+
+
     private void prepareBread() {
         int currentCookingLevel = Microbot.getClient().getRealSkillLevel(Skill.COOKING);
 
@@ -364,26 +343,22 @@ public class BurnBakingScript extends Script {
             // Step 2: Check if we need to open the bank and find ingredients
             if (!Rs2Inventory.hasItem("Pot of flour", true) || !Rs2Inventory.hasItem("Bucket of water", true)) {
                 if (!Rs2Bank.isOpen()) {
-                    if (Rs2Inventory.hasItem("Bread", true) && !Rs2Inventory.hasItem("Bread dough", true)) {
+                    if(Rs2Inventory.hasItem("Bread", true) && !Rs2Inventory.hasItem("Bread dough", true)){
                         System.out.println("going to the bank to restock bread dough");
                         walkToBanker();
-                        if (!Rs2Bank.isOpen()) {
-                            openNearestBank();
-                        }
+                        if (!Rs2Bank.isOpen()) {openNearestBank();}
                         sleepUntil(Rs2Bank::isOpen, 25000);
                     }
                     if (Rs2Inventory.hasItem("Bread", true) &&
-                            Rs2Inventory.hasItem("Burnt bread", true)) {
+                        Rs2Inventory.hasItem("Burnt bread", true)) {
                         System.out.println("sleeping until no bread dough");
                         sleepUntilIngredientHasRunOut("Bread dough");
                     }
 
-                    if (!cookingBread) {
+                    if(!cookingBread) {
                         System.out.println("going to the bank to combine bread");
                         walkToBanker();
-                        if (!Rs2Bank.isOpen()) {
-                            openNearestBank();
-                        }
+                        if (!Rs2Bank.isOpen()) {openNearestBank();}
                         sleepUntil(Rs2Bank::isOpen, 25000);
                     }
 
@@ -415,29 +390,22 @@ public class BurnBakingScript extends Script {
                         if (!Rs2Inventory.hasItem(POT_OF_FLOUR) || !Rs2Inventory.hasItem(BUCKET_OF_WATER)) {
                             Microbot.log("trying to withdrawX didn't populate inventory, so withdrawing all");
                             Rs2Bank.openBank();
-                            if (!Rs2Inventory.hasItem(POT_OF_FLOUR)) {
-                                Rs2Bank.withdrawAll(POT_OF_FLOUR);
-                            }
-                            if (!Rs2Inventory.hasItem(BUCKET_OF_WATER)) {
-                                Rs2Bank.withdrawAll(BUCKET_OF_WATER);
-                            }
+                            if (!Rs2Inventory.hasItem(POT_OF_FLOUR)) {Rs2Bank.withdrawAll(POT_OF_FLOUR);}
+                            if (!Rs2Inventory.hasItem(BUCKET_OF_WATER)) {Rs2Bank.withdrawAll(BUCKET_OF_WATER);}
                         }
                     } else {
                         Rs2Bank.depositAll(); //if inventory is not empty deposit all
                         System.out.println("Missing ingredients in the bank for bread-making.");
                         Microbot.log("Could not find flour or water in the bank for bread-making.");
                     }
-                } else if (!Rs2Bank.isOpen() && Rs2Inventory.isEmpty()) {
-                    Rs2Bank.openBank();
-                }
+                } else if (!Rs2Bank.isOpen() && Rs2Inventory.isEmpty()) {Rs2Bank.openBank();}
             }
             // Step 5: If we already have flour and water in the inventory
             else if (Rs2Inventory.hasItem(POT_OF_FLOUR) && Rs2Inventory.hasItem(BUCKET_OF_WATER)) {
                 // Combine flour and water to make bread dough
                 if (Rs2Bank.isOpen()) {
                     Rs2Bank.closeBank();
-                    sleep(900, 1300);
-                }
+                    sleep(900, 1300);}
 
                 Rs2Inventory.combineClosest("Pot of flour", "Bucket of water");
 
@@ -472,9 +440,7 @@ public class BurnBakingScript extends Script {
             // Open bank if it's not open
             if (!Rs2Bank.isOpen()) {
                 walkToBanker();
-                if (!Rs2Bank.isOpen()) {
-                    openNearestBank();
-                }
+                if (!Rs2Bank.isOpen()) {openNearestBank();}
                 sleepUntil(Rs2Bank::isOpen, 30000);
             }
 
@@ -532,6 +498,7 @@ public class BurnBakingScript extends Script {
         Rs2Bank.closeBank();
     }
 
+
     private void interactWithBowlAndMeat(String meatType) {
         // Check if the bank is closed and the necessary items are available
         if (!Rs2Bank.isOpen() && Rs2Inventory.hasItem("Incomplete stew") && Rs2Inventory.hasItem(meatType)) {
@@ -559,6 +526,8 @@ public class BurnBakingScript extends Script {
         }
     }
 
+
+
     // Interaction with Bowl of Water and Potato
     private void interactWithBowlAndPotato() {
 
@@ -567,13 +536,13 @@ public class BurnBakingScript extends Script {
         }
 
         if (!Rs2Bank.isOpen()) {
-            Rs2Inventory.combineClosest("Bowl of water", "Potato");
+            Rs2Inventory.combineClosest("Bowl of water","Potato");
             sleep(1550, 2180);
             Rs2Keyboard.keyPress(KeyEvent.VK_SPACE);
             sleep(100, 300);
             Rs2Keyboard.keyRelease(KeyEvent.VK_SPACE);
             Microbot.naturalMouse.moveOffScreen();
-            sleep(1500, 3000);
+            sleep(1500,3000);
             sleepUntilIngredientHasRunOut("Potato");
 
         }
@@ -605,6 +574,7 @@ public class BurnBakingScript extends Script {
         }
     }
 
+
     private void cookItem(String uncookedItemName) {
         System.out.println("Entering cookItem");
 
@@ -627,6 +597,19 @@ public class BurnBakingScript extends Script {
                 || Rs2Dialogue.isInDialogue() || Rs2Player.isMoving(), 500, 30000);
     }
 
+    public static void manageRunEnergy() {
+        int energy = Microbot.getClient().getEnergy();  // Get current run energy level
+        boolean isRunEnabled = Microbot.getVarbitPlayerValue(173) == 1;  // Check if run is enabled
+
+        if (energy > 25 && !isRunEnabled) {
+            toggleRunEnergy(true);  // Enable run if energy is above 60% and run is not enabled
+        } else if (energy <= 25 && isRunEnabled) {
+            toggleRunEnergy(false);  // Disable run if energy is 60% or lower and run is enabled
+        }
+    }
+
+
+
     private boolean hasRawItem(String uncookedItemName) {
         // Check the bank or inventory for the uncooked item
         if (Rs2Bank.isOpen()) {
@@ -647,61 +630,39 @@ public class BurnBakingScript extends Script {
         }
         System.out.println("Player location: " + playerPosition);
 
-        // Step 2: Retrieve all game objects within 15 tiles of the player
-        List<GameObject> nearbyObjects = Rs2GameObject.getGameObjects();
-        if (nearbyObjects == null || nearbyObjects.isEmpty()) {
-            System.out.println("Found 0 nearby objects.");
+        int[] rangeObjectIds = getRangeObjectIds();
+        net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel rangeObj = Microbot.getRs2TileObjectCache().query()
+                .withIds(rangeObjectIds)
+                .nearest();
+        if (rangeObj == null) {
+            System.out.println("No range found within nearby tiles.");
             return;
         }
 
-        // Step 3: Fetch the list of range object IDs from the getRangeObjectIds method
-        int[] rangeObjectIds = getRangeObjectIds();
+        Rs2Camera.turnTo(rangeObj.getLocalLocation());
 
-        // Step 4: Iterate over nearby objects to find any matching range or stove
-        boolean rangeFound = false;
-        for (GameObject obj : nearbyObjects) {
-            int objId = obj.getId();
-
-            // Step 5: Check if the object ID matches any of the range object IDs
-            if (Arrays.stream(rangeObjectIds).anyMatch(id -> id == objId)) {
-
-                Rs2Camera.turnTo(obj.getLocalLocation());
-
-
-                // If a match is found, interact with the object using the "Cook" action
-                boolean interactionSuccess = Rs2GameObject.interact(obj, "Cook");
-                if (interactionSuccess) {
-                    System.out.println("Successfully interacted with object ID: " + objId + " using 'Cook'");
-                } else {
-                    System.out.println("Failed to interact with object ID: " + objId);
-                }
-
-                // Step 6: Wait until the player stops moving and the cooking widget appears
-                boolean widgetAppeared = sleepUntil(() -> !Rs2Player.isMoving() &&
-                        Rs2Widget.findWidget("How many would you like to cook?", null, false) != null, 35000);
-                if (widgetAppeared) {
-                    System.out.println("Cooking widget appeared, pressing space to confirm.");
-                    Rs2Keyboard.keyPress(KeyEvent.VK_SPACE);
-                } else {
-                    System.out.println("Cooking widget did not appear.");
-                }
-
-                rangeFound = true;
-                break;
-            } else {
-                System.out.println("No match for object ID: " + objId);
-            }
+        boolean interactionSuccess = rangeObj.click("Cook");
+        if (interactionSuccess) {
+            System.out.println("Successfully interacted with range using 'Cook'");
+        } else {
+            System.out.println("Failed to interact with range");
         }
 
-        if (!rangeFound) {
-            System.out.println("No range found within 15 tiles.");
+        boolean widgetAppeared = sleepUntil(() -> !Rs2Player.isMoving() &&
+                Rs2Widget.findWidget("How many would you like to cook?", null, false) != null, 35000);
+        if (widgetAppeared) {
+            System.out.println("Cooking widget appeared, pressing space to confirm.");
+            Rs2Keyboard.keyPress(KeyEvent.VK_SPACE);
+        } else {
+            System.out.println("Cooking widget did not appear.");
         }
     }
 
 
+
     // Method to fetch range object IDs from the ObjectID class
     private int[] getRangeObjectIds() {
-        return new int[]{
+        return new int[] {
                 ObjectID.STOVE, ObjectID.STOVE_9086, ObjectID.STOVE_9087, ObjectID.STOVE_12269,
                 ObjectID.GOBLIN_STOVE, ObjectID.GOBLIN_STOVE_25441, ObjectID.SIMPLE_STOVE,
                 ObjectID.COOKING_STOVE, ObjectID.STOVE_51540, ObjectID.COOKING_RANGE,
@@ -740,9 +701,7 @@ public class BurnBakingScript extends Script {
             }
             if (!Rs2Bank.isOpen()) {
                 walkToBanker();
-                if (!Rs2Bank.isOpen()) {
-                    openNearestBank();
-                }
+                if (!Rs2Bank.isOpen()) {openNearestBank();}
                 System.out.println("Attempted to open the bank");
                 sleepUntil(Rs2Bank::isOpen, 30000);
             }

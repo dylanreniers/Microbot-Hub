@@ -9,8 +9,8 @@ import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.ui.overlay.OverlayManager;
 
@@ -23,37 +23,44 @@ import java.util.Set;
         name = "MM Caves",
         description = "Automates chinning or bursting in Monkey Madness II caves",
         tags = {"mm", "mm2", "caves", "chinning", "bursting", "ranged", "magic"},
-        authors = {"FreakJoost"},
+        authors = { "FreakJoost" },
         minClientVersion = "2.0.6",
         isExternal = true,
         enabledByDefault = false
 )
 @Slf4j
 public class MmCavesPlugin extends Plugin {
-    public static String version = "1.0.1";
-    private final Set<Integer> checkedWorlds = new HashSet<>();
-    public String state = "test";
-    Instant startTime;
+    public static String version = "1.0.2";
+
     @Inject
     private MmCavesConfig config;
-    @Inject
-    private MmCavesScript script;
-    @Inject
-    private OverlayManager overlayManager;
-    @Inject
-    private MmCavesOverlay mmCavesOverlay;
-    @Getter
-    private WorldPoint myWorldPoint;
+    Instant startTime;
 
     @Provides
     MmCavesConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(MmCavesConfig.class);
     }
 
+    @Inject
+    private MmCavesScript script;
+
+    @Inject
+    private OverlayManager overlayManager;
+
+    @Inject
+    private MmCavesOverlay mmCavesOverlay;
+
+    @Getter
+    private WorldPoint myWorldPoint;
+
+    private final Set<Integer> checkedWorlds = new HashSet<>();
+
+    public String state = "test";
+
     @Override
     protected void startUp() {
         this.startTime = Instant.now();
-
+        
         if (overlayManager != null) {
             overlayManager.add(mmCavesOverlay);
         }

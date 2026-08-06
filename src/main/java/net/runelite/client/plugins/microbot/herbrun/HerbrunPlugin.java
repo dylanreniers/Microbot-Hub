@@ -26,21 +26,25 @@ import java.awt.*;
 @Slf4j
 
 public class HerbrunPlugin extends Plugin {
-    public static final String version = "1.1.0";
-    static String status;
-    @Inject
-    HerbrunScript herbrunScript;
+    public static final String version = "1.2.0";
     @Inject
     private HerbrunConfig config;
-    @Inject
-    private OverlayManager overlayManager;
-    @Inject
-    private HerbrunOverlay HerbrunOverlay;
 
     @Provides
     HerbrunConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(HerbrunConfig.class);
     }
+
+    @Inject
+    private OverlayManager overlayManager;
+    @Inject
+    private HerbrunOverlay HerbrunOverlay;
+
+    @Inject
+    HerbrunScript herbrunScript;
+
+    static String status;
+
 
     @Override
     protected void startUp() throws AWTException {

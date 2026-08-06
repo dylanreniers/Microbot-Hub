@@ -1,5 +1,6 @@
 package net.runelite.client.plugins.microbot.nmz;
 
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -11,12 +12,12 @@ import java.awt.*;
 
 public class NmzOverlay extends OverlayPanel {
     @Inject
-    NmzOverlay(NmzPlugin plugin) {
+    NmzOverlay(NmzPlugin plugin)
+    {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
         setNaughty();
     }
-
     @Override
     public Dimension render(Graphics2D graphics) {
         try {
@@ -40,7 +41,17 @@ public class NmzOverlay extends OverlayPanel {
                     .left("Will drink absorption at: " + NmzScript.minAbsorption)
                     .build());
 
-        } catch (Exception ex) {
+            panelComponent.getChildren().add(LineComponent.builder()
+                    .left("Overload (barrel):")
+                    .right(String.valueOf(Microbot.getVarbitValue(VarbitID.NZONE_POTION_3)))
+                    .build());
+
+            panelComponent.getChildren().add(LineComponent.builder()
+                    .left("Absorb (barrel):")
+                    .right(String.valueOf(Microbot.getVarbitValue(VarbitID.NZONE_POTION_4)))
+                    .build());
+
+} catch(Exception ex) {
             System.out.println(ex.getMessage());
         }
         return super.render(graphics);

@@ -1,13 +1,9 @@
 package net.runelite.client.plugins.microbot.herbrun;
 
-import net.runelite.client.config.Config;
-import net.runelite.client.config.ConfigGroup;
-import net.runelite.client.config.ConfigInformation;
-import net.runelite.client.config.ConfigItem;
-import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.*;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 
-@ConfigInformation("Automated Herb Runs across all patches with optional limpwurt farming<br/><br/>" +
+@ConfigInformation("Automated Herb Runs across all patches<br/><br/>" +
         "<b>Two Setup Options:</b><br/>" +
         "1. Inventory Setup: Use your custom inventory configuration<br/>" +
         "2. Auto Banking: Let the plugin handle everything!<br/><br/>" +
@@ -15,7 +11,6 @@ import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
         "• Farming tools (rake, spade, seed dibber, magic secateurs)<br/>" +
         "• Teleportation runes (law, air, earth, fire, water)<br/>" +
         "• Your selected herb seeds<br/>" +
-        "• Limpwurt seeds (if enabled)<br/>" +
         "• Your selected compost type<br/>" +
         "• Ectophial (if Morytania is enabled)<br/><br/>" +
         "Credits to liftedmango and See1Duck")
@@ -28,34 +23,6 @@ public interface HerbrunConfig extends Config {
             position = 0
     )
     String inventorySection = "inventory";
-    @ConfigSection(
-            name = "Auto Banking Settings",
-            description = "Configure automatic banking options",
-            position = 1
-    )
-    String autoSection = "autobanking";
-    @ConfigSection(
-            name = "General Settings",
-            description = "General plugin settings",
-            position = 2
-    )
-    String settingsSection = "settings";
-    //    @ConfigItem(
-//            keyName = "enableHarmony",
-//            name = "Enable Harmony Island Patch",
-//            description = "Enable Harmony Island patch in herb run",
-//            position = 9,
-//            section = locationSection
-//    )
-//    default boolean enableHarmony() {
-//        return false;
-//    }
-    @ConfigSection(
-            name = "Location toggles",
-            description = "Location toggles",
-            position = 3
-    )
-    String locationSection = "Location";
 
     @ConfigItem(
             keyName = "useInventorySetup",
@@ -78,6 +45,13 @@ public interface HerbrunConfig extends Config {
     default InventorySetup inventorySetup() {
         return null;
     }
+
+    @ConfigSection(
+            name = "Auto Banking Settings",
+            description = "Configure automatic banking options",
+            position = 1
+    )
+    String autoSection = "autobanking";
 
     @ConfigItem(
             keyName = "herbSeedType",
@@ -123,27 +97,12 @@ public interface HerbrunConfig extends Config {
         return true;
     }
 
-    @ConfigItem(
-            keyName = "enableLimpwurt",
-            name = "Enable Limpwurt Seeds",
-            description = "Plant limpwurt seeds in flower patches during herb run",
-            section = autoSection,
-            position = 4
+    @ConfigSection(
+            name = "General Settings",
+            description = "General plugin settings",
+            position = 2
     )
-    default boolean enableLimpwurt() {
-        return false;
-    }
-
-    @ConfigItem(
-            keyName = "enableWhiteberries",
-            name = "Enable picking whiteberries",
-            description = "Pick your whiteberries at the end of your run.",
-            section = autoSection,
-            position = 5
-    )
-    default boolean enableWhiteberries() {
-        return false;
-    }
+    String settingsSection = "settings";
 
     @ConfigItem(
             keyName = "goToBank",
@@ -253,6 +212,81 @@ public interface HerbrunConfig extends Config {
     )
     default boolean enableGuild() {
         return true;
+    }
+
+    //    @ConfigItem(
+//            keyName = "enableHarmony",
+//            name = "Enable Harmony Island Patch",
+//            description = "Enable Harmony Island patch in herb run",
+//            position = 9,
+//            section = locationSection
+//    )
+//    default boolean enableHarmony() {
+//        return false;
+//    }
+    @ConfigSection(
+            name = "Location toggles",
+            description = "Location toggles",
+            position = 3
+    )
+    String locationSection = "Location";
+
+    @ConfigSection(
+            name = "Allotments",
+            description = "Allotment patch settings",
+            position = 4
+    )
+    String allotmentSection = "allotments";
+
+    @ConfigItem(
+            keyName = "enableAllotments",
+            name = "Enable Allotments",
+            description = "Plant and harvest allotment patches at each location",
+            section = allotmentSection,
+            position = 0
+    )
+    default boolean enableAllotments() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "allotmentSeedType",
+            name = "Allotment Seed Type",
+            description = "Choose which allotment seeds to plant (3 seeds per patch)",
+            section = allotmentSection,
+            position = 1
+    )
+    default AllotmentSeedType allotmentSeedType() {
+        return AllotmentSeedType.SWEETCORN;
+    }
+
+    @ConfigSection(
+            name = "Flowers",
+            description = "Flower patch settings",
+            position = 5
+    )
+    String flowerSection = "flowers";
+
+    @ConfigItem(
+            keyName = "enableFlowers",
+            name = "Enable Flowers",
+            description = "Plant and harvest flower patches at each location",
+            section = flowerSection,
+            position = 0
+    )
+    default boolean enableFlowers() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "flowerSeedType",
+            name = "Flower Seed Type",
+            description = "Choose which flower seeds to plant (White lily protects all allotments)",
+            section = flowerSection,
+            position = 1
+    )
+    default FlowerSeedType flowerSeedType() {
+        return FlowerSeedType.LIMPWURT;
     }
 
 }

@@ -28,22 +28,23 @@ public class LocationOption {
     private final boolean membersOnly; // Indicates if this location is members-only
     private final Map<Quest, QuestState> requiredQuests;
     private final Map<Skill, Integer> requiredSkills;
-    private final Map<Integer, Integer> requiredVarbits;
-    private final Map<Integer, Integer> requiredVarplayer;
-    private final Map<Integer, Integer> requiredItems; //id key ,and amount value
+    private final Map<Integer,Integer> requiredVarbits;
+    private final Map<Integer,Integer> requiredVarplayer;
+    private final Map<Integer,Integer> requiredItems; //id key ,and amount value
+
 
 
     public LocationOption(WorldPoint worldPoint, String name, boolean membersOnly) {
-        this(worldPoint, name, membersOnly, new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>());
+        this(worldPoint, name,membersOnly, new HashMap<>(), new HashMap<>(),new HashMap<>(),new HashMap<>(),new HashMap<>());
     }
 
     public LocationOption(WorldPoint worldPoint, String name,
                           boolean membersOnly,
                           Map<Quest, QuestState> requiredQuests,
                           Map<Skill, Integer> requiredSkills,
-                          Map<Integer, Integer> requiredVarbits,
-                          Map<Integer, Integer> requiredVarplayer,
-                          Map<Integer, Integer> requiredItems
+                          Map <Integer,Integer> requiredVarbits,
+                          Map <Integer,Integer> requiredVarplayer,
+                          Map <Integer,Integer> requiredItems
     ) {
         this.worldPoint = worldPoint;
         this.name = name;
@@ -55,11 +56,9 @@ public class LocationOption {
         this.requiredItems = requiredItems != null ? new HashMap<>(requiredItems) : new HashMap<>();
 
     }
-
     public boolean canReach() {
         return Rs2Walker.canReach(worldPoint);
     }
-
     /**
      * Checks if the player meets all requirements for this location.
      * Improved implementation using streams for better performance and readability.
@@ -69,7 +68,7 @@ public class LocationOption {
             log.debug("LocationRequirement hasRequirements called outside client thread");
             return false;
         }
-        if (!Microbot.isLoggedIn()) {
+        if(!Microbot.isLoggedIn()){
             log.debug("Player is not logged in, cannot check location requirements");
             return false;
         }
@@ -131,9 +130,8 @@ public class LocationOption {
                     // todo check rune pouches ? when the ids runes..,
                     // bolt ammo slot ? when the ids is any ammo
 
-                    if (numberOfItems + numberOfItemsInPouch + numberOfItemsInBank < requiredAmount) {
-                        log.warn("Missing required item: {} x{} (have {})", itemId, requiredAmount, numberOfItems);
-                        Microbot.log("Missing required item: " + itemId + " x" + requiredAmount + " (have " + numberOfItems + ")");
+                    if (numberOfItems+numberOfItemsInPouch +numberOfItemsInBank< requiredAmount) {
+                        log.debug("Missing required item: {} x{} (have {})", itemId, requiredAmount, numberOfItems);
                         return false;
                     }
                     return true;

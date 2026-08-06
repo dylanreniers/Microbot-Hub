@@ -36,6 +36,7 @@ ext {
                 java {
                     srcDirs = ["src/main/java"]
                     include "${project.ext.getPluginsIncludePath()}/PluginConstants.java"
+                    include "${project.ext.getPluginsIncludePath()}/Rs2Leprechaun.java"
                     include "${project.ext.getPluginsIncludePath()}/${plugin.dir.name}/**"
                     // Include shared classes for microbot and custom plugins
                     if (project.ext.getPluginsIncludePath().contains("microbot") || 

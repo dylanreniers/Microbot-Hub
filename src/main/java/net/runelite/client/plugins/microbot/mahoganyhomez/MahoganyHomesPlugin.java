@@ -55,8 +55,8 @@ import java.util.stream.Collectors;
         isExternal = PluginConstants.IS_EXTERNAL
 )
 public class MahoganyHomesPlugin extends Plugin {
-    public static final String version = "0.0.8";
-    public static final List<Integer> PLANKS = Arrays.asList(ItemID.PLANK, ItemID.OAK_PLANK, ItemID.TEAK_PLANK, ItemID.MAHOGANY_PLANK);
+    public static final String version = "0.0.11";
+    private static final List<Integer> PLANKS = Arrays.asList(ItemID.PLANK, ItemID.OAK_PLANK, ItemID.TEAK_PLANK, ItemID.MAHOGANY_PLANK);
     private static final List<String> PLANK_NAMES = Arrays.asList("Plank", "Oak plank", "Teak plank", "Mahogany plank");
     private static final Map<Integer, Integer> MAHOGANY_HOMES_REPAIRS = new HashMap<>();
 
@@ -250,10 +250,12 @@ public class MahoganyHomesPlugin extends Plugin {
         overlayManager.add(textOverlay);
         overlayManager.add(highlightOverlay);
         overlayManager.add(plankSackOverlay);
-        if (client.getGameState() == GameState.LOGGED_IN) {
-            loadFromConfig();
-            clientThread.invoke(this::updateVarbMap);
-        }
+        clientThread.invokeLater(() -> {
+            if (client.getGameState() == GameState.LOGGED_IN) {
+                loadFromConfig();
+                updateVarbMap();
+            }
+        });
         script.run(config);
     }
 
@@ -271,6 +273,7 @@ public class MahoganyHomesPlugin extends Plugin {
         mapArrow = null;
         lastChanged = null;
         lastCompletedCount = -1;
+        plankCount = -1;
         contractTier = 0;
         script.shutdown();
     }
@@ -290,9 +293,11 @@ public class MahoganyHomesPlugin extends Plugin {
                 break;
             case MahoganyHomesConfig.HINT_ARROW_KEY:
                 client.clearHintArrow();
-                if (client.getLocalPlayer() != null) {
-                    refreshHintArrow(client.getLocalPlayer().getWorldLocation());
-                }
+                clientThread.invoke(() -> {
+                    if (client.getLocalPlayer() != null) {
+                        refreshHintArrow(client.getLocalPlayer().getWorldLocation());
+                    }
+                });
                 break;
         }
     }
@@ -312,7 +317,7 @@ public class MahoganyHomesPlugin extends Plugin {
 
     @Subscribe
     public void onUsernameChanged(UsernameChanged e) {
-        loadFromConfig();
+        clientThread.invokeLater(this::loadFromConfig);
     }
 
     @Subscribe
@@ -332,9 +337,11 @@ public class MahoganyHomesPlugin extends Plugin {
         }
 
         if (e.getEntry().getOption().equals(MahoganyHomesOverlay.CLEAR_OPTION)) {
-            setCurrentHome(null);
-            updateConfig();
-            lastChanged = null;
+            clientThread.invokeLater(() -> {
+                applyCurrentHome(null);
+                updateConfig();
+                lastChanged = null;
+            });
         }
 
 
@@ -450,8 +457,10 @@ public class MahoganyHomesPlugin extends Plugin {
         if (CONTRACT_FINISHED.matcher(Text.removeTags(e.getMessage())).matches()) {
             sessionContracts++;
             sessionPoints += getPointsForCompletingTask();
-            setCurrentHome(null);
-            updateConfig();
+            clientThread.invokeLater(() -> {
+                applyCurrentHome(null);
+                updateConfig();
+            });
         }
     }
 
@@ -629,7 +638,7 @@ public class MahoganyHomesPlugin extends Plugin {
         if (name != null) {
             // They may have asked for a contract but already had one, check the configs
             if (contractTier == 0) {
-                loadFromConfig();
+                clientThread.invoke(this::loadFromConfig);
                 // If the config matches the assigned value then do nothing
                 if (currentHome != null && currentHome.getName().equalsIgnoreCase(name)) {
                     return;
@@ -644,8 +653,11 @@ public class MahoganyHomesPlugin extends Plugin {
 
             for (final Home h : Home.values()) {
                 if (h.getName().equalsIgnoreCase(name) && (currentHome != h || isPluginTimedOut())) {
-                    setCurrentHome(h);
-                    updateConfig();
+                    final Home selected = h;
+                    clientThread.invokeLater(() -> {
+                        applyCurrentHome(selected);
+                        updateConfig();
+                    });
                     break;
                 }
             }
@@ -653,6 +665,10 @@ public class MahoganyHomesPlugin extends Plugin {
     }
 
     public void setCurrentHome(final Home h) {
+        clientThread.invokeLater(() -> applyCurrentHome(h));
+    }
+
+    private void applyCurrentHome(final Home h) {
         currentHome = h;
         client.clearHintArrow();
         lastChanged = Instant.now();
@@ -673,7 +689,6 @@ public class MahoganyHomesPlugin extends Plugin {
         if (config.displayHintArrows() && client.getLocalPlayer() != null) {
             refreshHintArrow(client.getLocalPlayer().getWorldLocation());
         }
-
     }
 
 
@@ -705,10 +720,10 @@ public class MahoganyHomesPlugin extends Plugin {
 
         try {
             final Home h = Home.valueOf(name.trim().toUpperCase());
-            setCurrentHome(h);
+            applyCurrentHome(h);
         } catch (IllegalArgumentException e) {
             log.warn("Stored unrecognized home: {}", name);
-            currentHome = null;
+            applyCurrentHome(null);
             configManager.setConfiguration(group, MahoganyHomesConfig.HOME_KEY, null);
         }
 
