@@ -48,7 +48,7 @@ public enum RotationType {
                     add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, null),
                     add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE),
                     add(ZulrahType.MELEE, StandLocation.EAST_PILLAR_N, null),
-                    add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
+                    add(ZulrahType.MAGIC, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
                     add(ZulrahType.RANGE, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
                     add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
                     add(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, null),
@@ -70,7 +70,7 @@ public enum RotationType {
                     add(ZulrahType.MAGIC, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
                     add(ZulrahType.RANGE, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
                     add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
-                    addJad(ZulrahType.MAGIC, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
+                    addJad(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
                     add(ZulrahType.MAGIC, StandLocation.NORTHEAST_NORTH, null),
                     // Final phase (wiki Rotation 4 phase 13): green in the middle, ranged x5.
                     add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE)));
