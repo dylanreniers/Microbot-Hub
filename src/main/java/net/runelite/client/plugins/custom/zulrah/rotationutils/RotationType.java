@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.NPC;
 import net.runelite.client.plugins.custom.zulrah.constants.StandLocation;
+import net.runelite.client.plugins.custom.zulrah.constants.VenomTiming;
 import net.runelite.client.plugins.custom.zulrah.constants.ZulrahType;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 
@@ -15,65 +16,68 @@ import java.util.stream.Collectors;
 
 @Slf4j
 public enum RotationType {
+    // Venom timing per phase is taken from the OSRS wiki Zulrah rotation descriptions: START = clouds
+    // spewed at the phase's opening (stay put — our tile is the safespot), END = clouds land after the
+    // attacks (pre-move to the next tile), NONE = no venom that phase.
     ROT_A("Rotation A",
             ImmutableList.of(
-                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, null),
+                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, null, VenomTiming.START),
                     add(ZulrahType.MELEE, StandLocation.NORTHEAST_NORTH, null),
                     add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
-                    add(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
+                    add(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE, VenomTiming.END),
                     add(ZulrahType.MELEE, StandLocation.WEST_PILLAR_N, null),
                     add(ZulrahType.MAGIC, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
-                    add(ZulrahType.RANGE, StandLocation.EAST_PILLAR_N, null),
-                    add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
-                    addJad(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
+                    add(ZulrahType.RANGE, StandLocation.EAST_PILLAR_N, null, VenomTiming.START),
+                    add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC, VenomTiming.END),
+                    addJad(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE, VenomTiming.END),
                     add(ZulrahType.MELEE, StandLocation.NORTHEAST_NORTH, null),
-                    // Final phase (wiki Rotation 1 phase 11): green in the middle, ranged x5.
-                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE))),
+                    // Final phase (wiki Rotation 1 phase 11): green in the middle, ranged x5, then 4 venom.
+                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE, VenomTiming.END))),
     ROT_B("Rotation B",
             ImmutableList.of(
-                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, null),
+                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, null, VenomTiming.START),
                     add(ZulrahType.MELEE, StandLocation.NORTHEAST_NORTH, null),
                     add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
-                    add(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N   , null),
-                    add(ZulrahType.MAGIC, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
+                    add(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N   , null, VenomTiming.START),
+                    add(ZulrahType.MAGIC, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC, VenomTiming.END),
                     add(ZulrahType.MELEE, StandLocation.WEST_PILLAR_N, null),
                     add(ZulrahType.RANGE, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
-                    add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
-                    addJad(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
+                    add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC, VenomTiming.END),
+                    addJad(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE, VenomTiming.END),
                     add(ZulrahType.MELEE, StandLocation.NORTHEAST_NORTH, null),
-                    // Final phase (wiki Rotation 2 phase 11): green in the middle, ranged x5.
-                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE))),
+                    // Final phase (wiki Rotation 2 phase 11): green in the middle, ranged x5, then 4 venom.
+                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE, VenomTiming.END))),
     ROT_C("Rotation C",
             ImmutableList.of(
-                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, null),
+                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, null, VenomTiming.START),
                     add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE),
-                    add(ZulrahType.MELEE, StandLocation.EAST_PILLAR_N, null),
+                    add(ZulrahType.MELEE, StandLocation.EAST_PILLAR_N, null, VenomTiming.START),
                     add(ZulrahType.MAGIC, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
                     add(ZulrahType.RANGE, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
                     add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
-                    add(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, null),
+                    add(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, null, VenomTiming.START),
                     add(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
-                    add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
+                    add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC, VenomTiming.END),
                     addJad(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
                     add(ZulrahType.MAGIC, StandLocation.NORTHEAST_NORTH, null),
-                    // Final phase (wiki Rotation 3 phase 12): green in the middle, ranged x5.
-                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE))),
+                    // Final phase (wiki Rotation 3 phase 12): green in the middle, ranged x5, then 4 venom.
+                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE, VenomTiming.END))),
     ROT_D("Rotation D",
             ImmutableList.of(
-                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, null),
+                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, null, VenomTiming.START),
                     add(ZulrahType.MAGIC, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_MAGIC),
-                    add(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
+                    add(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE, VenomTiming.END),
                     add(ZulrahType.MAGIC, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
-                    add(ZulrahType.MELEE, StandLocation.EAST_PILLAR_N, null),
+                    add(ZulrahType.MELEE, StandLocation.EAST_PILLAR_N, null, VenomTiming.END),
                     add(ZulrahType.RANGE, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
-                    add(ZulrahType.RANGE, StandLocation.EAST_PILLAR_N, null),
+                    add(ZulrahType.RANGE, StandLocation.WEST_PILLAR_N, null, VenomTiming.END),
                     add(ZulrahType.MAGIC, StandLocation.WEST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
                     add(ZulrahType.RANGE, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_RANGE),
-                    add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
+                    add(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC, VenomTiming.END),
                     addJad(ZulrahType.MAGIC, StandLocation.EAST_PILLAR_N, Rs2PrayerEnum.PROTECT_MAGIC),
                     add(ZulrahType.MAGIC, StandLocation.NORTHEAST_NORTH, null),
-                    // Final phase (wiki Rotation 4 phase 13): green in the middle, ranged x5.
-                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE)));
+                    // Final phase (wiki Rotation 4 phase 13): green in the middle, ranged x5, then 4 venom.
+                    add(ZulrahType.RANGE, StandLocation.NORTHEAST_NORTH, Rs2PrayerEnum.PROTECT_RANGE, VenomTiming.END)));
 
     private static final List<RotationType> lookup = new ArrayList<>();
 
@@ -105,10 +109,20 @@ public enum RotationType {
     }
 
     private static ZulrahPhase add(ZulrahType type, StandLocation standLocation, Rs2PrayerEnum prayer) {
-        return new ZulrahPhase(new ZulrahNpc(type, false), new ZulrahAttributes(standLocation, prayer));
+        return add(type, standLocation, prayer, VenomTiming.NONE);
+    }
+
+    private static ZulrahPhase add(ZulrahType type, StandLocation standLocation, Rs2PrayerEnum prayer,
+                                   VenomTiming venomTiming) {
+        return new ZulrahPhase(new ZulrahNpc(type, false), new ZulrahAttributes(standLocation, prayer, venomTiming));
     }
 
     private static ZulrahPhase addJad(ZulrahType type, StandLocation standLocation, Rs2PrayerEnum prayer) {
-        return new ZulrahPhase(new ZulrahNpc(type, true), new ZulrahAttributes(standLocation, prayer));
+        return addJad(type, standLocation, prayer, VenomTiming.NONE);
+    }
+
+    private static ZulrahPhase addJad(ZulrahType type, StandLocation standLocation, Rs2PrayerEnum prayer,
+                                      VenomTiming venomTiming) {
+        return new ZulrahPhase(new ZulrahNpc(type, true), new ZulrahAttributes(standLocation, prayer, venomTiming));
     }
 }
