@@ -8,7 +8,8 @@ import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 /**
  * Melee (crimson) phase: the dodge target tile is flipped on each tail swing (by the plugin's
  * animation event). Here we just walk to the current target and only attack once we've arrived, so
- * the attack click can't strand us on the tile being swung at. Stands down while gear is swapping.
+ * the attack click can't strand us on the tile being swung at. The gear swap is mouseless and does
+ * not interrupt movement, so it runs in parallel this same tick — dodging never stands down for it.
  */
 public class MeleeDodgeAction implements ZulrahAction {
 
@@ -24,7 +25,7 @@ public class MeleeDodgeAction implements ZulrahAction {
 
     @Override
     public boolean needsExecution(ZulrahState state) {
-        return state.context().isMeleeDodgePhase() && !state.executed(EquipGearAction.KEY);
+        return state.context().isMeleeDodgePhase();
     }
 
     @Override
@@ -33,7 +34,10 @@ public class MeleeDodgeAction implements ZulrahAction {
                 ? StandLocation.NORTHEAST_NORTH
                 : StandLocation.NORTHEAST_TOP).toWorldPoint();
         if (Rs2Player.getWorldLocation().equals(target)) {
-            if (!ZulrahHelpers.isInteractingWithZulrah()) {
+            // Only attack while Zulrah is surfaced and the gear is ready; when it dives, hold the tile
+            // without spamming clicks at a target we can't hit, and don't attack with the wrong style.
+            if (state.context().isSurfaced() && ZulrahHelpers.gearReady(state.context())
+                    && !ZulrahHelpers.isInteractingWithZulrah()) {
                 ZulrahHelpers.clickNearestZulrah();
             }
             return "attack";

@@ -13,6 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 public abstract class AbstractScript extends Script {
@@ -26,6 +27,9 @@ public abstract class AbstractScript extends Script {
 
     // Thread-safe: futures are submitted from both the tick thread and worker threads.
     private final List<Future<?>> futures = new CopyOnWriteArrayList<>();
+
+    // Guards {@link #gameTick()} so an externally-driven tick never stacks on the previous one.
+    private final AtomicBoolean tickInProgress = new AtomicBoolean(false);
 
     public abstract void tick();
 
@@ -72,6 +76,33 @@ public abstract class AbstractScript extends Script {
         }, 0, getTickDelay(), TimeUnit.MILLISECONDS);
 
         return true;
+    }
+
+    /**
+     * Runs a single guarded tick, driven externally (e.g. a plugin's onGameTick) instead of the
+     * internal fixed-delay scheduler in {@link #run()}. The tick body is dispatched to the script's
+     * worker pool rather than run inline: onGameTick fires on the client thread, but Rs2 walking /
+     * clicking use blocking sleeps and must not run there. Applies the same login and base-{@link
+     * Script} gate ({@code super.run()}) the scheduler loop uses, and skips overlapping ticks so a
+     * slow tick never stacks on the next one. Call {@link #initialize()} once before ticking.
+     */
+    public void gameTick() {
+        if (!tickInProgress.compareAndSet(false, true)) {
+            return; // previous tick still running; let it finish rather than stacking work
+        }
+        scheduledExecutorService.submit(() -> {
+            try {
+                if (!Microbot.isLoggedIn() || !super.run()) {
+                    return;
+                }
+                tick();
+            } catch (Exception ex) {
+                onException(ex);
+                log.error("Exception during tick.", ex);
+            } finally {
+                tickInProgress.set(false);
+            }
+        });
     }
 
     public ScheduledFuture<?> executeOnSeparateThread(Runnable runnable, long initialDelay, long delay) {

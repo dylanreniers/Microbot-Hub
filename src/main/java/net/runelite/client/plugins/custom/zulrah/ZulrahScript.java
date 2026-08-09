@@ -5,9 +5,11 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.custom.actions.Action;
 import net.runelite.client.plugins.custom.actions.ActionScript;
 import net.runelite.client.plugins.custom.zulrah.actions.FightContext;
+import net.runelite.client.plugins.custom.zulrah.actions.LootAction;
 import net.runelite.client.plugins.custom.zulrah.actions.ZulrahAction;
 import net.runelite.client.plugins.custom.zulrah.actions.ZulrahState;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.client.plugins.custom.zulrah.constants.StandLocation;
 import net.runelite.client.plugins.custom.zulrah.constants.VenomTiming;
 import net.runelite.client.plugins.custom.zulrah.rotationutils.ZulrahPhase;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
@@ -46,9 +48,44 @@ public class ZulrahScript extends ActionScript<ZulrahState> {
     protected void onInitialize() {
         log.info("Initializing");
         context = new FightContext(itemManager);
-        context.setMagicSetup(new Rs2InventorySetup(zulrahConfig.mageInventorySetup(), mainScheduledFuture));
-        context.setRangeSetup(new Rs2InventorySetup(zulrahConfig.rangeInventorySetup(), mainScheduledFuture));
+        // Resolve the setups LIVE by name, not from the InventorySetup object the config returns: that
+        // object is a snapshot serialized when the setup was picked in the dropdown, so editing the
+        // setup afterwards (gear/potions/quantities) leaves it stale and the restock withdraws the old
+        // layout. The String constructor looks the current setup up by name from the Inventory Setups
+        // plugin. (Editing a setup while the plugin is running still needs a restart to re-resolve.)
+        String magicName = zulrahConfig.mageInventorySetup().getName();
+        String rangeName = zulrahConfig.rangeInventorySetup().getName();
+        log.info("Using inventory setups — magic: '{}', range: '{}'", magicName, rangeName);
+        context.setMagicSetup(new Rs2InventorySetup(magicName, mainScheduledFuture));
+        context.setRangeSetup(new Rs2InventorySetup(rangeName, mainScheduledFuture));
         context.reset();
+        armStartPoint();
+    }
+
+    /**
+     * Seed the very first cycle based on the configured start point. "Beginning of fight" is a no-op:
+     * we just wait for Zulrah to spawn (assumes we're already on the boat and have continued). The two
+     * travel options arm ReturnToZulrahAction to run once on the first tick — "Banking" does the full
+     * restock+travel trip, "Travel to Zulrah" skips banking and only travels back. Every later cycle is
+     * armed by LootAction as usual (always a full trip).
+     */
+    private void armStartPoint() {
+        CycleStartPoint start = zulrahConfig.cycleStartPoint();
+        log.info("Start point: {}", start);
+        switch (start) {
+            case BANKING:
+                context.setPrepSkipBank(false);
+                context.setPrepPending(true);
+                break;
+            case TRAVEL_TO_ZULRAH:
+                context.setPrepSkipBank(true);
+                context.setPrepPending(true);
+                break;
+            case BEGINNING_OF_FIGHT:
+            default:
+                // No prep — the fight begins when Zulrah spawns (onFightStart / openingHold).
+                break;
+        }
     }
 
     @Override
@@ -122,11 +159,73 @@ public class ZulrahScript extends ActionScript<ZulrahState> {
         context.setStandLocation(next);
     }
 
-    /** Zulrah resurfaced: a new phase is now active — re-arm the one-shot venom pre-move. */
-    public void onZulrahResurface() {
+    /**
+     * The fight is starting (Zulrah's NPC appeared). For the FIRST phase of the rotation we hold at
+     * the spawn spot and get the opening attack off, only heading to the first stand tile once that
+     * attack has actually fired (see {@link net.runelite.client.plugins.custom.zulrah.actions.RepositionAttackAction}
+     * and {@code openingHold}). We still record the first stand tile ({@link StandLocation#NORTHEAST_NORTH},
+     * the same opener for every rotation) so movement can resume the instant the opening hit lands.
+     * No-op once a phase is already active, so it never clobbers an in-progress fight.
+     */
+    public void onFightStart() {
+        if (context == null || context.getPhase() != null) {
+            return;
+        }
+        // TEMP (timing probe): confirm the NPC spawns before the surface.
+        log.info("[timing] onFightStart: NPC spawned, opening hold until the first attack fires");
+        context.setSurfaced(false);
+        context.setOpeningHold(true);
+        context.setStandLocation(StandLocation.NORTHEAST_NORTH.toWorldPoint());
+    }
+
+    /** Zulrah surfaced (spawn or resurface): it's attackable now, and re-arm the venom pre-move. */
+    public void onZulrahSurfaced() {
         if (context != null) {
+            // TEMP (timing probe): time gap from onFightStart tells us how long the pre-run window is.
+            log.info("[timing] onZulrahSurfaced: attackable now (phase={})",
+                    context.getPhase() == null ? "none" : context.getPhase().getZulrahNpc().getType().getName());
+            context.setSurfaced(true);
             context.setVenomPreMoved(false);
         }
+    }
+
+    /** Zulrah dived under water: not attackable until it resurfaces, so hold fire and just walk. */
+    public void onZulrahSubmerged() {
+        if (context != null) {
+            context.setSurfaced(false);
+            // Once it dives, the opening phase is over — make sure the opening hold/walk never leak into
+            // the next phase (e.g. if the opening hit didn't register before the dive).
+            context.setOpeningHold(false);
+            context.setOpeningWalk(false);
+        }
+    }
+
+    /**
+     * Zulrah died: turn off every prayer and mark that we're awaiting the drop. We do NOT start
+     * looting here — the death animation is still playing and the drop only lands once the corpse
+     * despawns. {@link #onZulrahDespawned()} arms the actual pickup at that point.
+     */
+    public void onZulrahDeath() {
+        log.info("Zulrah died. Disabling all prayers; loot will be picked up when the corpse despawns.");
+        Rs2Prayer.disableAllPrayers();
+        if (context != null) {
+            context.setDeathAwaitingDrop(true);
+        }
+    }
+
+    /**
+     * Zulrah's corpse despawned. If this follows a death (not a between-phase transform), the death
+     * animation has finished and the drop is now on the ground, so arm the loot pickup.
+     */
+    public void onZulrahDespawned() {
+        if (context == null || !context.isDeathAwaitingDrop()) {
+            return;
+        }
+        log.info("Zulrah corpse despawned; drop should be down — looting the kill.");
+        context.setDeathAwaitingDrop(false);
+        context.setLootPending(true);
+        // Small grace for the item(s) to register; LootAction extends this on each successful pickup.
+        context.setLootDeadlineMs(System.currentTimeMillis() + LootAction.INITIAL_LOOT_WAIT_MS);
     }
 
     /** Melee tail swing (SNAKEBOSS_ATTACK_TAIL_LEFT/RIGHT): flip the dodge target tile. */
@@ -148,7 +247,6 @@ public class ZulrahScript extends ActionScript<ZulrahState> {
         }
         ZulrahPhase phase = context.getPhase();
         if (phase == null || !phase.getZulrahNpc().isJad()) {
-            log.info("Phase is null or not jad");
             return;
         }
         log.info("Jad phase. Toggling prayer.");

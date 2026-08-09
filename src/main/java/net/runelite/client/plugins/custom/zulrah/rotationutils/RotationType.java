@@ -95,17 +95,27 @@ public enum RotationType {
         this.zulrahPhases = zulrahPhases;
     }
 
-    public static List<RotationType> findPotentialRotations(NPC npc, int stage) {
-        log.info("Finding potential rotations");
+    /** All rotations, as a fresh mutable list (starting point for narrowing). */
+    public static List<RotationType> allRotations() {
+        return new ArrayList<>(lookup);
+    }
+
+    /** Rotations from {@code base} whose form at {@code stage} matches the observed Zulrah. */
+    public static List<RotationType> matching(List<RotationType> base, NPC npc, int stage) {
         ZulrahNpc observed = ZulrahNpc.valueOf(npc, false);
         if (observed == null || stage < 0) {
             log.warn("Cannot match rotations: observed={} stage={}", observed, stage);
             return new ArrayList<>();
         }
-        return lookup.stream()
+        return base.stream()
                 .filter(type -> stage < type.getZulrahPhases().size())
                 .filter(type -> type.getZulrahPhases().get(stage).getZulrahNpc().equals(observed))
                 .collect(Collectors.toList());
+    }
+
+    public static List<RotationType> findPotentialRotations(NPC npc, int stage) {
+        log.info("Finding potential rotations");
+        return matching(allRotations(), npc, stage);
     }
 
     private static ZulrahPhase add(ZulrahType type, StandLocation standLocation, Rs2PrayerEnum prayer) {

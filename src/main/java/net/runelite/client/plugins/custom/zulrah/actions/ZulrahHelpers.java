@@ -109,6 +109,21 @@ final class ZulrahHelpers {
         return attackSpeedTicks(ctx) * 600L;
     }
 
+    /**
+     * True once the phase's desired setup is fully equipped — or there's no phase/setup, or we've
+     * used up the gear-swap attempts (items missing) and must attack with whatever we have. Attacks
+     * are held until this is true so we don't waste hits on a form that resists our current style
+     * (e.g. magic against the blue/tanzanite form, which has very high magic defence).
+     */
+    static boolean gearReady(FightContext ctx) {
+        ZulrahPhase phase = ctx.getPhase();
+        if (phase == null || ctx.getGearSwapAttempts() >= EquipGearAction.MAX_GEAR_SWAP_ATTEMPTS) {
+            return true;
+        }
+        Rs2InventorySetup setup = desiredSetup(ctx, phase);
+        return setup == null || setup.doesEquipmentMatch();
+    }
+
     static int nextPoisonDamage(int poisonValue) {
         int damage;
         if (poisonValue >= VENOM_THRESHOLD) {
