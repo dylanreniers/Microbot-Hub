@@ -48,6 +48,11 @@ public class RepositionAttackAction implements ZulrahAction {
         // a target we can't hit.
         final boolean surfaced = ctx.isSurfaced();
 
+        // While it's up, keep the camera on it so our clicks land (only turns when it drifts off-screen).
+        if (surfaced) {
+            ZulrahHelpers.faceZulrah();
+        }
+
         // OPENING (first phase only): don't head to the first stand tile yet — wait for Zulrah to
         // surface, get the opening attack off from the spawn spot, and release only once that attack
         // has actually fired (player animating and stationary). Then normal reposition takes over and

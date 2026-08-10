@@ -2,6 +2,7 @@ package net.runelite.client.plugins.custom.zulrah.actions;
 
 import net.runelite.api.Actor;
 import net.runelite.api.EquipmentInventorySlot;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.game.ItemStats;
 import net.runelite.client.plugins.custom.zulrah.constants.StandLocation;
@@ -10,6 +11,7 @@ import net.runelite.client.plugins.custom.zulrah.rotationutils.ZulrahPhase;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
+import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
@@ -57,11 +59,32 @@ final class ZulrahHelpers {
         return pos.equals(target) || (!Rs2Player.isMoving() && pos.distanceTo(target) <= 1);
     }
 
+    private static Rs2NpcModel nearestZulrah() {
+        return Microbot.getRs2NpcCache().query().withName("zulrah").nearestOnClientThread(20);
+    }
+
     static void clickNearestZulrah() {
-        Rs2NpcModel zulrah = Microbot.getRs2NpcCache().query().withName("zulrah").nearestOnClientThread(20);
+        Rs2NpcModel zulrah = nearestZulrah();
         if (zulrah != null) {
             zulrah.click("attack");
         }
+    }
+
+    /**
+     * Keep Zulrah on screen so our attack clicks land: if it has drifted off-screen, turn the camera
+     * back to face it. No-op while it's already visible, so we don't fight the camera every tick (and
+     * since {@link Rs2Camera#turnTo} blocks until the turn completes, we only pay that cost when needed).
+     */
+    static void faceZulrah() {
+        Rs2NpcModel zulrah = nearestZulrah();
+        if (zulrah == null) {
+            return;
+        }
+        LocalPoint lp = zulrah.getLocalLocation();
+        if (lp != null && Rs2Camera.isTileOnScreen(lp)) {
+            return;
+        }
+        Rs2Camera.turnTo(zulrah);
     }
 
     static boolean isInteractingWithZulrah() {

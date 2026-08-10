@@ -7,19 +7,25 @@ import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
+import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
+import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetupsItem;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
+import net.runelite.client.plugins.microbot.util.misc.Rs2Potion;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.poh.PohTeleports;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.shared.LocationService;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static net.runelite.client.plugins.microbot.util.Global.sleep;
 import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
@@ -162,7 +168,51 @@ public class ReturnToZulrahAction implements ZulrahAction {
 //                && crossSteppingStone()
                 && walkToDock()
                 && ensureMagicEquipment(ctx)
+                && prePot(ctx)
                 && boardBoat();
+    }
+
+    /**
+     * Drink one dose of every stat-boosting potion we're carrying (ranging for the atlatl, magic, any
+     * combat booster) right before boarding, so the boosts are fresh going into the fight. We drink
+     * straight from the inventory rather than {@link Rs2InventorySetup#prePot()}, which is bank-oriented
+     * (it inspects bank items) and finds nothing at the dock — hence the "no additional items to pre-pot".
+     * Matches on the base name (dose suffix stripped) against the range/magic/combat variant lists, so it
+     * won't touch the prayer restore or antipoison. Best-effort: never blocks boarding.
+     */
+    private boolean prePot(FightContext ctx) {
+        Set<String> boosters = new HashSet<>();
+        addLower(boosters, Rs2Potion.getRangePotionsVariants());
+        addLower(boosters, Rs2Potion.getMagicPotionsVariants());
+        addLower(boosters, Rs2Potion.getCombatPotionsVariants());
+
+        Set<String> drunk = new HashSet<>();
+        for (Rs2ItemModel potion : Rs2Inventory.getPotions()) {
+            String name = potion.getName();
+            if (name == null) {
+                continue;
+            }
+            String base = name.replaceAll("\\(\\d+\\)$", "").trim().toLowerCase();
+            // Exact base-name match (not contains) so e.g. "Combat potion" can't also match "Super
+            // combat potion"; drink each distinct booster once (one dose gives the full boost).
+            if (boosters.contains(base) && drunk.add(base)) {
+                log.info("[prep] pre-potting {}", name);
+                Rs2Inventory.interact(potion, "Drink");
+                sleep(600, 1000);
+            }
+        }
+        if (drunk.isEmpty()) {
+            log.info("[prep] no stat-boosting potions in the inventory to pre-pot");
+        }
+        return true;
+    }
+
+    private static void addLower(Set<String> target, List<String> names) {
+        for (String n : names) {
+            if (n != null) {
+                target.add(n.toLowerCase());
+            }
+        }
     }
 
     /**
@@ -218,10 +268,17 @@ public class ReturnToZulrahAction implements ZulrahAction {
             return false;
         }
 
-        // Wear the magic combat gear BEFORE depositing anything. Any gear piece pulled from the bank is
-        // equipped straight away, so none is left sitting in the inventory when we deposit (depositAll
-        // only touches the inventory) — this is what keeps our gear from being banked by accident.
-        magic.loadEquipment();
+        // Switch to the magic combat gear BEFORE depositing. After a mage-phase kill we're wearing the
+        // RANGE swap gear with the magic gear sitting in the INVENTORY, so wield it straight from the
+        // inventory with wearEquipment() (it uses Rs2Inventory.wield). loadEquipment() on its own is
+        // bank-centric — it deposits the inventory and withdraws gear from the bank — so it doesn't
+        // re-equip the magic gear that's in our inventory and ends up banking everything, leaving us in
+        // range gear. We only fall back to loadEquipment() to pull a piece that genuinely isn't carried.
+        magic.wearEquipment();
+        sleepUntil(magic::doesEquipmentMatch, 3_000);
+        if (!magic.doesEquipmentMatch()) {
+            magic.loadEquipment();
+        }
         if (!sleepUntil(magic::doesEquipmentMatch, STEP_TIMEOUT_MS)) {
             log.warn("[prep] couldn't fully equip the magic gear before banking");
             return false;
@@ -307,6 +364,10 @@ public class ReturnToZulrahAction implements ZulrahAction {
             log.warn("[prep] object '{}' not found nearby", name);
             return false;
         }
+        // Face the object before clicking (only when it's off-screen) so the click reliably lands.
+        if (!Rs2Camera.isTileOnScreen(obj)) {
+            Rs2Camera.turnTo(obj);
+        }
         return action == null ? obj.click() : obj.click(action);
     }
 
@@ -317,11 +378,20 @@ public class ReturnToZulrahAction implements ZulrahAction {
             sleep(300, 600);
         }
         // One-click to the last destination (Zul-Andra), matching the manual routine. Relies on
-        // last-used being Zul-Andra; if it isn't, the stepping stone never appears and we time out.
+        // last-used being Zul-Andra.
         if (!interactObject(FAIRY_RING_NAME, "Last-destination")) {
             log.warn("[prep] POH fairy ring not usable");
             return false;
         }
+        // Wait for the teleport to actually LAND before returning. Otherwise the next step's walk is
+        // issued while we're still in the POH / mid-teleport, so the click lands nowhere and nothing
+        // re-issues it once we arrive — the character just stands at the landing spot.
+        if (!sleepUntil(() -> !PohTeleports.isInHouse(), STEP_TIMEOUT_MS)) {
+            log.warn("[prep] fairy ring didn't fire (still in the POH — wrong last destination?)");
+            return false;
+        }
+        sleepUntil(() -> !Rs2Player.isAnimating(), STEP_TIMEOUT_MS); // let the teleport animation finish
+        sleep(600, 1000);                                           // let the Zul-Andra region settle
         return true;
     }
 
