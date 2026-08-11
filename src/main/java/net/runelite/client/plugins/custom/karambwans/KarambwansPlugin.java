@@ -15,8 +15,8 @@ import java.awt.*;
 @PluginDescriptor(
         name = "Donder's Karambwan fisher",
         description = "",
-        tags = {"GabulhasKarambwans", "Gabulhas"},
-        version = GabulhasKarambwansPlugin.version,
+        tags = {"Karambwans", "karambwan", "fishing"},
+        version = KarambwansPlugin.version,
         minClientVersion = "2.0.13",
         cardUrl = "",
         iconUrl = "",
@@ -24,36 +24,36 @@ import java.awt.*;
         isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
-public class GabulhasKarambwansPlugin extends Plugin {
-    public static final String version = "1.1.0";
+public class KarambwansPlugin extends Plugin {
+    public static final String version = "2.0.0";
     @Inject
-    GabulhasKarambwansScript gabulhasKarambwansScript;
+    KarambwansScript karambwansScript;
     @Inject
-    private GabulhasKarambwansConfig config;
+    private KarambwansConfig config;
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private PluginManager pluginManager;
     @Inject
-    private GabulhasKarambwansOverlay gabulhasKarambwansOverlay;
+    private KarambwansOverlay karambwansOverlay;
 
     @Provides
-    GabulhasKarambwansConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(GabulhasKarambwansConfig.class);
+    KarambwansConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(KarambwansConfig.class);
     }
 
     @Override
     protected void startUp() throws AWTException {
         if (overlayManager != null) {
-            overlayManager.add(gabulhasKarambwansOverlay);
+            overlayManager.add(karambwansOverlay);
         }
-        gabulhasKarambwansScript.run(config);
-        GabulhasKarambwansInfo.botStatus = config.STARTING_STATE();
-        log.info("bot status {}", GabulhasKarambwansInfo.botStatus);
+        karambwansScript.run(config);
+        KarambwansInfo.botStatus = config.STARTING_STATE();
+        log.info("bot status {}", KarambwansInfo.botStatus);
     }
 
     protected void shutDown() {
-        gabulhasKarambwansScript.shutdown();
-        overlayManager.remove(gabulhasKarambwansOverlay);
+        karambwansScript.shutdown();
+        overlayManager.remove(karambwansOverlay);
     }
 }

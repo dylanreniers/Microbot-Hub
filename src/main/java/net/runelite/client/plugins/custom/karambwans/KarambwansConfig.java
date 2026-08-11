@@ -6,7 +6,7 @@ import net.runelite.client.config.ConfigInformation;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 
-@ConfigGroup("GabulhasKarambwans")
+@ConfigGroup("Karambwans")
 @ConfigInformation(
         "<ol>" +
                 "<li>Configure the fairy rings to DKP (last destination must be DKP)</li>" +
@@ -14,7 +14,7 @@ import net.runelite.client.config.ConfigSection;
                 "<li>Start the script next to the karambwan fishing spot</li>" +
                 "</ol>"
 )
-public interface GabulhasKarambwansConfig extends Config {
+public interface KarambwansConfig extends Config {
 
     @ConfigSection(
             name = "Starting State",
@@ -31,8 +31,8 @@ public interface GabulhasKarambwansConfig extends Config {
             position = 0,
             section = startingStateSection
     )
-    default GabulhasKarambwansInfo.states STARTING_STATE() {
-        return GabulhasKarambwansInfo.states.FISHING;
+    default KarambwansInfo.states STARTING_STATE() {
+        return KarambwansInfo.states.FISHING;
     }
 }
 

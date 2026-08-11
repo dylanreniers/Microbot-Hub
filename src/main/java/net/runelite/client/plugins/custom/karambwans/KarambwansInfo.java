@@ -1,6 +1,6 @@
 package net.runelite.client.plugins.custom.karambwans;
 
-public class GabulhasKarambwansInfo {
+public class KarambwansInfo {
 
     public static states botStatus;
 

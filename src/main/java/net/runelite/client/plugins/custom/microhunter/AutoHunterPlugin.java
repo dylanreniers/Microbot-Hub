@@ -2,9 +2,7 @@ package net.runelite.client.plugins.custom.microhunter;
 
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.events.GameObjectSpawned;
-import net.runelite.api.events.ItemDespawned;
-import net.runelite.api.events.ItemSpawned;
+import net.runelite.api.events.GameTick;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -36,7 +34,7 @@ import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIn
 @Slf4j
 public class AutoHunterPlugin extends Plugin {
 
-    public static final String version = "2.0.0";
+    public static final String version = "2.1.0";
 
     static {
         Microbot.enableAutoRunOn = false;
@@ -77,7 +75,9 @@ public class AutoHunterPlugin extends Plugin {
         if (overlayManager != null) {
             overlayManager.add(autoHunterOverlay);
         }
-        autoChinScript.run();
+        // Drive the action pipeline off the game clock (onGameTick) instead of the script's internal
+        // fixed-delay executor, so every decision is aligned to a game tick.
+        autoChinScript.initialize();
     }
 
     protected void shutDown() {
@@ -86,17 +86,7 @@ public class AutoHunterPlugin extends Plugin {
     }
 
     @Subscribe
-    public void onGameObjectSpawned(GameObjectSpawned event) {
-        autoChinScript.onGameObjectSpawn(event.getGameObject());
-    }
-
-    @Subscribe
-    public void onItemSpawned(ItemSpawned event) {
-        autoChinScript.onItemSpawned(event);
-    }
-
-    @Subscribe
-    public void onItemDespawned(ItemDespawned event) {
-        autoChinScript.onItemDespawned(event);
+    public void onGameTick(GameTick event) {
+        autoChinScript.gameTick();
     }
 }

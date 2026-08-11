@@ -15,11 +15,11 @@ import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import javax.inject.Inject;
 import java.util.concurrent.TimeUnit;
 
-import static net.runelite.client.plugins.custom.karambwans.GabulhasKarambwansInfo.botStatus;
-import static net.runelite.client.plugins.custom.karambwans.GabulhasKarambwansInfo.states;
+import static net.runelite.client.plugins.custom.karambwans.KarambwansInfo.botStatus;
+import static net.runelite.client.plugins.custom.karambwans.KarambwansInfo.states;
 
 @Slf4j
-public class GabulhasKarambwansScript extends Script {
+public class KarambwansScript extends Script {
 
     @Inject
     private KarambwanLocationService karambwanLocationService;
@@ -27,7 +27,7 @@ public class GabulhasKarambwansScript extends Script {
     @Inject
     private KarambwanBankService karambwanBankService;
 
-    public boolean run(GabulhasKarambwansConfig config) {
+    public boolean run(KarambwansConfig config) {
         Microbot.enableAutoRunOn = false;
         Rs2Antiban.setActivity(Activity.CATCHING_RAW_KARAMBWAN);
 

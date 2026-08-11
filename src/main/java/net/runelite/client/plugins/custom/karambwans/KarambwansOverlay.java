@@ -8,9 +8,9 @@ import net.runelite.client.ui.overlay.components.TitleComponent;
 import javax.inject.Inject;
 import java.awt.*;
 
-public class GabulhasKarambwansOverlay extends OverlayPanel {
+public class KarambwansOverlay extends OverlayPanel {
     @Inject
-    GabulhasKarambwansOverlay(GabulhasKarambwansPlugin plugin) {
+    KarambwansOverlay(KarambwansPlugin plugin) {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
         setNaughty();
@@ -21,7 +21,7 @@ public class GabulhasKarambwansOverlay extends OverlayPanel {
         try {
             panelComponent.setPreferredSize(new Dimension(200, 300));
             panelComponent.getChildren().add(TitleComponent.builder()
-                    .text("Status: " + GabulhasKarambwansInfo.botStatus.toString().replace("_", " "))
+                    .text("Status: " + KarambwansInfo.botStatus.toString().replace("_", " "))
                     .color(Color.GREEN)
                     .build());
 
