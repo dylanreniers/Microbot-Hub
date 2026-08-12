@@ -18,17 +18,20 @@ public class HunterState implements ScriptState {
 
     /** Keys of the actions that perform a physical interaction (walk/click/lay), highest first. */
     private static final List<String> WORKER_KEYS =
-            List.of("drop-catch", "break-pickup", "restore-trap", "lay-trap");
+            List.of("drop-catch", "break-pickup", "tick-manip", "restore-trap", "lay-trap");
 
     private final HunterContext context;
     private final List<TrapTile> tiles;
     private final boolean breakImminent;
+    private final boolean tickManipulation;
     private final List<ActionState> actionStates = new ArrayList<>();
 
-    public HunterState(HunterContext context, List<TrapTile> tiles, boolean breakImminent) {
+    public HunterState(HunterContext context, List<TrapTile> tiles, boolean breakImminent,
+                       boolean tickManipulation) {
         this.context = context;
         this.tiles = tiles;
         this.breakImminent = breakImminent;
+        this.tickManipulation = tickManipulation;
     }
 
     public HunterContext context() {
@@ -43,6 +46,11 @@ public class HunterState implements ScriptState {
     /** True when a BreakHandler break is about to start; normal tending stands down. */
     public boolean breakImminent() {
         return breakImminent;
+    }
+
+    /** Whether the knife &amp; logs 2-tick catch method is enabled (read live from config each tick). */
+    public boolean tickManipulation() {
+        return tickManipulation;
     }
 
     public List<TrapTile> tilesWith(TrapTile.Status status) {

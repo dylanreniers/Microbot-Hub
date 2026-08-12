@@ -244,6 +244,10 @@ public class ReturnToZulrahAction implements ZulrahAction {
     }
 
     private boolean prayAtAltar() {
+        if (Rs2Player.getBoostedSkillLevel(Skill.PRAYER) >= Rs2Player.getRealSkillLevel(Skill.PRAYER)) {
+            return true;
+        }
+
         log.info("[prep] restoring prayer at the altar");
         if (!interactObject(ALTAR_NAME, "Pray")) {
             return false;
@@ -284,23 +288,23 @@ public class ReturnToZulrahAction implements ZulrahAction {
             return false;
         }
 
-        // Build the desired inventory (id -> quantity) from the magic setup, skipping the rune pouch and
-        // any rune rows so the pouch is never touched or reconciled. Everything else — the carried range
-        // gear, ring of recoil, Dramen staff, potions and food — is what we want to keep/top up.
+        // Build the desired inventory (id -> quantity) from the magic setup, skipping the rune pouch so it
+        // is never touched or reconciled. Everything else — the carried range gear, ring of recoil, Dramen
+        // staff, potions, food and any loose runes the setup carries — is what we want to keep/top up.
         Map<Integer, Integer> desired = new LinkedHashMap<>();
         for (InventorySetupsItem item : magic.getInventoryItems()) {
-            if (item == null || item.getId() <= 0 || isRuneLike(item.getName())) {
+            if (item == null || item.getId() <= 0 || isRunePouch(item.getName())) {
                 continue;
             }
             desired.merge(item.getId(), Math.max(1, item.getQuantity()), Integer::sum);
         }
 
-        // Deposit only what does NOT belong in the inventory setup: loot, and part-used potions (a
-        // prayer potion(3) has a different id than the setup's (4), so it's banked and replaced). Anything
-        // matching the setup exactly — the swap gear, recoil, Dramen staff, full potions, remaining
-        // karambwans — and the rune pouch/runes are kept. Worn gear is untouched by deposit.
+        // Deposit only what does NOT belong in the inventory setup: loot (including rune drops), and
+        // part-used potions (a prayer potion(3) has a different id than the setup's (4), so it's banked and
+        // replaced). Anything matching the setup exactly — the swap gear, recoil, Dramen staff, full
+        // potions, remaining karambwans — and the rune pouch are kept. Worn gear is untouched by deposit.
         Rs2Bank.depositAllExcept(item -> item != null
-                && (isRuneLike(item.getName()) || desired.containsKey(item.getId())));
+                && (isRunePouch(item.getName()) || desired.containsKey(item.getId())));
         sleep(400, 800);
 
         // If hurt, eat lobsters to full, then bank the leftovers (keeping setup items + the rune pouch).
@@ -316,7 +320,7 @@ public class ReturnToZulrahAction implements ZulrahAction {
                 sleep(1_200, 1_600);
             }
             Rs2Bank.depositAllExcept(item -> item != null
-                    && (isRuneLike(item.getName()) || desired.containsKey(item.getId()))); // leftover lobsters
+                    && (isRunePouch(item.getName()) || desired.containsKey(item.getId()))); // leftover lobsters
             sleep(300, 600);
         }
 
@@ -346,9 +350,14 @@ public class ReturnToZulrahAction implements ZulrahAction {
         return true;
     }
 
-    /** Rune pouch / runes are matched by name so we never deposit, withdraw or reconcile the pouch. */
-    private static boolean isRuneLike(String name) {
-        return name != null && name.toLowerCase().contains("rune");
+    /**
+     * Matches ONLY the rune pouch (regular or divine) so we never deposit, withdraw or reconcile it —
+     * the runes live inside the pouch and are handled by the game, not as loose inventory items. This
+     * deliberately does NOT match loose runes or rune-tier gear: those are Zulrah drops and must be
+     * banked with the rest of the loot instead of being kept and dragged back into the fight.
+     */
+    private static boolean isRunePouch(String name) {
+        return name != null && name.toLowerCase().contains("rune pouch");
     }
 
     /**

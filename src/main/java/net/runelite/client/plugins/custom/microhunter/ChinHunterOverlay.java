@@ -9,10 +9,10 @@ import net.runelite.client.ui.overlay.components.TitleComponent;
 import javax.inject.Inject;
 import java.awt.*;
 
-public class AutoHunterOverlay extends OverlayPanel {
+public class ChinHunterOverlay extends OverlayPanel {
 
     @Inject
-    AutoHunterOverlay(AutoHunterPlugin plugin) {
+    ChinHunterOverlay(ChinHunterPlugin plugin) {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
         setNaughty();
@@ -23,7 +23,7 @@ public class AutoHunterOverlay extends OverlayPanel {
         try {
             panelComponent.setPreferredSize(new Dimension(200, 300));
             panelComponent.getChildren().add(TitleComponent.builder()
-                    .text("Donder Auto Hunter " + AutoHunterPlugin.version)
+                    .text("Donder Chin Hunter " + ChinHunterPlugin.version)
                     .color(Color.GREEN)
                     .build());
 

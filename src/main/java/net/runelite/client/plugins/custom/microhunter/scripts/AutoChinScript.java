@@ -6,6 +6,7 @@ import net.runelite.api.ObjectID;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.custom.actions.Action;
 import net.runelite.client.plugins.custom.actions.ActionScript;
+import net.runelite.client.plugins.custom.microhunter.ChinHunterConfig;
 import net.runelite.client.plugins.custom.microhunter.actions.HunterAction;
 import net.runelite.client.plugins.custom.microhunter.actions.HunterContext;
 import net.runelite.client.plugins.custom.microhunter.actions.HunterState;
@@ -15,6 +16,7 @@ import net.runelite.client.plugins.microbot.api.tileitem.models.Rs2TileItemModel
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.breakhandler.BreakHandlerScript;
 
+import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -55,6 +57,9 @@ public class AutoChinScript extends ActionScript<HunterState> {
             ObjectID.SHAKING_BOX_9383,
             ObjectID.SHAKING_BOX_9384
     };
+
+    @Inject
+    private ChinHunterConfig config;
 
     private HunterContext context;
 
@@ -103,7 +108,7 @@ public class AutoChinScript extends ActionScript<HunterState> {
             }
         }
 
-        return new HunterState(context, tiles, breakImminent);
+        return new HunterState(context, tiles, breakImminent, config.tickManipulation());
     }
 
     private static TrapTile.Status classify(Rs2TileObjectModel object, Rs2TileItemModel item) {

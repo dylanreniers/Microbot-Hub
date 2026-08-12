@@ -65,14 +65,22 @@ public class RepositionAttackAction implements ZulrahAction {
                 ZulrahHelpers.clickNearestZulrah(); // start the opening attack (auto-walks into range)
                 return "opening-attack";
             }
-            // Interacting: release only once the attack animation has fired (stationary + animating),
-            // so we actually get the hit off before moving. Then switch to a walk-only run to the first
-            // tile (openingWalk) — from the centre Zulrah is in range, so attacking again here would keep
-            // us pinned instead of moving.
-            if (Rs2Player.isAnimating() && !Rs2Player.isMoving()) {
+            // Interacting: release the instant the attack animation fires — the hit is thrown, so a
+            // projectile is already on its way and moving now won't cancel it. Then start the walk to the
+            // first tile IN THIS SAME TICK. Two things caused the old "double opener attack":
+            //   1. gating on !isMoving skipped the first attack's animation when a residual movement flag
+            //      was still set that tick, so we only released on the SECOND attack; and
+            //   2. deferring the walk to next tick's openingWalk branch left one idle tick in which the
+            //      auto-attack threw a second hit before we moved.
+            // Releasing on isAnimating() alone and kicking the walk off here closes both gaps.
+            if (Rs2Player.isAnimating()) {
                 ctx.setLastAttackAtMs(now);
                 ctx.setOpeningHold(false);
                 ctx.setOpeningWalk(true);
+                if (!ZulrahHelpers.atTargetTile(ctx)) {
+                    log.info("[dps] opening hit fired; walking to the first tile {} immediately", target);
+                    Rs2Walker.walkFastCanvas(target, true);
+                }
                 return "opening-fired";
             }
             return "opening-pending";

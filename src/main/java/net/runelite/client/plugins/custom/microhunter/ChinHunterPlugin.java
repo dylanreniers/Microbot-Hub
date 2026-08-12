@@ -21,10 +21,10 @@ import java.awt.*;
 import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.MODERATE;
 
 @PluginDescriptor(
-        name = "Donder's AutoHunter",
-        description = "Microbot AutoHunter plugin",
+        name = "Donder Chin Hunter",
+        description = "Box-trap chinchompa/ferret hunter with a self-healing trap pattern",
         tags = {"hunter", "microbot"},
-        version = AutoHunterPlugin.version,
+        version = ChinHunterPlugin.version,
         minClientVersion = "2.0.13",
         cardUrl = "",
         iconUrl = "",
@@ -32,9 +32,9 @@ import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIn
         isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
-public class AutoHunterPlugin extends Plugin {
+public class ChinHunterPlugin extends Plugin {
 
-    public static final String version = "2.1.0";
+    public static final String version = "2.1.1";
 
     static {
         Microbot.enableAutoRunOn = false;
@@ -57,23 +57,23 @@ public class AutoHunterPlugin extends Plugin {
     }
 
     @Inject
-    private AutoHunterConfig config;
+    private ChinHunterConfig config;
     @Inject
     private OverlayManager overlayManager;
     @Inject
-    private AutoHunterOverlay autoHunterOverlay;
+    private ChinHunterOverlay chinHunterOverlay;
     @Inject
     private AutoChinScript autoChinScript;
 
     @Provides
-    AutoHunterConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(AutoHunterConfig.class);
+    ChinHunterConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(ChinHunterConfig.class);
     }
 
     @Override
     protected void startUp() throws AWTException {
         if (overlayManager != null) {
-            overlayManager.add(autoHunterOverlay);
+            overlayManager.add(chinHunterOverlay);
         }
         // Drive the action pipeline off the game clock (onGameTick) instead of the script's internal
         // fixed-delay executor, so every decision is aligned to a game tick.
@@ -82,7 +82,7 @@ public class AutoHunterPlugin extends Plugin {
 
     protected void shutDown() {
         autoChinScript.shutdown();
-        overlayManager.remove(autoHunterOverlay);
+        overlayManager.remove(chinHunterOverlay);
     }
 
     @Subscribe
