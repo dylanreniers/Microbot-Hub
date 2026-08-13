@@ -1,13 +1,15 @@
-package net.runelite.client.plugins.custom.microhunter;
+package net.runelite.client.plugins.custom.chinhunter;
 
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.events.GameTick;
+import net.runelite.api.events.GameObjectSpawned;
+import net.runelite.api.events.ItemDespawned;
+import net.runelite.api.events.ItemSpawned;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.custom.microhunter.scripts.AutoChinScript;
+import net.runelite.client.plugins.custom.chinhunter.scripts.ChinHunterScript;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
@@ -21,8 +23,8 @@ import java.awt.*;
 import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity.MODERATE;
 
 @PluginDescriptor(
-        name = "Donder Chin Hunter",
-        description = "Box-trap chinchompa/ferret hunter with a self-healing trap pattern",
+        name = "Donder's Chin Hunter",
+        description = "Chinchompa Hunter plugin",
         tags = {"hunter", "microbot"},
         version = ChinHunterPlugin.version,
         minClientVersion = "2.0.13",
@@ -34,7 +36,7 @@ import static net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIn
 @Slf4j
 public class ChinHunterPlugin extends Plugin {
 
-    public static final String version = "2.1.1";
+    public static final String version = "1.0.1";
 
     static {
         Microbot.enableAutoRunOn = false;
@@ -63,7 +65,7 @@ public class ChinHunterPlugin extends Plugin {
     @Inject
     private ChinHunterOverlay chinHunterOverlay;
     @Inject
-    private AutoChinScript autoChinScript;
+    private ChinHunterScript chinHunterScript;
 
     @Provides
     ChinHunterConfig provideConfig(ConfigManager configManager) {
@@ -75,18 +77,26 @@ public class ChinHunterPlugin extends Plugin {
         if (overlayManager != null) {
             overlayManager.add(chinHunterOverlay);
         }
-        // Drive the action pipeline off the game clock (onGameTick) instead of the script's internal
-        // fixed-delay executor, so every decision is aligned to a game tick.
-        autoChinScript.initialize();
+        chinHunterScript.run();
     }
 
     protected void shutDown() {
-        autoChinScript.shutdown();
+        chinHunterScript.shutdown();
         overlayManager.remove(chinHunterOverlay);
     }
 
     @Subscribe
-    public void onGameTick(GameTick event) {
-        autoChinScript.gameTick();
+    public void onGameObjectSpawned(GameObjectSpawned event) {
+        chinHunterScript.onGameObjectSpawn(event.getGameObject());
+    }
+
+    @Subscribe
+    public void onItemSpawned(ItemSpawned event) {
+        chinHunterScript.onItemSpawned(event);
+    }
+
+    @Subscribe
+    public void onItemDespawned(ItemDespawned event) {
+        chinHunterScript.onItemDespawned(event);
     }
 }

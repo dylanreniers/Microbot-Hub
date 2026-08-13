@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.custom.microhunter;
+package net.runelite.client.plugins.custom.chinhunter;
 
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.ui.overlay.OverlayPanel;
@@ -23,7 +23,7 @@ public class ChinHunterOverlay extends OverlayPanel {
         try {
             panelComponent.setPreferredSize(new Dimension(200, 300));
             panelComponent.getChildren().add(TitleComponent.builder()
-                    .text("Donder Chin Hunter " + ChinHunterPlugin.version)
+                    .text("Donder Auto Hunter " + ChinHunterPlugin.version)
                     .color(Color.GREEN)
                     .build());
 

@@ -249,12 +249,9 @@ public class ZulrahScript extends ActionScript<ZulrahState> {
         if (phase == null || !phase.getZulrahNpc().isJad()) {
             return;
         }
-        log.info("Jad phase. Toggling prayer.");
         if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_RANGE)) {
-            log.info("Switching to protect magic");
             Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MAGIC, true);
         } else {
-            log.info("Switching to protect range");
             Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_RANGE, true);
         }
     }

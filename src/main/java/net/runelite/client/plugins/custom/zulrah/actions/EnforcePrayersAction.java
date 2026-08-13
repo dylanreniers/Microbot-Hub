@@ -45,7 +45,6 @@ public class EnforcePrayersAction implements ZulrahAction {
         // prayer and the whole alternation is one step out of phase (every attack lands). After that
         // one anchor, leave the overhead to the flick.
         if (phase.getZulrahNpc().isJad()) {
-            log.info("[jad phase]");
             if (!state.context().isJadStartPrayerSet()) {
                 enforceOverhead(phase.getAttributes().getPrayer());
                 state.context().setJadStartPrayerSet(true);
