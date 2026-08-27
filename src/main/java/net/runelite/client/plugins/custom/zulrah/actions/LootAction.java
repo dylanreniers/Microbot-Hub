@@ -2,16 +2,19 @@ package net.runelite.client.plugins.custom.zulrah.actions;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.plugins.custom.zulrah.ZulrahConfig;
+import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
+import net.runelite.client.plugins.microbot.util.models.RS2Item;
+import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 
 import javax.inject.Inject;
 
 /**
  * After Zulrah dies, pick up the kill's drops. Only runs between fights (no active phase) while the
  * loot flag armed by {@link net.runelite.client.plugins.custom.zulrah.ZulrahScript#onZulrahDeath()}
- * is set. Loots one ground item per tick via {@link Rs2GroundItem#lootAllItemBasedOnValue}; a
- * deadline (extended on each pickup) covers the delay before the drop spawns and stops us shortly
- * after the last item, so we don't idle forever if nothing is there.
+ * is set. Loots one ground item per tick off the scene (see {@link #lootNextDrop()}); a deadline
+ * (extended on each pickup) covers the delay before the drop spawns and stops us shortly after the
+ * last item, so we don't idle forever if nothing is there.
  */
 @Slf4j
 public class LootAction implements ZulrahAction {
@@ -20,9 +23,14 @@ public class LootAction implements ZulrahAction {
     public static final long INITIAL_LOOT_WAIT_MS = 3000L;
     /** Extra time granted after each successful pickup, so we keep going while loot remains. */
     private static final long LOOT_EXTEND_MS = 1500L;
-    /** Loot everything (value >= 0) within this many tiles of the death spot. */
-    private static final int LOOT_MIN_VALUE = 0;
     private static final int LOOT_RANGE = 20;
+    /**
+     * Substring of items we never loot. The empty butterfly jars we drop after releasing a moonlight
+     * moth for prayer (see {@link DrinkPrayerAction}/{@link DropButterflyJarAction}) land within loot
+     * range, so without this the loot pass would pick them straight back up — and DropButterflyJarAction
+     * would drop them again, spinning forever.
+     */
+    private static final String LOOT_IGNORE = "Butterfly jar";
 
     private final ZulrahConfig config;
 
@@ -53,7 +61,7 @@ public class LootAction implements ZulrahAction {
         FightContext ctx = state.context();
         long now = System.currentTimeMillis();
 
-        boolean looted = Rs2GroundItem.lootAllItemBasedOnValue(LOOT_MIN_VALUE, LOOT_RANGE);
+        boolean looted = lootNextDrop();
         if (looted) {
             ctx.setLootDeadlineMs(now + LOOT_EXTEND_MS);
             return "looting";
@@ -74,5 +82,30 @@ public class LootAction implements ZulrahAction {
             return "done";
         }
         return "waiting";
+    }
+
+    /**
+     * Picks up the nearest lootable drop off the scene, skipping empty butterfly jars. Reads the scene
+     * directly (like the old {@code Rs2GroundItem.lootAllItemBasedOnValue}) rather than the
+     * GroundItemsPlugin's collected table, so looting works whether or not that plugin is enabled.
+     * Loots one item per call; the deadline logic keeps us running while more remain.
+     *
+     * @return true if an item was interacted with this call
+     */
+    private boolean lootNextDrop() {
+        RS2Item[] groundItems = Microbot.getClientThread()
+                .runOnClientThreadOptional(() -> Rs2GroundItem.getAll(LOOT_RANGE))
+                .orElse(new RS2Item[]{});
+        for (RS2Item item : groundItems) {
+            String name = item.getItem().getName();
+            if (name != null && name.toLowerCase().contains(LOOT_IGNORE.toLowerCase())) {
+                continue;
+            }
+            if (Rs2Inventory.isFull(name)) {
+                continue;
+            }
+            return Rs2GroundItem.interact(item);
+        }
+        return false;
     }
 }

@@ -6,18 +6,11 @@ import net.runelite.api.ChatMessageType;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
 import net.runelite.api.NPC;
-import net.runelite.api.events.ChatMessage;
-import net.runelite.api.events.GameObjectDespawned;
-import net.runelite.api.events.GameObjectSpawned;
-import net.runelite.api.events.GameStateChanged;
-import net.runelite.api.events.NpcDespawned;
-import net.runelite.api.events.NpcSpawned;
+import net.runelite.api.events.*;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.custom.gotr.services.MiningService;
-import net.runelite.client.plugins.custom.gotr.services.TimerService;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
 import net.runelite.client.plugins.microbot.breakhandler.BreakHandlerPlugin;
@@ -30,13 +23,14 @@ import net.runelite.client.ui.overlay.OverlayManager;
 import javax.inject.Inject;
 import java.awt.*;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.regex.Matcher;
 
 @PluginDescriptor(
         name = "Donder's GuardiansOfTheRift",
         description = "Guardians of the rift plugin",
         tags = {"runecrafting", "guardians of the rift", "gotr", "microbot"},
-        version = GotrPlugin.version,
+        version = DonderGotrPlugin.version,
         minClientVersion = "2.1.0",
         cardUrl = "",
         iconUrl = "",
@@ -44,11 +38,21 @@ import java.util.regex.Matcher;
         isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
-public class GotrPlugin extends Plugin {
-    public static final String version = "1.5.0";
+public class DonderGotrPlugin extends Plugin {
+    public static final String version = "1.6.7";
+    static final String CONFIG = "dondergotr";
 
     @Inject
     private GotrConfig config;
+
+    @Provides
+    GotrConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(GotrConfig.class);
+    }
+
+    @Inject
+    private ConfigManager configManager;
+
     @Inject
     private OverlayManager overlayManager;
     @Inject
@@ -56,19 +60,23 @@ public class GotrPlugin extends Plugin {
     @Inject
     private PouchOverlay pouchOverlay;
     @Inject
-    private GotrScript gotrScript;
-    @Inject
-    private TimerService timerService;
-    @Inject
-    private MiningService miningService;
+    GotrScript gotrScript;
 
-    @Provides
-    GotrConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(GotrConfig.class);
+    public GotrConfig getConfig() {
+        return config;
     }
+
+    public GotrScript getScript() {
+        return gotrScript;
+    }
+
 
     @Override
     protected void startUp() throws AWTException {
+        if (config.maxFragmentAmount() == 0) {
+            configManager.setConfiguration(CONFIG, "maxFragmentAmount", 100);
+        }
+
         if (overlayManager != null) {
             overlayManager.add(pouchOverlay);
             overlayManager.add(gotrOverlay);
@@ -76,9 +84,9 @@ public class GotrPlugin extends Plugin {
 
         // Initialize pre/post schedule tasks
         if (Microbot.isLoggedIn()) {
-            log.info("GOTR Plugin started in Normal Mode");
-            // In normal mode, start the script directly
-            gotrScript.run(config);
+                log.info("GOTR Plugin started in Normal Mode");
+                // In normal mode, start the script directly
+                gotrScript.run(config);
         }
     }
 
@@ -91,23 +99,32 @@ public class GotrPlugin extends Plugin {
     @Subscribe
     public void onGameStateChanged(GameStateChanged event) {
         if (event.getGameState() == GameState.LOADING) {
-            gotrScript.resetGameState();
+            GotrScript.resetPlugin();
+        } else if (event.getGameState() == GameState.LOGGED_IN) {
+            log.info("GameState changed to LOGGED_IN - initializing GOTR tasks");
+            // Initialize Pre/Post Schedule Requirements and Tasks when game information is available
+        } else if (event.getGameState() == GameState.LOGIN_SCREEN) {
+            GotrScript.isInMiniGame = false;
+
+            // Reset pre/post schedule tasks on logout for fresh initialization
+            log.info("GameState changed to LOGIN_SCREEN - resetting GOTR tasks");
+
         }
     }
 
     @Subscribe
     public void onNpcSpawned(NpcSpawned npcSpawned) {
         NPC npc = npcSpawned.getNpc();
-        if (npc.getId() == GotrConstants.GREAT_GUARDIAN_ID) {
-            miningService.setGreatGuardian(npc);
+        if (npc.getId() == GotrScript.greatGuardianId) {
+            GotrScript.greatGuardian = npc;
         }
     }
 
     @Subscribe
     public void onNpcDespawned(NpcDespawned npcDespawned) {
         NPC npc = npcDespawned.getNpc();
-        if (npc.getId() == GotrConstants.GREAT_GUARDIAN_ID) {
-            miningService.setGreatGuardian(null);
+        if (npc.getId() == GotrScript.greatGuardianId) {
+            GotrScript.greatGuardian = null;
         }
     }
 
@@ -121,57 +138,61 @@ public class GotrPlugin extends Plugin {
 
         if (msg.contains("You step through the portal")) {
             Microbot.getClient().clearHintArrow();
-            timerService.resetForNewGame();
+            GotrScript.nextGameStart = Optional.empty();
         }
 
         if (msg.contains("The rift becomes active!")) {
             if (Microbot.isPluginEnabled(BreakHandlerPlugin.class)) {
                 BreakHandlerScript.setLockState(true);
             }
-            timerService.resetForNewGame();
-            timerService.markPortalSpawn();
-            gotrScript.setShouldMineGuardianRemains(true);
-            gotrScript.setState(GotrState.ENTER_GAME);
+            GotrScript.nextGameStart = Optional.empty();
+            GotrScript.timeSincePortal = Optional.of(Instant.now());
+            GotrScript.isFirstPortal = true;
+            GotrScript.state = GotrState.ENTER_GAME;
         } else if (msg.contains("The rift will become active in 30 seconds.")) {
             if (Microbot.isPluginEnabled(BreakHandlerPlugin.class)) {
                 BreakHandlerScript.setLockState(true);
             }
-            gotrScript.setShouldMineGuardianRemains(true);
-            timerService.setNextGameStart(Instant.now().plusSeconds(30));
+            GotrScript.shouldMineGuardianRemains = true;
+            GotrScript.nextGameStart = Optional.of(Instant.now().plusSeconds(30));
         } else if (msg.contains("The rift will become active in 10 seconds.")) {
-            gotrScript.setShouldMineGuardianRemains(true);
-            timerService.setNextGameStart(Instant.now().plusSeconds(10));
+            GotrScript.shouldMineGuardianRemains = true;
+            GotrScript.nextGameStart = Optional.of(Instant.now().plusSeconds(10));
         } else if (msg.contains("The rift will become active in 5 seconds.")) {
-            gotrScript.setShouldMineGuardianRemains(true);
-            timerService.setNextGameStart(Instant.now().plusSeconds(5));
+            GotrScript.shouldMineGuardianRemains = true;
+            GotrScript.nextGameStart = Optional.of(Instant.now().plusSeconds(5));
         } else if (msg.contains("The Portal Guardians will keep their rifts open for another 30 seconds.")) {
-            gotrScript.setShouldMineGuardianRemains(true);
-            timerService.setNextGameStart(Instant.now().plusSeconds(60));
-        } else if (msg.toLowerCase().contains("closed the rift!") || msg.toLowerCase().contains("the great guardian was defeated!")) {
+            GotrScript.shouldMineGuardianRemains = true;
+            GotrScript.nextGameStart = Optional.of(Instant.now().plusSeconds(60));
+        } else if (msg.toLowerCase().contains("closed the rift!") || msg.toLowerCase().contains("The great guardian was defeated!")) {
             if (Microbot.isPluginEnabled(BreakHandlerPlugin.class)) {
                 Global.sleep(Rs2Random.randomGaussian(2000, 300));
                 BreakHandlerScript.setLockState(false);
             }
-            gotrScript.setShouldMineGuardianRemains(true);
+            GotrScript.shouldMineGuardianRemains = true;
+
         }
 
-        Matcher rewardPointMatcher = GotrConstants.REWARD_POINT_PATTERN.matcher(msg);
+        Matcher rewardPointMatcher = GotrScript.rewardPointPattern.matcher(msg);
         if (rewardPointMatcher.find()) {
-            gotrScript.setElementalRewardPoints(Integer.parseInt(rewardPointMatcher.group(1).replaceAll(",", "")));
-            gotrScript.setCatalyticRewardPoints(Integer.parseInt(rewardPointMatcher.group(2).replaceAll(",", "")));
+            GotrScript.elementalRewardPoints = Integer.parseInt(rewardPointMatcher.group(1).replaceAll(",", ""));
+            GotrScript.catalyticRewardPoints = Integer.parseInt(rewardPointMatcher.group(2).replaceAll(",", ""));
         }
     }
 
     @Subscribe
     public void onGameObjectSpawned(GameObjectSpawned event) {
         GameObject gameObject = event.getGameObject();
-        if (gotrScript.isGuardianPortal(gameObject)) {
-            gotrScript.addGuardian(gameObject);
+        if (GotrScript.isGuardianPortal(gameObject)) {
+            GotrScript.guardians.add(gameObject);
         }
 
-        if (gameObject.getId() == GotrConstants.PORTAL_ID) {
+        if (gameObject.getId() == GotrScript.portalId) {
             Microbot.getClient().setHintArrow(gameObject.getWorldLocation());
-            timerService.markPortalSpawn();
+            if (GotrScript.isFirstPortal) {
+                GotrScript.isFirstPortal = false;
+            }
+            GotrScript.timeSincePortal = Optional.of(Instant.now());
         }
     }
 
@@ -179,12 +200,12 @@ public class GotrPlugin extends Plugin {
     public void onGameObjectDespawned(GameObjectDespawned event) {
         GameObject gameObject = event.getGameObject();
 
-        gotrScript.removeGuardian(gameObject);
-        gotrScript.removeActivePortal(gameObject);
+        GotrScript.guardians.remove(gameObject);
+        GotrScript.activeGuardianPortals.remove(gameObject);
 
-        if (gameObject.getId() == GotrConstants.PORTAL_ID) {
+        if (gameObject.getId() == GotrScript.portalId) {
             Microbot.getClient().clearHintArrow();
-            timerService.markPortalSpawn();
+            GotrScript.timeSincePortal = Optional.of(Instant.now());
         }
     }
 }

@@ -17,11 +17,11 @@ import java.time.Instant;
 
 public class MoonlightMothOverlay extends OverlayPanel {
 
-    public final MoonlightMothPlugin plugin;
+    public final DonderMoonlightMothPlugin plugin;
     private final ImageComponent imageComponent;
 
     @Inject
-    public MoonlightMothOverlay(MoonlightMothPlugin plugin) {
+    public MoonlightMothOverlay(DonderMoonlightMothPlugin plugin) {
         super(plugin);
         setPosition(OverlayPosition.TOP_LEFT);
         setLayer(OverlayLayer.ABOVE_WIDGETS);
@@ -31,7 +31,7 @@ public class MoonlightMothOverlay extends OverlayPanel {
 
     private BufferedImage getImageFromResources() {
         try {
-            var img = ImageUtil.loadImageResource(MoonlightMothPlugin.class, "/net/runelite/client/plugins/microbot/MoonlightMoth/Moonlight_moth.png");
+            var img = ImageUtil.loadImageResource(DonderMoonlightMothPlugin.class, "/net/runelite/client/plugins/microbot/MoonlightMoth/Moonlight_moth.png");
             return ImageUtil.resizeImage(img, 24, 24, true);
         } catch (Exception e) {
             e.printStackTrace();

@@ -84,10 +84,46 @@ public interface SailingConfig extends Config {
 	}
 
 	@ConfigItem(
+		keyName = "useSeedBox",
+		name = "Use Seed Box",
+		description = "Automatically fills your seed box if seeds or fragments are in your inventory after sorting salvage.",
+		position = 3,
+		section = generalSection
+	)
+	default boolean useSeedBox()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "sortSalvageIfNoShipwreck",
+		name = "Sort salvage if no shipwreck",
+		description = "When no shipwreck is found nearby, sort the salvage in your inventory at the salvaging station, then withdraw and sort the salvage still in your cargo hold to optimize downtime.",
+		position = 4,
+		section = generalSection
+	)
+	default boolean sortSalvageIfNoShipwreck()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "sortCargoIfFull",
+		name = "Sort cargo if full",
+		description = "Automatically withdraw and sort all salvage from the cargo hold at the salvaging station as soon as the cargo hold is full.",
+		position = 5,
+		section = generalSection
+	)
+	default boolean sortCargoIfFull()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "useCargoHold",
 		name = "Use Cargo Hold",
 		description = "When salvaging, open the cargo hold and use Deposit inventory, then read the hold grid for fullness. When the hold is full or nearly full, the script withdraws and processes salvage (alch/drop/caskets) until salvage stacks in the hold reach zero.",
-		position = 3,
+		position = 6,
 		section = generalSection
 	)
 	default boolean useCargoHold()
@@ -99,7 +135,7 @@ public interface SailingConfig extends Config {
 		keyName = "alchOrder",
 		name = "Alch Order",
 		description = "Order in which to high alch items. LIST_ORDER follows your alch list. LEFT_TO_RIGHT sweeps row by row. RIGHT_TO_LEFT sweeps rows right to left. TOP_TO_BOTTOM sweeps column by column. BOTTOM_TO_TOP sweeps columns bottom to top.",
-		position = 4,
+		position = 7,
 		section = generalSection
 	)
 	default AlchOrder alchOrder()
@@ -111,7 +147,7 @@ public interface SailingConfig extends Config {
 		keyName = "dropItems",
 		name = "Drop items",
 		description = "Comma-separated list of items to drop when salvaging.",
-		position = 5,
+		position = 8,
 		section = generalSection
 	)
 	default String dropItems()

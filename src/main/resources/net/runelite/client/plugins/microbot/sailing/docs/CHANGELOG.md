@@ -5,6 +5,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.2.59]
+
+### Changed
+- **Sort salvage if no shipwreck**: After sorting the salvage in the inventory, the plugin now also withdraws and sorts the salvage still sitting in the cargo hold, so the character keeps optimizing downtime instead of standing idle once the inventory is clear. Works independently of the **Use Cargo Hold** / **Sort cargo if full** options; the hold is only reopened when it may still hold salvage.
+
+---
+
+## [2.2.58]
+
+### Fixed
+- **Salvage sorting**: The salvaging station is now re-issued until no salvage remains in the inventory, so alching/dropping no longer starts on a half-sorted inventory when a single sort interaction stops early. Aborts after repeated attempts that make no progress.
+- **Use Cargo Hold / deposit-all**: When **Deposit inventory** fills the hold mid-deposit and salvage is left over in the inventory, the plugin now switches to cargo-hold processing (withdraw + sort at the station) instead of repeatedly retrying a deposit into a full hold.
+- **Sort cargo if full**: The "cargo hold is full" chat trigger now fires reliably — it matches the message regardless of the leading article/wording (and the crewmate-on-hook variant), and it no longer immediately cancels processing on a stale "0 salvage" count. On the trigger the hold's salvage count is invalidated and re-read (and the hold marked full), so the character actually pauses and withdraws/sorts the hold instead of continuing to salvage.
+
+---
+
+## [2.2.57]
+
+### Added
+- **Sort salvage if no shipwreck**: Added config option to automatically sort salvage at the salvaging station when no active shipwreck is found nearby to optimize downtime.
+- **Sort cargo if full**: Added config option to automatically withdraw and sort all salvage from the cargo hold as soon as it becomes full (supporting crew member salvaging workflows while allowing the player to sort their own salvage independently).
+- **Use Seed Box**: Added config option to automatically store seeds and fragments ending with `" seed"` or `" frag"` into the seed box after sorting salvage.
+
+---
+
 ## [2.2.34]
 
 ### Fixed

@@ -7,7 +7,7 @@ import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.Range;
 
 @ConfigInformation("This will automatically catch and bank moonlight moths")
-@ConfigGroup(MoonlightMothPlugin.CONFIG)
+@ConfigGroup(DonderMoonlightMothPlugin.CONFIG)
 public interface MoonlightMothConfig extends Config {
 
     @ConfigItem(

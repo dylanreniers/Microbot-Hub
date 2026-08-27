@@ -1,6 +1,5 @@
 package net.runelite.client.plugins.custom.gotr;
 
-import net.runelite.client.plugins.custom.gotr.services.TimerService;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -16,19 +15,15 @@ public class GotrOverlay extends OverlayPanel {
 
     public static Color PUBLIC_TIMER_COLOR = Color.YELLOW;
     public static int TIMER_OVERLAY_DIAMETER = 20;
-    private final GotrPlugin plugin;
-    private final GotrScript gotrScript;
-    private final TimerService timerService;
+    private final DonderGotrPlugin plugin;
     private final ProgressPieComponent progressPieComponent = new ProgressPieComponent();
 
     int sleepingCounter;
 
     @Inject
-    GotrOverlay(GotrPlugin plugin, GotrScript gotrScript, TimerService timerService) {
+    GotrOverlay(DonderGotrPlugin plugin) {
         super(plugin);
         this.plugin = plugin;
-        this.gotrScript = gotrScript;
-        this.timerService = timerService;
         setPosition(OverlayPosition.TOP_LEFT);
         setNaughty();
     }
@@ -38,29 +33,29 @@ public class GotrOverlay extends OverlayPanel {
         try {
             panelComponent.setPreferredSize(new Dimension(200, 300));
             panelComponent.getChildren().add(TitleComponent.builder()
-                    .text("Micro Guardians of the rift V" + GotrPlugin.version)
+                    .text("Micro Guardians of the rift V" + DonderGotrPlugin.version)
                     .color(Color.GREEN)
                     .build());
 
             panelComponent.getChildren().add(LineComponent.builder().build());
 
             panelComponent.getChildren().add(LineComponent.builder()
-                    .left("STATE: " + (gotrScript.getState() != null ? gotrScript.getState() : "N/A"))
+                    .left("STATE: " + GotrScript.state)
                     .build());
 
             panelComponent.getChildren().add(LineComponent.builder()
-                    .left("Elemental points: " + gotrScript.getElementalRewardPoints())
+                    .left("Elemental points: " + GotrScript.elementalRewardPoints)
                     .build());
             panelComponent.getChildren().add(LineComponent.builder()
-                    .left("Catalytic points: " + gotrScript.getCatalyticRewardPoints())
-                    .build());
-
-            panelComponent.getChildren().add(LineComponent.builder()
-                    .left("Time since portal: " + timerService.getTimeSincePortal())
+                    .left("Catalytic points: " + GotrScript.catalyticRewardPoints)
                     .build());
 
             panelComponent.getChildren().add(LineComponent.builder()
-                    .left("Total time script loop: " + (gotrScript.getTotalTime() != null ? gotrScript.getTotalTime() : 0) + "ms")
+                    .left("Time since portal: " + GotrScript.getTimeSincePortal())
+                    .build());
+
+            panelComponent.getChildren().add(LineComponent.builder()
+                    .left("Total time script loop: " + GotrScript.totalTime + "ms")
                     .build());
 
         } catch (Exception ex) {

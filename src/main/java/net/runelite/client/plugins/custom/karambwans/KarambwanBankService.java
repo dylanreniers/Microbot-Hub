@@ -44,6 +44,10 @@ public class KarambwanBankService {
     private void bankRefill() {
         Rs2Bank.depositAll("Raw karambwan");
         sleepUntil(() -> !Rs2Inventory.contains("Raw karambwan"));
+        if (Rs2Inventory.contains(ItemID.FISH_BARREL_OPEN) || Rs2Inventory.contains(ItemID.FISH_BARREL_CLOSED)) {
+            Rs2Bank.emptyFishBarrel();
+            Rs2Inventory.waitForInventoryChanges(2000);
+        }
         checkRingOfDueling();
     }
 

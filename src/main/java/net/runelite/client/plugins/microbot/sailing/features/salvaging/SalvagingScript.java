@@ -67,6 +67,12 @@ public class SalvagingScript {
     private static final int SIZE_SALVAGEABLE_AREA = 15;
     private static final int MIN_INVENTORY_FULL = 24;
     private static final int SALVAGE_TIMEOUT = 20000;
+    /**
+     * A single salvaging-station interaction can stop before the whole inventory is sorted (loot fills a slot, the sort
+     * animation ends a batch, or the interaction is interrupted). Re-issue the interaction until salvage is gone, giving
+     * up after this many consecutive attempts that make no progress.
+     */
+    private static final int SALVAGE_SORT_STALL_LIMIT = 3;
     private static final int DEPLOY_TIMEOUT = 5000;
     private static final int WAIT_TIME = 5000;
     private static final int WAIT_TIME_MAX = 10000;
@@ -90,14 +96,17 @@ public class SalvagingScript {
     /** Radius for {@link Rs2GameObject} scans and name fallbacks around the player (boat nested view, port, etc.). */
     private static final int NEARBY_TILE_OBJECT_SCAN_RADIUS = 32;
     /**
-     * In-game message when deposit fails because every slot is taken ({@code Text.standardize} comparison, so extra
-     * punctuation or wording after this phrase still matches).
+     * Core phrase of the in-game message shown when the hold cannot accept more salvage — both the direct
+     * "The cargo hold is full." line and the crewmate-on-hook variant ("...as the cargo hold is full") contain it.
+     * Deliberately does not include a leading article so "the/your cargo hold is full" both match after
+     * {@code Text.standardize} (lowercased, tags/nbsp stripped).
      */
-    private static final String CARGO_HOLD_FULL_MESSAGE_CONTAINS = "the cargo hold is full";
+    private static final String CARGO_HOLD_FULL_MESSAGE_CONTAINS = "cargo hold is full";
     private final Rs2TileObjectCache tileObjectCache;
     @SuppressWarnings("unused")
     private final Rs2BoatCache boatCache;
     private final EventBus eventBus;
+    private final SailingConfig config;
 
     /**
      * Shipwreck lists rebuilt each {@link GameTick} on the client thread by scanning {@link Client#getTopLevelWorldView()}
@@ -127,10 +136,11 @@ public class SalvagingScript {
     private long lastCargoHoldWidgetResyncMs;
 
     @Inject
-    public SalvagingScript(Rs2TileObjectCache tileObjectCache, Rs2BoatCache boatCache, EventBus eventBus) {
+    public SalvagingScript(Rs2TileObjectCache tileObjectCache, Rs2BoatCache boatCache, EventBus eventBus, SailingConfig config) {
         this.tileObjectCache = tileObjectCache;
         this.boatCache = boatCache;
         this.eventBus = eventBus;
+        this.config = config;
     }
 
     public void register() {
@@ -146,6 +156,55 @@ public class SalvagingScript {
         rebuildShipwreckMapsFromTopLevelScene();
         activeWreckSnapshot = List.copyOf(activeWreckByKey.values());
         inactiveWreckSnapshot = List.copyOf(inactiveWreckByKey.values());
+    }
+
+    @Subscribe
+    public void onChatMessage(ChatMessage event) {
+        if (!config.salvaging()) {
+            return;
+        }
+        if (!isCargoHoldTrackingEnabled(config)) {
+            return;
+        }
+        String message = Text.standardize(event.getMessage());
+        if (!isCargoHoldFullMessage(message)) {
+            return;
+        }
+        log.info("Cargo hold full message detected (\"{}\"): switching to cargo hold processing phase", message);
+        beginCargoHoldProcessingFromExternalSignal();
+    }
+
+    /**
+     * Matches the game message shown when the hold can no longer accept salvage: the direct "cargo hold is full" line
+     * or the crewmate-on-hook variant. Lenient on exact wording (which varies) but narrow enough not to trip on
+     * unrelated "full" messages such as a full inventory.
+     */
+    private static boolean isCargoHoldFullMessage(String standardized) {
+        if (standardized.contains(CARGO_HOLD_FULL_MESSAGE_CONTAINS)) {
+            return true;
+        }
+        return standardized.contains("crewmate")
+                && standardized.contains("full")
+                && (standardized.contains("hook")
+                || standardized.contains("salvag")
+                || standardized.contains("cargo"));
+    }
+
+    /**
+     * The "hold is full" signal arrives as a chat message while the hold panel is closed, so the tracked
+     * {@link #cargoHoldSalvageStackCount} is stale — commonly a leftover {@code 0} from a previous read that would make
+     * {@link #handleCargoHoldMode} exit immediately ("No salvage left in cargo hold") without ever opening the hold.
+     * Invalidate the salvage count so the hold gets re-read, and mark it full so processing can start even when no
+     * shipwreck is in range.
+     */
+    private void beginCargoHoldProcessingFromExternalSignal() {
+        cargoHoldProcessing = true;
+        cargoHoldSalvageStackCount = -1;
+        if (cargoHoldCapacity > 0) {
+            cargoHoldCount = cargoHoldCapacity;
+        }
+        cargoHoldWithdrawFailures = 0;
+        cargoHoldWithdrawNoGainStreak = 0;
     }
 
     /**
@@ -255,13 +314,27 @@ public class SalvagingScript {
         return inactiveWreckSnapshot;
     }
 
+    private boolean isCargoHoldTrackingEnabled(SailingConfig config) {
+        return config.useCargoHold() || config.sortCargoIfFull();
+    }
+
+    /**
+     * Cargo-hold counters/capacity must survive across ticks (not be wiped by {@link #resetCargoHoldState()}) whenever
+     * anything may drive the hold: the tracking flags, or {@link SailingConfig#sortSalvageIfNoShipwreck()} which drains
+     * the hold as a downtime optimization. Tracking still governs the eager init and the full-hold auto-processing
+     * blocks; the downtime drain initializes the hold lazily.
+     */
+    private boolean isCargoHoldStateNeeded(SailingConfig config) {
+        return isCargoHoldTrackingEnabled(config) || config.sortSalvageIfNoShipwreck();
+    }
+
     public void run(SailingConfig config) {
         try {
             var player = new Rs2PlayerModel();
 
-            if (!config.useCargoHold()) {
+            if (!isCargoHoldStateNeeded(config)) {
                 resetCargoHoldState();
-            } else {
+            } else if (isCargoHoldTrackingEnabled(config)) {
                 if (cargoHoldCapacity == -1) {
                     initCargoHold();
                 }
@@ -273,18 +346,14 @@ public class SalvagingScript {
                 return;
             }
 
-            if (config.useCargoHold()) {
+            if (isCargoHoldTrackingEnabled(config) && (cargoHoldProcessing || shouldProcessCargoHold())) {
                 if (handleCargoHoldMode(config, player)) {
                     return;
                 }
             }
 
-            if (tryRunIdleInventoryCleanup(config)) {
-                return;
-            }
-
             if (isInventoryFull()) {
-                if (config.useCargoHold() && cargoHoldProcessing && hasSalvageItems()) {
+                if (isCargoHoldTrackingEnabled(config) && cargoHoldProcessing && hasSalvageItems()) {
                     log.info("Inventory full during cargo-hold processing; processing salvage at station before more withdraws");
                 } else {
                     log.info("Inventory full, handling before salvaging");
@@ -293,8 +362,35 @@ public class SalvagingScript {
                 return;
             }
 
+            if (tryRunIdleInventoryCleanup(config)) {
+                return;
+            }
+
+            if (isCargoHoldTrackingEnabled(config)) {
+                maybeCheckCargoHoldAtEndOfCycle(config);
+                if (cargoHoldProcessing || shouldProcessCargoHold()) {
+                    if (handleCargoHoldMode(config, player)) {
+                        return;
+                    }
+                }
+            }
+
             var nearbyWreck = findNearestWreck(player.getWorldLocation());
             if (nearbyWreck == null) {
+                if (config.sortSalvageIfNoShipwreck()) {
+                    if (hasSalvageItems()) {
+                        var salvagingStation = findSalvagingStation();
+                        if (salvagingStation != null) {
+                            log.info("No shipwreck found nearby, sorting salvage to optimize downtime");
+                            depositAtStation(salvagingStation);
+                            clearInventoryViaAlchDropAndCaskets(config);
+                            return;
+                        }
+                    } else if (drainCargoHoldDuringDowntime(config, player)) {
+                        // Inventory salvage is sorted; keep optimizing downtime by draining the cargo hold.
+                        return;
+                    }
+                }
                 log.info("No shipwreck found nearby");
                 sleep(WAIT_TIME);
                 return;
@@ -320,6 +416,13 @@ public class SalvagingScript {
         lastCargoHoldWidgetResyncMs = 0;
     }
 
+    private void maybeCheckCargoHoldAtEndOfCycle(SailingConfig config) {
+        if (!isCargoHoldTrackingEnabled(config)) {
+            return;
+        }
+        refreshCargoHoldCountsIfPanelOpen();
+    }
+
     /**
      * @return true if this tick is fully handled and {@link #run(SailingConfig)} should return.
      */
@@ -336,14 +439,6 @@ public class SalvagingScript {
 
         refreshCargoHoldCountsIfPanelOpen();
 
-        if (!cargoHoldProcessing) {
-            if (hasNearbySalvageableWreck(player.getWorldLocation()) || hasSalvageItems()) {
-                if (!willDepositSalvageToCargoHoldImminently()) {
-                    maybeResyncCargoHoldCountsFromOpenUi();
-                }
-            }
-        }
-
         if (cargoHoldProcessing || shouldProcessCargoHold()) {
             if (!cargoHoldProcessing && shouldProcessCargoHold()) {
                 cargoHoldProcessing = true;
@@ -356,7 +451,7 @@ public class SalvagingScript {
                 log.info("No salvage left in cargo hold, resuming normal salvaging");
                 return false;
             }
-            if (hasSalvageItems() && canDepositSalvageToCargoHold()
+            if (config.useCargoHold() && hasSalvageItems() && canDepositSalvageToCargoHold()
                     && !suppressSalvageDepositDuringCargoHoldProcessing()) {
                 depositToCargoHold();
                 return true;
@@ -376,6 +471,43 @@ public class SalvagingScript {
         }
 
         return false;
+    }
+
+    /**
+     * Downtime optimization for {@link SailingConfig#sortSalvageIfNoShipwreck()}: once the inventory salvage has been
+     * sorted and no shipwreck is in range, withdraw and sort the salvage still sitting in the cargo hold instead of
+     * standing idle. Reuses {@link #handleCargoHoldMode(SailingConfig, Rs2PlayerModel)}; each withdrawn stack is sorted
+     * at the station by the normal full-inventory / no-shipwreck-inventory-salvage paths on following ticks.
+     *
+     * <p>Callers must ensure there is no salvage in the inventory (that is sorted first) and no nearby wreck (this is a
+     * downtime-only path). Runs independently of the {@link #isCargoHoldTrackingEnabled(SailingConfig) tracking} flags,
+     * so it initializes the hold lazily.
+     *
+     * @return true if a drain step ran this tick (caller should return); false when the hold has no salvage left.
+     */
+    private boolean drainCargoHoldDuringDowntime(SailingConfig config, Rs2PlayerModel player) {
+        if (cargoHoldCapacity == -1) {
+            initCargoHold();
+            if (cargoHoldCapacity == -1) {
+                return false;
+            }
+        }
+        if (!cargoHoldProcessing) {
+            if (cargoHoldSalvageStackCount == 0) {
+                // Hold already confirmed empty of salvage; stay idle without reopening it every cycle.
+                return false;
+            }
+            cargoHoldProcessing = true;
+            cargoHoldWithdrawFailures = 0;
+            cargoHoldWithdrawNoGainStreak = 0;
+            if (cargoHoldSalvageStackCount < 0 && cargoHoldCount <= 0) {
+                // Counts are unknown; seed occupied = capacity so handleCargoHoldMode issues the first withdraw step,
+                // which opens the hold and reads the real counts (mirrors the "cargo hold is full" signal path).
+                cargoHoldCount = cargoHoldCapacity;
+            }
+            log.info("No shipwreck and inventory salvage sorted; draining cargo hold to optimize downtime");
+        }
+        return handleCargoHoldMode(config, player);
     }
 
     private void syncCargoHoldIfObjectVariantChanged() {
@@ -424,30 +556,11 @@ public class SalvagingScript {
                     "Cargo hold: object id " + hold.getId() + " not mapped to capacity; add it to CargoHoldObjectIds if this is a new boat tier or variant.");
             return;
         }
-        int cap = capObj;
-        if (!openCargoHoldInterfaceForWithdraw()) {
-            logCargoHoldInitThrottled(
-                    "Cargo hold: could not open interface for initialization; stand on your boat and use Open on the hold.");
-            return;
-        }
-        sleep(Rs2Random.between(280, 650));
-        cargoHoldCapacity = cap;
-        if (!readOccupiedCountFromOpenHoldInterface()) {
-            cargoHoldCapacity = -1;
-            cargoHoldCount = -1;
-            cargoHoldSalvageStackCount = -1;
-            logCargoHoldInitThrottled(
-                    "Cargo hold: could not read hold contents after opening; check client/game updates.");
-            closeCargoHoldInterface();
-            return;
-        }
-        closeCargoHoldInterface();
+        cargoHoldCapacity = capObj;
         lastCargoHoldObjectId = hold.getId();
         lastCargoHoldInitHintLogMs = 0;
-        lastCargoHoldWidgetResyncMs = System.currentTimeMillis();
-        log.info(
-                "Cargo hold initialized: capacity={} slots, occupied={}, salvage stacks={}; deposits use in-UI Deposit inventory.",
-                cargoHoldCapacity, cargoHoldCount, cargoHoldSalvageStackCount);
+        refreshCargoHoldCountsIfPanelOpen();
+        log.info("Cargo hold initialized: capacity={} slots.", cargoHoldCapacity);
     }
 
     private void logCargoHoldInitThrottled(String message) {
@@ -693,11 +806,18 @@ public class SalvagingScript {
             return;
         }
         sleep(Rs2Random.between(280, 620));
-        sleepUntil(() -> Rs2Inventory.count("salvage") < salvageBefore, SALVAGE_TIMEOUT);
+        boolean depositProgressed = sleepUntil(() -> Rs2Inventory.count("salvage") < salvageBefore, SALVAGE_TIMEOUT);
         boolean readOk = readOccupiedCountAfterDepositWhileHoldOpen();
         lastCargoHoldWidgetResyncMs = System.currentTimeMillis();
         if (!readOk) {
             log.info("Cargo hold: could not refresh counts after deposit from UI");
+        }
+        // Deposit inventory only stores what fits. If it moved some salvage but the inventory still holds salvage, the
+        // hold filled up mid-deposit; switch to processing so the leftover inventory salvage and the hold's salvage get
+        // withdrawn and sorted at the station instead of endlessly retrying a deposit into a full hold.
+        if (!cargoHoldProcessing && depositProgressed && hasSalvageItems()) {
+            cargoHoldProcessing = true;
+            log.info("Cargo hold full after Deposit inventory (salvage remains in inventory); switching to processing phase");
         }
         if (!shouldLeaveCargoHoldOpenAfterDeposit()) {
             closeCargoHoldInterface();
@@ -1204,8 +1324,9 @@ public class SalvagingScript {
      * {@link #handleFullInventory}). Skipping {@link #maybeResyncCargoHoldCountsFromOpenUi()} avoids an extra
      * open→read→close before that deposit, which already refreshes counts after deposit.
      */
-    private boolean willDepositSalvageToCargoHoldImminently() {
-        return hasSalvageItems()
+    private boolean willDepositSalvageToCargoHoldImminently(SailingConfig config) {
+        return config.useCargoHold()
+                && hasSalvageItems()
                 && canDepositSalvageToCargoHold()
                 && !suppressSalvageDepositDuringCargoHoldProcessing();
     }
@@ -1214,16 +1335,29 @@ public class SalvagingScript {
         return Rs2Inventory.count("salvage") > 0;
     }
 
+    private int safeBoostedSailingLevel() {
+        Client client = Microbot.getClient();
+        if (client == null) {
+            return 99;
+        }
+        try {
+            return client.getBoostedSkillLevel(Skill.SAILING);
+        } catch (RuntimeException ex) {
+            return 99;
+        }
+    }
+
     private Rs2TileObjectModel findNearestWreck(WorldPoint playerLocation) {
         var activeWrecks = getActiveWrecks();
 
         if (activeWrecks.isEmpty()) {
-            log.info("No active shipwrecks found");
-            sleep(WAIT_TIME);
             return null;
         }
 
+        int sailingLevel = safeBoostedSailingLevel();
+
         return activeWrecks.stream()
+                .filter(wreck -> sailingLevel >= SalvageObjectIds.SALVAGE_LEVEL_REQ.getOrDefault(wreck.getId(), 1))
                 .filter(wreck -> isWithinSalvageArea(playerLocation, wreck))
                 .min(Comparator.comparingInt(wreck -> playerLocation.distanceTo(wreck.getWorldLocation())))
                 .orElse(null);
@@ -1234,12 +1368,13 @@ public class SalvagingScript {
     }
 
     /**
-     * True if any active shipwreck is within hook range. Used to avoid opening the cargo hold for withdraw processing
-     * while idle with no wreck nearby (which would spam open/close every script tick).
+     * True if any active shipwreck is within hook range and meets the player's sailing level.
      */
     private boolean hasNearbySalvageableWreck(WorldPoint playerLocation) {
+        int sailingLevel = safeBoostedSailingLevel();
         for (Rs2TileObjectModel wreck : getActiveWrecks()) {
-            if (isWithinSalvageArea(playerLocation, wreck)) {
+            if (sailingLevel >= SalvageObjectIds.SALVAGE_LEVEL_REQ.getOrDefault(wreck.getId(), 1)
+                    && isWithinSalvageArea(playerLocation, wreck)) {
                 return true;
             }
         }
@@ -1269,6 +1404,9 @@ public class SalvagingScript {
     }
 
     private boolean inventoryCleanupConfigured(SailingConfig config) {
+        if (config.useSeedBox()) {
+            return true;
+        }
         if (config.openCaskets()) {
             return true;
         }
@@ -1286,6 +1424,9 @@ public class SalvagingScript {
     }
 
     private boolean inventoryHasCleanupWork(SailingConfig config) {
+        if (config.useSeedBox() && hasSeedsOrFrags() && hasSeedBox()) {
+            return true;
+        }
         if (config.openCaskets()) {
             if (Rs2Inventory.hasItem("casket")) {
                 return true;
@@ -1341,15 +1482,20 @@ public class SalvagingScript {
                 }
             }
             depositSalvageOrDrop(config);
-            return;
         }
         clearInventoryViaAlchDropAndCaskets(config);
     }
 
     private void clearInventoryViaAlchDropAndCaskets(SailingConfig config) {
+        if (config.useSeedBox() && hasSeedsOrFrags()) {
+            fillSeedBox();
+        }
         dropJunk(config);
         if (config.openCaskets()) {
             openCaskets();
+            if (config.useSeedBox() && hasSeedsOrFrags()) {
+                fillSeedBox();
+            }
         }
         if (config.enableAlching()) {
             alchItems(config);
@@ -1399,6 +1545,22 @@ public class SalvagingScript {
         }
         merged = mergeDistinctTileObjectLists(merged, scanSalvagingStationsFromRs2GameObject());
         if (merged.isEmpty()) {
+            WorldPoint anchor = Rs2Player.getWorldLocation();
+            if (anchor != null) {
+                try {
+                    TileObject named = Rs2GameObject.getTileObject("Salvaging station", anchor, NEARBY_TILE_OBJECT_SCAN_RADIUS);
+                    if (named == null) {
+                        named = Rs2GameObject.getTileObject("Salvage table", anchor, NEARBY_TILE_OBJECT_SCAN_RADIUS);
+                    }
+                    if (named != null) {
+                        merged = List.of(new Rs2TileObjectModel(named));
+                    }
+                } catch (RuntimeException ex) {
+                    log.debug("Salvaging station: Rs2GameObject.getTileObject name fallback failed", ex);
+                }
+            }
+        }
+        if (merged.isEmpty()) {
             return null;
         }
         WorldPoint player = Rs2Player.getWorldLocation();
@@ -1446,12 +1608,61 @@ public class SalvagingScript {
         if (name == null) {
             return false;
         }
-        return name.equalsIgnoreCase("salvaging station");
+        String lower = name.toLowerCase();
+        return lower.contains("salvaging station") || lower.contains("salvage table");
     }
 
     private void depositAtStation(Rs2TileObjectModel station) {
-        station.click();
-        sleepUntil(() -> !hasSalvageItems(), SALVAGE_TIMEOUT);
+        // Sorting drains salvage over several ticks with an animation, but one interaction can stop before the whole
+        // inventory is sorted, leaving salvage behind. Keep re-issuing the interaction until no salvage remains so the
+        // caller's alch/drop/casket cleanup never starts on a half-sorted inventory. Bail out if a sort makes no progress.
+        int stalls = 0;
+        while (hasSalvageItems() && stalls < SALVAGE_SORT_STALL_LIMIT) {
+            int salvageBefore = Rs2Inventory.count("salvage");
+            station.click();
+            sleepUntil(() -> !hasSalvageItems(), SALVAGE_TIMEOUT);
+            int salvageAfter = Rs2Inventory.count("salvage");
+            if (salvageAfter <= 0) {
+                break;
+            }
+            if (salvageAfter < salvageBefore) {
+                stalls = 0;
+            } else {
+                stalls++;
+                log.info("Salvaging station: sort stalled with {} salvage remaining (attempt {}/{})",
+                        salvageAfter, stalls, SALVAGE_SORT_STALL_LIMIT);
+            }
+        }
+        if (hasSalvageItems()) {
+            log.warn("Salvaging station: salvage still present after sorting; proceeding anyway");
+        }
+        if (config.useSeedBox() && hasSeedsOrFrags()) {
+            fillSeedBox();
+        }
+    }
+
+    private boolean hasSeedBox() {
+        return Rs2Inventory.get(i -> i.getName() != null && i.getName().toLowerCase().contains("seed box")) != null;
+    }
+
+    private boolean hasSeedsOrFrags() {
+        return Rs2Inventory.all().stream().anyMatch(item -> {
+            String name = item.getName();
+            if (name == null) return false;
+            String lower = name.toLowerCase();
+            return lower.endsWith(" seed") || lower.endsWith(" frag");
+        });
+    }
+
+    private void fillSeedBox() {
+        Rs2ItemModel seedBox = Rs2Inventory.get(i -> i.getName() != null && i.getName().toLowerCase().contains("seed box"));
+        if (seedBox != null) {
+            log.info("Filling seed box with seeds/frags");
+            if (!Rs2Inventory.interact(seedBox, "Fill")) {
+                Rs2Inventory.interact(seedBox);
+            }
+            sleep(300, 600);
+        }
     }
 
     private void deploySalvagingHook(Rs2PlayerModel player) {

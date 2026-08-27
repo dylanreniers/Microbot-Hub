@@ -133,6 +133,13 @@ tasks.register('runDebug', JavaExec) {
     dependsOn 'testClasses'
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'net.runelite.client.Microbot'
+
+    // macOS + JDK 11 needs these opened for the Aqua/full-screen adapters,
+    // mirroring what the Microbot Launcher passes when launching the client jar.
+    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX()) {
+        jvmArgs '--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED',
+                '--add-opens=java.desktop/sun.awt=ALL-UNNAMED'
+    }
 }
 
 // Plugin Logic

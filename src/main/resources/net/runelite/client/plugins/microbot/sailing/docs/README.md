@@ -46,6 +46,16 @@ An automated sailing plugin that supports salvaging shipwrecks while sailing.
 - Caskets are opened after the first drop pass (to ensure space for loot) and before alching
 - Any junk from casket loot is caught by a second drop pass after alching
 
+**Use Seed Box** (default: disabled)
+- When enabled, automatically fills your seed box if seeds (`* seed`) or fragments (`* frag`) are found in your inventory after sorting salvage (and before dropping junk / after opening caskets).
+
+**Sort salvage if no shipwreck** (default: disabled)
+- When enabled, automatically sorts salvage at the salvaging station when no active shipwreck is found nearby to optimize downtime.
+
+**Sort cargo if full** (default: disabled)
+- When enabled, monitors the boat's cargo hold (e.g. filled by a crew member operating a salvaging hook) and automatically pauses salvaging to withdraw and sort all cargo hold salvage at the salvaging station as soon as the hold is full, before resuming.
+- Can be used alongside or independently from **Use Cargo Hold**: when **Use Cargo Hold** is disabled, the player sorts their own salvage directly at the station and leaves the cargo hold entirely for their crewmate.
+
 **Use Cargo Hold** (default: disabled)
 - When enabled, you must be on your boat with a cargo hold in range. The script opens the hold to learn capacity, reads **occupied slots** and **salvage stacks** from the hold item grid, and when your inventory is full of salvage it uses **Deposit inventory** in the cargo UI (instead of the salvaging station).
 - When the hold has no free slots, or its free slots are fewer than your current empty inventory slots, the script withdraws salvage from the hold and runs the same drop/casket/alch steps as a full inventory until **salvage stacks in the hold** reach zero, then continues salvaging (other items may still occupy slots).
@@ -141,6 +151,11 @@ An automated sailing plugin that supports salvaging shipwrecks while sailing.
 - Casket opening requires at least one free inventory slot — the drop pass before opening handles this in normal usage
 
 ## Version History
+
+**2.2.57**
+- Added **Sort salvage if no shipwreck** option to sort salvage at the salvaging station during downtime when no active shipwreck is found nearby
+- Added **Sort cargo if full** option to automatically withdraw and sort all salvage from the cargo hold when full (ideal for crew member salvaging workflows)
+- Added **Use Seed Box** option to automatically deposit seeds (`* seed`) and fragments (`* frag`) into the seed box after sorting salvage
 
 **2.2.34**
 - Reliable **shipwreck highlights** via per-tick client-side wreck snapshots for the overlay

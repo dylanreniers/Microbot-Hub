@@ -19,6 +19,7 @@ public final class SalvagingStationObjectIds {
             ObjectID1.SAILING_SALVAGING_STATION_2X5A,
             ObjectID1.SAILING_SALVAGING_STATION_2X5B,
             ObjectID1.SAILING_SALVAGING_STATION_3X8,
+            ObjectID1.SAILING_PORT_SALVAGING_STATION_PORT_SARIM,
             ObjectID1.SAILING_PORT_SALVAGING_STATION
     );
 }
