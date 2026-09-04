@@ -21,6 +21,8 @@ import net.runelite.client.plugins.timetracking.farming.PatchImplementation;
 import net.runelite.client.plugins.timetracking.farming.Produce;
 
 import javax.inject.Inject;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -146,9 +148,58 @@ public class FarmingContractScript extends Script {
         }
     }
 
+    /**
+     * Farming-contract names for the crops whose contract name differs from {@link Produce#getName()}
+     * (plurals, "X tree", etc.). Client 2.6.21 removed {@code Produce.getContractName()} / {@code getByContractName()},
+     * so we maintain the mapping locally to stay independent of the client version. Any produce not listed here
+     * uses its {@link Produce#getName()} as its contract name.
+     */
+    private static final Map<String, Produce> CONTRACT_NAME_OVERRIDES = new HashMap<>();
+    static {
+        CONTRACT_NAME_OVERRIDES.put("potatoes", Produce.POTATO);
+        CONTRACT_NAME_OVERRIDES.put("onions", Produce.ONION);
+        CONTRACT_NAME_OVERRIDES.put("cabbages", Produce.CABBAGE);
+        CONTRACT_NAME_OVERRIDES.put("tomatoes", Produce.TOMATO);
+        CONTRACT_NAME_OVERRIDES.put("strawberries", Produce.STRAWBERRY);
+        CONTRACT_NAME_OVERRIDES.put("watermelons", Produce.WATERMELON);
+        CONTRACT_NAME_OVERRIDES.put("marigolds", Produce.MARIGOLD);
+        CONTRACT_NAME_OVERRIDES.put("nasturtiums", Produce.NASTURTIUM);
+        CONTRACT_NAME_OVERRIDES.put("limpwurt roots", Produce.LIMPWURT);
+        CONTRACT_NAME_OVERRIDES.put("white lillies", Produce.WHITE_LILY);
+        CONTRACT_NAME_OVERRIDES.put("redberries", Produce.REDBERRIES);
+        CONTRACT_NAME_OVERRIDES.put("cadava berries", Produce.CADAVABERRIES);
+        CONTRACT_NAME_OVERRIDES.put("dwellberries", Produce.DWELLBERRIES);
+        CONTRACT_NAME_OVERRIDES.put("jangerberries", Produce.JANGERBERRIES);
+        CONTRACT_NAME_OVERRIDES.put("white berries", Produce.WHITEBERRIES);
+        CONTRACT_NAME_OVERRIDES.put("poison ivy berries", Produce.POISON_IVY);
+        CONTRACT_NAME_OVERRIDES.put("oak tree", Produce.OAK);
+        CONTRACT_NAME_OVERRIDES.put("willow tree", Produce.WILLOW);
+        CONTRACT_NAME_OVERRIDES.put("maple tree", Produce.MAPLE);
+        CONTRACT_NAME_OVERRIDES.put("yew tree", Produce.YEW);
+        CONTRACT_NAME_OVERRIDES.put("magic tree", Produce.MAGIC);
+        CONTRACT_NAME_OVERRIDES.put("apple tree", Produce.APPLE);
+        CONTRACT_NAME_OVERRIDES.put("banana tree", Produce.BANANA);
+        CONTRACT_NAME_OVERRIDES.put("orange tree", Produce.ORANGE);
+        CONTRACT_NAME_OVERRIDES.put("curry tree", Produce.CURRY);
+        CONTRACT_NAME_OVERRIDES.put("pineapple plant", Produce.PINEAPPLE);
+        CONTRACT_NAME_OVERRIDES.put("papaya tree", Produce.PAPAYA);
+        CONTRACT_NAME_OVERRIDES.put("palm tree", Produce.PALM);
+        CONTRACT_NAME_OVERRIDES.put("dragonfruit tree", Produce.DRAGONFRUIT);
+        CONTRACT_NAME_OVERRIDES.put("potato cacti", Produce.POTATO_CACTUS);
+        CONTRACT_NAME_OVERRIDES.put("celastrus tree", Produce.CELASTRUS);
+        CONTRACT_NAME_OVERRIDES.put("redwood tree", Produce.REDWOOD);
+    }
+
     private Produce findProduceByContractName(String name) {
+        if (name == null) {
+            return null;
+        }
+        Produce override = CONTRACT_NAME_OVERRIDES.get(name.toLowerCase());
+        if (override != null) {
+            return override;
+        }
         for (Produce p : Produce.values()) {
-            if (p.getContractName() != null && p.getContractName().equalsIgnoreCase(name)) {
+            if (p.getName() != null && p.getName().equalsIgnoreCase(name)) {
                 return p;
             }
         }

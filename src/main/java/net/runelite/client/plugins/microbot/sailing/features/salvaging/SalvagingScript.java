@@ -494,8 +494,13 @@ public class SalvagingScript {
         }
         if (!cargoHoldProcessing) {
             if (cargoHoldSalvageStackCount == 0) {
-                // Hold already confirmed empty of salvage; stay idle without reopening it every cycle.
-                return false;
+                // The tracked salvage count is commonly a stale 0 left by a previous drain in this same downtime:
+                // crewmates keep hooking salvage into the hold while the player waits for a wreck, so a cached
+                // "empty" would silently prevent ever re-draining. Re-read the hold on a throttle before staying idle.
+                maybeResyncCargoHoldCountsFromOpenUi();
+                if (cargoHoldSalvageStackCount == 0) {
+                    return false;
+                }
             }
             cargoHoldProcessing = true;
             cargoHoldWithdrawFailures = 0;
