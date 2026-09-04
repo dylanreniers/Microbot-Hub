@@ -1,5 +1,6 @@
 package net.runelite.client.plugins.custom.customdemonicgorilla;
 
+import net.runelite.client.plugins.custom.customdemonicgorilla.actions.GorillaContext;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.util.grounditem.LootingParameters;
@@ -16,23 +17,30 @@ public class CustomDemonicGorillaLooterScript extends Script {
 
     }
 
-    public boolean run(CustomDemonicGorillaConfig config) {
+    public boolean run(CustomDemonicGorillaConfig config, GorillaContext context) {
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
-                if (CustomDemonicGorillaScript.BOT_STATUS.equals(CustomDemonicGorillaScript.State.BANKING) || CustomDemonicGorillaScript.BOT_STATUS.equals(CustomDemonicGorillaScript.State.TRAVEL_TO_GORILLAS)) {
+                GorillaContext.State status = context.getBotStatus();
+                if (status == GorillaContext.State.BANKING || status == GorillaContext.State.TRAVEL_TO_GORILLAS) {
                     Microbot.pauseAllScripts.compareAndSet(true, false);
                     return;
                 }
                 if (!super.run()) return;
                 if (!Microbot.isLoggedIn()) return;
                 if (Rs2Inventory.isFull() || Rs2Inventory.emptySlotCount() <= minFreeSlots) return;
-                lootItemsOnName(config);
+                boolean looted = lootItemsOnName(config);
                 if (config.scatterAshes()) {
-                    lootAndScatterMalicious();
+                    looted |= lootAndScatterMalicious();
                 }
-                lootRunes(config);
-                lootCoins(config);
-                lootUntradeableItems(config);
+                looted |= lootRunes(config);
+                looted |= lootCoins(config);
+                looted |= lootUntradeableItems(config);
+
+                // Tell the combat pipeline looting is still active: push the loot-wait deadline out so it
+                // keeps holding off the next gorilla until pickups stop (see AcquireTargetAction).
+                if (looted) {
+                    context.setLootDeadlineMs(System.currentTimeMillis() + GorillaContext.LOOT_PICKUP_GRACE_MS);
+                }
 
             } catch (Exception ex) {
                 System.out.println("Demonic Gorilla Looter (Custom): " + ex.getMessage());
@@ -42,7 +50,7 @@ public class CustomDemonicGorillaLooterScript extends Script {
         return true;
     }
 
-    private void lootUntradeableItems(CustomDemonicGorillaConfig config) {
+    private boolean lootUntradeableItems(CustomDemonicGorillaConfig config) {
         LootingParameters untradeableItemsParams = new LootingParameters(
                 15,
                 1,
@@ -54,10 +62,12 @@ public class CustomDemonicGorillaLooterScript extends Script {
         );
         if (Rs2GroundItem.lootUntradables(untradeableItemsParams)) {
             Microbot.pauseAllScripts.compareAndSet(true, false);
+            return true;
         }
+        return false;
     }
 
-    private void lootRunes(CustomDemonicGorillaConfig config) {
+    private boolean lootRunes(CustomDemonicGorillaConfig config) {
         LootingParameters runesParams = new LootingParameters(
                 15,
                 1,
@@ -69,10 +79,12 @@ public class CustomDemonicGorillaLooterScript extends Script {
         );
         if (Rs2GroundItem.lootItemsBasedOnNames(runesParams)) {
             Microbot.pauseAllScripts.compareAndSet(true, false);
+            return true;
         }
+        return false;
     }
 
-    private void lootCoins(CustomDemonicGorillaConfig config) {
+    private boolean lootCoins(CustomDemonicGorillaConfig config) {
         LootingParameters coinsParams = new LootingParameters(
                 15,
                 1,
@@ -84,13 +96,15 @@ public class CustomDemonicGorillaLooterScript extends Script {
         );
         if (Rs2GroundItem.lootCoins(coinsParams)) {
             Microbot.pauseAllScripts.compareAndSet(true, false);
+            return true;
         }
+        return false;
     }
 
-    private void lootItemsOnName(CustomDemonicGorillaConfig config) {
+    private boolean lootItemsOnName(CustomDemonicGorillaConfig config) {
         String configured = config.lootItems();
         if (configured == null || configured.trim().isEmpty()) {
-            return;
+            return false;
         }
         LootingParameters valueParams = new LootingParameters(
                 15,
@@ -103,10 +117,12 @@ public class CustomDemonicGorillaLooterScript extends Script {
         );
         if (Rs2GroundItem.lootItemsBasedOnNames(valueParams)) {
             Microbot.pauseAllScripts.compareAndSet(true, false);
+            return true;
         }
+        return false;
     }
 
-    private void lootAndScatterMalicious() {
+    private boolean lootAndScatterMalicious() {
         String ashesName = "Malicious ashes";
 
         if (!Rs2Inventory.isFull() && Rs2GroundItem.lootItemsBasedOnNames(new LootingParameters(10, 1, 1, 0, false, true, ashesName))) {
@@ -116,6 +132,8 @@ public class CustomDemonicGorillaLooterScript extends Script {
                 Rs2Inventory.interact(ashesName, "Scatter");
                 sleep(Rs2Random.between(450, 750)); // Wait briefly for scattering action
             }
+            return true;
         }
+        return false;
     }
 }

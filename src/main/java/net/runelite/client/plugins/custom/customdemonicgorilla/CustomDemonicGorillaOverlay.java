@@ -1,6 +1,7 @@
 package net.runelite.client.plugins.custom.customdemonicgorilla;
 
 
+import net.runelite.client.plugins.custom.customdemonicgorilla.actions.GorillaContext;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -36,7 +37,8 @@ public class CustomDemonicGorillaOverlay extends OverlayPanel {
                     .left("Running: " + plugin.getTimeRunning())
                     .leftColor(Color.WHITE)
                     .build());
-            var state = CustomDemonicGorillaScript.BOT_STATUS == CustomDemonicGorillaScript.State.TRAVEL_TO_GORILLAS ? CustomDemonicGorillaScript.travelStep : CustomDemonicGorillaScript.BOT_STATUS;
+            GorillaContext ctx = plugin.getContext();
+            var state = ctx.getBotStatus() == GorillaContext.State.TRAVEL_TO_GORILLAS ? ctx.getTravelStep() : ctx.getBotStatus();
             panelComponent.getChildren().add(LineComponent.builder()
                     .left("Script status: " + state)
                     .leftColor(Color.WHITE)
@@ -48,11 +50,11 @@ public class CustomDemonicGorillaOverlay extends OverlayPanel {
             var lootRecord = Microbot.getAggregateLootRecords("Demonic Gorilla");
             var killValue = lootRecord == null ? "0" : String.valueOf(lootRecord.getKills());
             panelComponent.getChildren().add(LineComponent.builder()
-                    .left("Kill Count: " + CustomDemonicGorillaScript.killCount + " / " + killValue)
+                    .left("Kill Count: " + ctx.getKillCount() + " / " + killValue)
                     .leftColor(Color.WHITE)
                     .build());
             panelComponent.getChildren().add(LineComponent.builder()
-                    .left("Current trip kill count: " + CustomDemonicGorillaScript.currentTripKillCount)
+                    .left("Current trip kill count: " + ctx.getCurrentTripKillCount())
                     .leftColor(Color.WHITE)
                     .build());
             panelComponent.getChildren().add(LineComponent.builder()
@@ -60,11 +62,11 @@ public class CustomDemonicGorillaOverlay extends OverlayPanel {
                     .leftColor(Color.WHITE)
                     .build());
             panelComponent.getChildren().add(LineComponent.builder()
-                    .left("Current defensive prayer: " + CustomDemonicGorillaScript.currentDefensivePrayer)
+                    .left("Current defensive prayer: " + ctx.getCurrentDefensivePrayer())
                     .leftColor(Color.WHITE)
                     .build());
             panelComponent.getChildren().add(LineComponent.builder()
-                    .left("Current gear: " + CustomDemonicGorillaScript.currentGear)
+                    .left("Current gear: " + ctx.getCurrentGear())
                     .leftColor(Color.WHITE)
                     .build());
 
