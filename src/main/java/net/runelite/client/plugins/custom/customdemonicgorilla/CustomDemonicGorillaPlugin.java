@@ -44,7 +44,7 @@ import java.time.Instant;
 @Slf4j
 public class CustomDemonicGorillaPlugin extends Plugin {
 
-    public final static String version = "1.5.3";
+    public final static String version = "1.5.4";
 
     private static final int DEMONIC_GORILLA_ROCK = 856;
 
@@ -136,8 +136,12 @@ public class CustomDemonicGorillaPlugin extends Plugin {
         // but while meleeing we've usually already drifted a tile off by the time we see the projectile.
         boolean nearUs = target != null && me != null
                 && target.getPlane() == me.getPlane() && target.distanceTo(me) <= 1;
-        log.info("[gorilla-boulder] projectile target={} me={} nearUs={} remainingCycles={}",
-                target, me, nearUs, projectile.getRemainingCycles());
+        // NB: do NOT log here. onProjectileMoved runs on the client thread and fires on every boulder
+        // projectile move. Microbot attaches GameChatAppender to the root logger, and its synchronized
+        // doAppend round-trips to the client thread via ClientThread.invoke().get(). If a script thread
+        // is mid-log (holding the appender lock, waiting on the client thread) while the client thread
+        // logs here, they deadlock until the invoke times out — a multi-second game freeze. Keep this
+        // handler log-free.
         if (nearUs && !target.equals(ctx.getBoulderTargetTile())) {
             ctx.setBoulderTargetTile(target);
             ctx.setBoulderLandsAtMs(System.currentTimeMillis() + projectile.getRemainingCycles() * 20L);
@@ -174,7 +178,9 @@ public class CustomDemonicGorillaPlugin extends Plugin {
         if (!Rs2Prayer.isPrayerActive(predicted)) {
             GorillaHelpers.switchDefensivePrayer(ctx, predicted);
         }
-        log.info("[gorilla-pred] cry: previous={} -> pre-pray {}", prev, predicted);
+        // No logging here: this handler runs on the client thread; logging routes through Microbot's
+        // GameChatAppender which blocks on a client-thread invoke, deadlocking the game loop (see
+        // onProjectileMoved). Keep all client-thread @Subscribe handlers log-free.
     }
 
     /**
@@ -207,15 +213,7 @@ public class CustomDemonicGorillaPlugin extends Plugin {
                 return; // not an attack animation (cry/emote/AOE handled elsewhere)
         }
         GorillaContext ctx = getContext();
-        // TEMP diagnostic: on the actual attack, log what the gorilla did vs what we predicted, plus the
-        // "previous" style we based the prediction on and whether we were awaiting a post-cry switch.
-        // If awaiting && actual == previous, the "previous" was stale (single-gorilla, never-same rules).
-        String praying = Microbot.getVarbitValue(4118) == 1 ? "MELEE"
-                : Microbot.getVarbitValue(4117) == 1 ? "RANGE"
-                : Microbot.getVarbitValue(4116) == 1 ? "MAGIC" : "NONE";
-        boolean predicted = Rs2Prayer.isPrayerActive(protect);
-        log.info("[gorilla-pred] resolved: actual={} praying={} correct={} previous={} awaiting={}",
-                style, praying, predicted, ctx.getPreviousAttackStyle(), ctx.isAwaitingStyleSwitch());
+        // (Removed TEMP client-thread diagnostic log — it deadlocked the game loop via GameChatAppender.)
         // The animation is ground truth: end any pending prediction and pray the matching overhead.
         ctx.setCurrentAttackStyle(style);
         ctx.setAwaitingStyleSwitch(false);
@@ -252,18 +250,11 @@ public class CustomDemonicGorillaPlugin extends Plugin {
         if (event.getActor() != Microbot.getClient().getLocalPlayer()) {
             return;
         }
-        Hitsplat hitsplat = event.getHitsplat();
-        if (hitsplat.getAmount() <= 0) {
-            return; // 0 = blocked/no damage
-        }
-        String praying = Microbot.getVarbitValue(4118) == 1 ? "MELEE"
-                : Microbot.getVarbitValue(4117) == 1 ? "RANGE"
-                : Microbot.getVarbitValue(4116) == 1 ? "MAGIC" : "NONE";
-        GorillaContext ctx = getContext();
-        long sinceBoulder = System.currentTimeMillis() - ctx.getBoulderLandsAtMs();
-        boolean likelyBoulder = ctx.getBoulderLandsAtMs() > 0 && sinceBoulder >= -200 && sinceBoulder <= 900;
-        log.info("[gorilla-hit] dmg={} praying={} gorillaStyle={} likelyBoulder={}",
-                hitsplat.getAmount(), praying, ctx.getCurrentAttackStyle(), likelyBoulder);
+        // This handler was purely a TEMP damage-measurement log. Logging from a client-thread
+        // @Subscribe handler routes through Microbot's GameChatAppender, which blocks on a client-thread
+        // invoke and deadlocks the game loop (see onProjectileMoved). The diagnostic has been removed;
+        // if you need it back, write to a logger that is NOT attached to GameChatAppender, or record the
+        // data into GorillaContext and log it off the client thread.
     }
 
     @Subscribe

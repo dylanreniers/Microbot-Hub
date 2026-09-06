@@ -1,7 +1,9 @@
 package net.runelite.client.plugins.custom.customdemonicgorilla.actions;
 
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.custom.customdemonicgorilla.CustomDemonicGorillaConfig;
+import net.runelite.client.plugins.custom.customdemonicgorilla.actions.GorillaContext.ArmorEquiped;
 import net.runelite.client.plugins.custom.customdemonicgorilla.actions.GorillaContext.State;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
@@ -39,6 +41,19 @@ public class AttackAction implements GorillaAction {
 
         Rs2Player.eatAt(config.minEatPercent());
         Rs2Player.drinkPrayerPotionAt(config.minPrayerPercent());
+
+        // While reading the "Rhaaaa" style-switch tell in melee gear: after the cry we step ~4 tiles away
+        // to watch whether the gorilla walks to us (melee) or stays (range/magic). If we re-clicked the
+        // gorilla here we'd immediately path back into melee range and defeat the read. So HOLD position
+        // while awaiting the switch and we've actually backed off (not adjacent). eat/drink above still
+        // run; the fail-check clears 'awaiting' on the gorilla's next attack, and we resume then.
+        if (ctx.isAwaitingStyleSwitch() && ctx.getCurrentGear() == ArmorEquiped.MELEE) {
+            WorldPoint gp = ctx.getCurrentTarget().getWorldLocation();
+            WorldPoint pp = Rs2Player.getWorldLocation();
+            if (gp != null && pp != null && gp.distanceTo(pp) > 1) {
+                return false; // holding to read the tell
+            }
+        }
 
         // Only re-issue an attack when we are idle - avoids spam-clicking the same target
         if (Rs2Player.isAnimating(1600)) {

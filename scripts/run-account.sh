@@ -24,9 +24,11 @@ set -euo pipefail
 
 ACCOUNT="${1:-}"
 if [[ -z "$ACCOUNT" ]]; then
-    echo "Usage: $0 <AccountDisplayName>" >&2
+    echo "Usage: $0 <AccountDisplayName> [extra gradle args...]" >&2
+    echo "  e.g. $0 WeMinus -PgcLog   # enable GC/safepoint freeze logging" >&2
     exit 1
 fi
+shift  # remaining args are forwarded to Gradle (e.g. -PgcLog)
 
 CRED_SRC="$HOME/.microbot/credentials/${ACCOUNT}.properties"
 CRED_DST="$HOME/.runelite/credentials.properties"
@@ -43,4 +45,4 @@ echo "Selected account: $ACCOUNT (credentials.properties updated)"
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
-exec ./gradlew runDebug --args='--debug'
+exec ./gradlew runDebug --args='--debug' "$@"

@@ -140,6 +140,17 @@ tasks.register('runDebug', JavaExec) {
         jvmArgs '--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED',
                 '--add-opens=java.desktop/sun.awt=ALL-UNNAMED'
     }
+
+    // Freeze diagnostics: log GC pauses and safepoints (which stop ALL
+    // application threads) to build/mb-gc.log. During a mid-session freeze,
+    // tail this file - long "Total time for which application threads were
+    // stopped" entries indicate GC/safepoint stalls rather than render/plugin
+    // stalls. Enable with -PgcLog (off by default so normal runs stay quiet).
+    if (project.hasProperty('gcLog')) {
+        def gcLogFile = new File(buildDir, 'mb-gc.log')
+        buildDir.mkdirs()
+        jvmArgs "-Xlog:gc*,safepoint:file=${gcLogFile}:time,uptime,level,tags"
+    }
 }
 
 // Plugin Logic

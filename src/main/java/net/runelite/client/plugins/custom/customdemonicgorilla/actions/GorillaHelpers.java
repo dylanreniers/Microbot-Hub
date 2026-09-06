@@ -191,12 +191,15 @@ public final class GorillaHelpers {
 
     private static void equipGear(GorillaContext ctx, Rs2InventorySetup gear) {
         if (gear == null) return;
-        var success = gear.wearEquipment();
-        if (!success && Rs2Inventory.isFull()) {
-            logOnce(ctx, "Failed to equip gear - Inventory full");
-            Rs2Player.useFood();
-            Rs2Inventory.waitForInventoryChanges(1200);
-            gear.wearEquipment();
+        if (!gear.wearEquipment()) {
+            // Couldn't fully equip (missing items / inventory full / bank closed). Do NOT eat food to
+            // free a slot and retry in-place: useFood() -> Rs2Inventory.interact -> invokeMenu ->
+            // Rs2Bank.isOpen -> handleBankPin fires a chain of client-thread invoke()s, and combined
+            // with waitForInventoryChanges() this floods the single client thread on every overhead
+            // flip. When the client thread backs up, the AWT EDT (antiban MasterPanel calling
+            // Rs2Combat.inCombat) blocks on its own invoke and the whole game window freezes.
+            // Log once and move on; the next overhead change re-evaluates.
+            logOnce(ctx, "Failed to equip " + ctx.getCurrentGear() + " gear (missing items / inv full)");
         }
     }
 
