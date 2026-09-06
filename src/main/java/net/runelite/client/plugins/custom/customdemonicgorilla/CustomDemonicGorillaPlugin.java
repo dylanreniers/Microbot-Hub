@@ -44,7 +44,7 @@ import java.time.Instant;
 @Slf4j
 public class CustomDemonicGorillaPlugin extends Plugin {
 
-    public final static String version = "1.4.6";
+    public final static String version = "1.5.3";
 
     private static final int DEMONIC_GORILLA_ROCK = 856;
 
@@ -157,9 +157,24 @@ public class CustomDemonicGorillaPlugin extends Plugin {
         if (text == null || !text.toLowerCase().startsWith("rhaa")) {
             return;
         }
-        if (isOurTargetGorilla(actor)) {
-            getContext().setStyleSwitchCryPending(true);
+        if (!isOurTargetGorilla(actor)) {
+            return;
         }
+        GorillaContext ctx = getContext();
+        AttackStyle prev = ctx.getCurrentAttackStyle();
+        ctx.setPreviousAttackStyle(prev);
+        ctx.setAwaitingStyleSwitch(true);
+        ctx.setAwaitingGapOpened(false);
+        ctx.setStyleSwitchCryPending(true); // pipeline handles the step-away movement / melee watch
+
+        // Pre-pray the never-same prediction IMMEDIATELY here (client thread), not via the pipeline —
+        // the gorilla's first new-style attack fires almost at once, so a tick of pipeline latency would
+        // leave us on the OLD overhead for that first hit. magic -> range; ranged/melee -> magic.
+        Rs2PrayerEnum predicted = prev == AttackStyle.MAGIC ? Rs2PrayerEnum.PROTECT_RANGE : Rs2PrayerEnum.PROTECT_MAGIC;
+        if (!Rs2Prayer.isPrayerActive(predicted)) {
+            GorillaHelpers.switchDefensivePrayer(ctx, predicted);
+        }
+        log.info("[gorilla-pred] cry: previous={} -> pre-pray {}", prev, predicted);
     }
 
     /**
@@ -192,9 +207,15 @@ public class CustomDemonicGorillaPlugin extends Plugin {
                 return; // not an attack animation (cry/emote/AOE handled elsewhere)
         }
         GorillaContext ctx = getContext();
-        // TEMP measurement: was the prediction already on the correct overhead when the real attack fired?
+        // TEMP diagnostic: on the actual attack, log what the gorilla did vs what we predicted, plus the
+        // "previous" style we based the prediction on and whether we were awaiting a post-cry switch.
+        // If awaiting && actual == previous, the "previous" was stale (single-gorilla, never-same rules).
+        String praying = Microbot.getVarbitValue(4118) == 1 ? "MELEE"
+                : Microbot.getVarbitValue(4117) == 1 ? "RANGE"
+                : Microbot.getVarbitValue(4116) == 1 ? "MAGIC" : "NONE";
         boolean predicted = Rs2Prayer.isPrayerActive(protect);
-        log.info("[gorilla-pred] fail-check: {} attack, prediction was {}", style, predicted ? "CORRECT" : "wrong");
+        log.info("[gorilla-pred] resolved: actual={} praying={} correct={} previous={} awaiting={}",
+                style, praying, predicted, ctx.getPreviousAttackStyle(), ctx.isAwaitingStyleSwitch());
         // The animation is ground truth: end any pending prediction and pray the matching overhead.
         ctx.setCurrentAttackStyle(style);
         ctx.setAwaitingStyleSwitch(false);

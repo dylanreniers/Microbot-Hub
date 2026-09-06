@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Microbot Hub is a community plugin repository for the Microbot RuneLite client. It maintains a separation between core client functionality and community-contributed plugins, allowing rapid plugin development without affecting client stability. Each plugin is independently built, versioned, and packaged for GitHub Releases.
 
+## Security Scanning & Tools
+
+- **NEVER run Aikido or security scans on this project.** Do not invoke `aikido_full_scan`, any `aikido_*` tools, or the `aikido-security` skill.
+
 ## Build System Architecture
 
 The build system uses **Gradle with custom plugin discovery and packaging**:

@@ -48,6 +48,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -120,6 +121,9 @@ public class SalvagingScript {
     private volatile List<Rs2TileObjectModel> activeWreckSnapshot = List.of();
     private volatile List<Rs2TileObjectModel> inactiveWreckSnapshot = List.of();
 
+    private final Set<Integer> unfillableSeedItemIds = ConcurrentHashMap.newKeySet();
+    private final Set<Integer> unfillableHerbItemIds = ConcurrentHashMap.newKeySet();
+
     /** Max cargo slots for this boat tier ({@link CargoHoldObjectIds#ID_TO_CAPACITY}). */
     private int cargoHoldCapacity = -1;
     /** Occupied slots: parsed from {@link CargoHoldInterfaceWidgets} occupied text (usually just {@code X}) when the hold is open; else ITEMS grid count. */
@@ -144,10 +148,14 @@ public class SalvagingScript {
     }
 
     public void register() {
+        unfillableSeedItemIds.clear();
+        unfillableHerbItemIds.clear();
         eventBus.register(this);
     }
 
     public void unregister() {
+        unfillableSeedItemIds.clear();
+        unfillableHerbItemIds.clear();
         eventBus.unregister(this);
     }
 
@@ -1409,7 +1417,10 @@ public class SalvagingScript {
     }
 
     private boolean inventoryCleanupConfigured(SailingConfig config) {
-        if (config.useSeedBox()) {
+        if (config.useSeedBox() && hasSeedBox()) {
+            return true;
+        }
+        if (config.useHerbSack() && hasHerbSack()) {
             return true;
         }
         if (config.openCaskets()) {
@@ -1429,7 +1440,10 @@ public class SalvagingScript {
     }
 
     private boolean inventoryHasCleanupWork(SailingConfig config) {
-        if (config.useSeedBox() && hasSeedsOrFrags() && hasSeedBox()) {
+        if (config.useSeedBox() && hasSeedBox() && hasSeedsOrFrags()) {
+            return true;
+        }
+        if (config.useHerbSack() && hasHerbSack() && hasGrimyHerbs()) {
             return true;
         }
         if (config.openCaskets()) {
@@ -1492,14 +1506,20 @@ public class SalvagingScript {
     }
 
     private void clearInventoryViaAlchDropAndCaskets(SailingConfig config) {
-        if (config.useSeedBox() && hasSeedsOrFrags()) {
+        if (config.useSeedBox() && hasSeedBox() && hasSeedsOrFrags()) {
             fillSeedBox();
+        }
+        if (config.useHerbSack() && hasHerbSack() && hasGrimyHerbs()) {
+            fillHerbSack();
         }
         dropJunk(config);
         if (config.openCaskets()) {
             openCaskets();
-            if (config.useSeedBox() && hasSeedsOrFrags()) {
+            if (config.useSeedBox() && hasSeedBox() && hasSeedsOrFrags()) {
                 fillSeedBox();
+            }
+            if (config.useHerbSack() && hasHerbSack() && hasGrimyHerbs()) {
+                fillHerbSack();
             }
         }
         if (config.enableAlching()) {
@@ -1641,8 +1661,11 @@ public class SalvagingScript {
         if (hasSalvageItems()) {
             log.warn("Salvaging station: salvage still present after sorting; proceeding anyway");
         }
-        if (config.useSeedBox() && hasSeedsOrFrags()) {
+        if (config.useSeedBox() && hasSeedBox() && hasSeedsOrFrags()) {
             fillSeedBox();
+        }
+        if (config.useHerbSack() && hasHerbSack() && hasGrimyHerbs()) {
+            fillHerbSack();
         }
     }
 
@@ -1650,23 +1673,117 @@ public class SalvagingScript {
         return Rs2Inventory.get(i -> i.getName() != null && i.getName().toLowerCase().contains("seed box")) != null;
     }
 
+    private boolean hasHerbSack() {
+        return Rs2Inventory.get(i -> i.getName() != null && i.getName().toLowerCase().contains("herb sack")) != null;
+    }
+
+    private boolean isSeedOrFrag(Rs2ItemModel item) {
+        if (item == null) return false;
+        String name = item.getName();
+        if (name == null) return false;
+        String lower = name.toLowerCase();
+        return lower.endsWith(" seed") || lower.endsWith(" frag");
+    }
+
+    private boolean isGrimyHerb(Rs2ItemModel item) {
+        if (item == null) return false;
+        if (item.isNoted()) return false;
+        String name = item.getName();
+        if (name == null) return false;
+        return name.toLowerCase().startsWith("grimy ");
+    }
+
     private boolean hasSeedsOrFrags() {
-        return Rs2Inventory.all().stream().anyMatch(item -> {
-            String name = item.getName();
-            if (name == null) return false;
-            String lower = name.toLowerCase();
-            return lower.endsWith(" seed") || lower.endsWith(" frag");
-        });
+        unfillableSeedItemIds.removeIf(id -> !Rs2Inventory.hasItem(id));
+        return Rs2Inventory.all().stream().anyMatch(item ->
+                isSeedOrFrag(item) && !unfillableSeedItemIds.contains(item.getId()));
+    }
+
+    private boolean hasGrimyHerbs() {
+        unfillableHerbItemIds.removeIf(id -> !Rs2Inventory.hasItem(id));
+        return Rs2Inventory.all().stream().anyMatch(item ->
+                isGrimyHerb(item) && !unfillableHerbItemIds.contains(item.getId()));
     }
 
     private void fillSeedBox() {
+        unfillableSeedItemIds.removeIf(id -> !Rs2Inventory.hasItem(id));
         Rs2ItemModel seedBox = Rs2Inventory.get(i -> i.getName() != null && i.getName().toLowerCase().contains("seed box"));
-        if (seedBox != null) {
-            log.info("Filling seed box with seeds/frags");
-            if (!Rs2Inventory.interact(seedBox, "Fill")) {
-                Rs2Inventory.interact(seedBox);
+        if (seedBox == null) {
+            return;
+        }
+
+        List<Rs2ItemModel> candidateSeeds = Rs2Inventory.all().stream()
+                .filter(item -> isSeedOrFrag(item) && !unfillableSeedItemIds.contains(item.getId()))
+                .collect(Collectors.toList());
+        if (candidateSeeds.isEmpty()) {
+            return;
+        }
+
+        Set<Integer> candidateIds = candidateSeeds.stream()
+                .map(Rs2ItemModel::getId)
+                .collect(Collectors.toSet());
+
+        Map<Integer, Integer> countsBefore = new HashMap<>();
+        Map<Integer, String> namesById = new HashMap<>();
+        for (Rs2ItemModel item : candidateSeeds) {
+            countsBefore.put(item.getId(), Rs2Inventory.count(item.getId()));
+            namesById.putIfAbsent(item.getId(), item.getName());
+        }
+
+        log.info("Filling seed box with seeds/frags");
+        if (!Rs2Inventory.interact(seedBox, "Fill")) {
+            Rs2Inventory.interact(seedBox);
+        }
+
+        sleepUntil(() -> candidateIds.stream().anyMatch(id -> Rs2Inventory.count(id) < countsBefore.getOrDefault(id, 0)), 1200);
+        sleep(200, 400);
+
+        for (int id : candidateIds) {
+            if (Rs2Inventory.hasItem(id)) {
+                unfillableSeedItemIds.add(id);
+                log.info("Seed box cannot take (more) {}. Skipping until inventory changes.", namesById.getOrDefault(id, "item " + id));
             }
-            sleep(300, 600);
+        }
+    }
+
+    private void fillHerbSack() {
+        unfillableHerbItemIds.removeIf(id -> !Rs2Inventory.hasItem(id));
+        Rs2ItemModel herbSack = Rs2Inventory.get(i -> i.getName() != null && i.getName().toLowerCase().contains("herb sack"));
+        if (herbSack == null) {
+            return;
+        }
+
+        List<Rs2ItemModel> candidateHerbs = Rs2Inventory.all().stream()
+                .filter(item -> isGrimyHerb(item) && !unfillableHerbItemIds.contains(item.getId()))
+                .collect(Collectors.toList());
+        if (candidateHerbs.isEmpty()) {
+            return;
+        }
+
+        Set<Integer> candidateIds = candidateHerbs.stream()
+                .map(Rs2ItemModel::getId)
+                .collect(Collectors.toSet());
+
+        Map<Integer, Integer> countsBefore = new HashMap<>();
+        Map<Integer, String> namesById = new HashMap<>();
+        for (Rs2ItemModel item : candidateHerbs) {
+            countsBefore.put(item.getId(), Rs2Inventory.count(item.getId()));
+            namesById.putIfAbsent(item.getId(), item.getName());
+        }
+
+        log.info("Filling herb sack with grimy herbs");
+        if (!Rs2Inventory.interact(herbSack, "Fill")) {
+            Rs2Inventory.interact(herbSack);
+        }
+
+        sleepUntil(() -> candidateIds.stream().anyMatch(id -> Rs2Inventory.count(id) < countsBefore.getOrDefault(id, 0)), 1200);
+        sleep(200, 400);
+
+        for (int id : candidateIds) {
+            if (Rs2Inventory.hasItem(id)) {
+                unfillableHerbItemIds.add(id);
+                log.info("Herb sack cannot take (more) {}. Skipping until inventory changes.", namesById.getOrDefault(id, "item " + id));
+            }
         }
     }
 

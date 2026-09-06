@@ -203,16 +203,17 @@ public final class GorillaHelpers {
     // ---- Prayer ----------------------------------------------------------------------------
 
     public static void switchDefensivePrayer(GorillaContext ctx, Rs2PrayerEnum newDefensivePrayer) {
-        // Enable the NEW overhead FIRST, so there's never an unprotected gap. Protection prayers are
-        // mutually exclusive, so turning the new one on auto-drops the old — the explicit disable below
-        // is just a cleanup no-op. (Disabling first, as before, left us praying nothing for a moment
-        // exactly as the incoming attack landed → "hit with prayer off".)
-        Rs2Prayer.toggle(newDefensivePrayer, true);
+        // Enable the NEW overhead FIRST, so there's never an unprotected gap. Only disable the old one
+        // if the new one actually turned ON — otherwise (e.g. we momentarily hit 0 prayer points from
+        // rapid flicking) disabling the old would leave us praying NOTHING right as the attack lands.
+        boolean nowOn = Rs2Prayer.toggle(newDefensivePrayer, true);
         Rs2PrayerEnum old = ctx.getCurrentDefensivePrayer();
-        if (old != null && old != newDefensivePrayer) {
+        if (nowOn && old != null && old != newDefensivePrayer) {
             Rs2Prayer.toggle(old, false);
         }
-        ctx.setCurrentDefensivePrayer(newDefensivePrayer);
+        if (nowOn) {
+            ctx.setCurrentDefensivePrayer(newDefensivePrayer);
+        }
     }
 
     public static void switchOffensivePrayer(GorillaContext ctx, Rs2PrayerEnum newOffensivePrayer) {
@@ -231,49 +232,59 @@ public final class GorillaHelpers {
 
     // ---- Movement --------------------------------------------------------------------------
 
-    /** Steps ~2 tiles away from the current target, trying alternative directions if blocked. */
+    /** Steps the default read distance directly away from the current target. */
     public static boolean moveAwayFromTarget(GorillaContext ctx) {
+        return moveAwayFromTarget(ctx, 6);
+    }
+
+    /**
+     * Walks {@code tiles} tiles directly AWAY from the current target (falling back to whichever cardinal
+     * step increases the distance if the straight-away tile is blocked), used to open the 5–6 tile gap
+     * needed to read the melee tell / keep range distance.
+     */
+    public static boolean moveAwayFromTarget(GorillaContext ctx, int tiles) {
         Rs2NpcModel target = ctx.getCurrentTarget();
         if (target == null) {
             return false;
         }
 
-        WorldPoint playerLocation = Rs2Player.getWorldLocation();
+        WorldPoint player = Rs2Player.getWorldLocation();
         WorldPoint targetLocation = target.getWorldLocation();
+        if (player == null || targetLocation == null) {
+            return false;
+        }
 
-        int directionX = playerLocation.getX() - targetLocation.getX();
-        int directionY = playerLocation.getY() - targetLocation.getY();
+        int dirX = player.getX() - targetLocation.getX(); // vector pointing FROM the target TO us (= away)
+        int dirY = player.getY() - targetLocation.getY();
+        double length = Math.sqrt(dirX * dirX + dirY * dirY);
+        if (length == 0) { // standing on the gorilla's tile — pick an arbitrary away direction
+            dirX = 1;
+            length = 1;
+        }
+        int moveX = (int) Math.round(dirX / length * tiles);
+        int moveY = (int) Math.round(dirY / length * tiles);
 
-        double length = Math.sqrt(directionX * directionX + directionY * directionY);
-        double normalizedX = directionX / length;
-        double normalizedY = directionY / length;
+        // Move FURTHER along the away vector (player + away), not toward the gorilla.
+        WorldPoint dest = new WorldPoint(player.getX() + moveX, player.getY() + moveY, player.getPlane());
 
-        int moveX = (int) Math.round(normalizedX * 2);
-        int moveY = (int) Math.round(normalizedY * 2);
-
-        WorldPoint newPosition = new WorldPoint(playerLocation.getX() - moveX, playerLocation.getY() - moveY, playerLocation.getPlane());
-
-        if (!Rs2Tile.isWalkable(newPosition) || newPosition.equals(targetLocation) || newPosition.equals(playerLocation)) {
-            List<WorldPoint> alternativePositions = List.of(
-                    new WorldPoint(playerLocation.getX() + moveX, playerLocation.getY(), playerLocation.getPlane()),
-                    new WorldPoint(playerLocation.getX() - moveX, playerLocation.getY(), playerLocation.getPlane()),
-                    new WorldPoint(playerLocation.getX(), playerLocation.getY() + moveY, playerLocation.getPlane()),
-                    new WorldPoint(playerLocation.getX(), playerLocation.getY() - moveY, playerLocation.getPlane())
-            );
-
-            for (WorldPoint alternativePosition : alternativePositions) {
-                if (Rs2Tile.isWalkable(alternativePosition) && !alternativePosition.equals(targetLocation) && !alternativePosition.equals(playerLocation)) {
-                    newPosition = alternativePosition;
+        int currentDist = player.distanceTo(targetLocation);
+        if (!Rs2Tile.isWalkable(dest) || dest.distanceTo(targetLocation) <= currentDist) {
+            for (WorldPoint alt : List.of(
+                    new WorldPoint(player.getX() + tiles, player.getY(), player.getPlane()),
+                    new WorldPoint(player.getX() - tiles, player.getY(), player.getPlane()),
+                    new WorldPoint(player.getX(), player.getY() + tiles, player.getPlane()),
+                    new WorldPoint(player.getX(), player.getY() - tiles, player.getPlane()))) {
+                if (Rs2Tile.isWalkable(alt) && alt.distanceTo(targetLocation) > currentDist) {
+                    dest = alt;
                     break;
                 }
             }
         }
 
-        if (newPosition.equals(playerLocation) || newPosition.equals(targetLocation)) {
+        if (dest.equals(player) || dest.distanceTo(targetLocation) <= currentDist) {
             return false;
         }
-
-        return Rs2Walker.walkFastCanvas(newPosition);
+        return Rs2Walker.walkFastCanvas(dest);
     }
 
     /** Finds a nearby walkable tile that isn't in the danger set (used to dodge the AOE boulder). */

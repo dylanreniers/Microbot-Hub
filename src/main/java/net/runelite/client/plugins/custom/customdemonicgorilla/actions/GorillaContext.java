@@ -71,9 +71,14 @@ public class GorillaContext {
     private AttackStyle currentAttackStyle = AttackStyle.UNKNOWN;
     /** The style it was using when the "Rhaaaaa" switch cry fired; drives the next-style prediction. */
     private AttackStyle previousAttackStyle = AttackStyle.UNKNOWN;
-    /** True between the switch cry and the first attack of the new style; while set (and the gorilla is
-     *  at range) we pre-pray the magic&lt;-&gt;range prediction. Melee is handled reactively by the fail-check. */
+    /** True between the switch cry and the first attack of the new style. */
     private volatile boolean awaitingStyleSwitch;
+    /** True once we've opened the read gap (reached >= ~4 tiles) since the cry. Only then is the gorilla
+     *  being within melee distance a real melee tell — before that we're still mid-step and close. */
+    private volatile boolean awaitingGapOpened;
+    /** The gorilla's tile at the cry. After a magic/ranged cry we step away and watch this: if the
+     *  gorilla LEAVES this tile it's walking to us (melee); if it stays it's the other of magic/range. */
+    private volatile WorldPoint gorillaLocationAtCry;
 
     // --- Attack/animation tracking (populated from the target NPC and game ticks) ---
     private int npcAnimationCount;
@@ -124,6 +129,8 @@ public class GorillaContext {
         currentAttackStyle = AttackStyle.UNKNOWN;
         previousAttackStyle = AttackStyle.UNKNOWN;
         awaitingStyleSwitch = false;
+        awaitingGapOpened = false;
+        gorillaLocationAtCry = null;
         npcAnimationCount = 0;
         lastGorillaLocation = null;
         failedAttacks = 0;

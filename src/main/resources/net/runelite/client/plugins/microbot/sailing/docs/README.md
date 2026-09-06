@@ -49,6 +49,9 @@ An automated sailing plugin that supports salvaging shipwrecks while sailing.
 **Use Seed Box** (default: disabled)
 - When enabled, automatically fills your seed box if seeds (`* seed`) or fragments (`* frag`) are found in your inventory after sorting salvage (and before dropping junk / after opening caskets).
 
+**Use Herb Sack** (default: disabled)
+- When enabled, automatically fills your herb sack if grimy herbs (`grimy *`) are found in your inventory after sorting salvage (and before dropping junk / after opening caskets).
+
 **Sort salvage if no shipwreck** (default: disabled)
 - When enabled, automatically sorts salvage at the salvaging station when no active shipwreck is found nearby to optimize downtime.
 

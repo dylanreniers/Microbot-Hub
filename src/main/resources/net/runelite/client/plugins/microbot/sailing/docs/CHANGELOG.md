@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.2.62]
+
+### Fixed
+- **Seed Box & Herb Sack**: Fixed infinite filling loop when containers cannot accept an item (e.g. seed box full of other seed varieties, non-seed fragments, or herb sack at capacity). Items are only attempted once per occurrence and skipped if they remain in inventory, allowing salvaging to continue without interruption.
+
+---
+
+## [2.2.61]
+
+### Added
+- **Use Herb Sack**: Added config option to automatically store grimy herbs into the herb sack after sorting salvage (matching the Seed Box behaviour).
+
+---
+
 ## [2.2.59]
 
 ### Changed

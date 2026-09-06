@@ -9,6 +9,7 @@ import net.runelite.client.plugins.kourendlibrary.KourendLibraryPlugin;
 import net.runelite.client.plugins.microbot.GiantSeaweedFarmer.GiantSeaweedFarmerPlugin;
 import net.runelite.client.plugins.microbot.agentserver.AgentServerPlugin;
 import net.runelite.client.plugins.microbot.aiofighter.AIOFighterPlugin;
+import net.runelite.client.plugins.microbot.aiomagic.AIOMagicPlugin;
 import net.runelite.client.plugins.microbot.arceuuslibrary.ArceuusLibraryPlugin;
 import net.runelite.client.plugins.microbot.birdhouseruns.FornBirdhouseRunsPlugin;
 import net.runelite.client.plugins.microbot.pitfallhunter.PitfallHunterPlugin;
@@ -24,6 +25,7 @@ import net.runelite.client.plugins.microbot.mmcaves.MmCavesPlugin;
 import net.runelite.client.plugins.microbot.plankrunner.PlankRunnerPlugin;
 import net.runelite.client.plugins.microbot.sulphurnaguafigther.SulphurNaguaPlugin;
 import net.runelite.client.plugins.microbot.tempoross.TemporossPlugin;
+import net.runelite.client.plugins.microbot.varrockanvil.VarrockAnvilPlugin;
 
 public class Microbot
 {
@@ -40,6 +42,8 @@ public class Microbot
 			HerbrunPlugin.class,
 			TemporossPlugin.class,
 			AutoWoodcuttingPlugin.class,
+			VarrockAnvilPlugin.class,
+			AIOMagicPlugin.class,
 		FornBirdhouseRunsPlugin.class,
 		GiantSeaweedFarmerPlugin.class,
 		PitfallHunterPlugin.class,
