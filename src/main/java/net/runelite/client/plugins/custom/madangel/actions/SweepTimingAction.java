@@ -50,10 +50,14 @@ public class SweepTimingAction implements MadAngelAction {
                 hp = "?";
                 phase = "?";
             }
-            if ("player-hit".equals(e.kind)) {
+            String sec = String.format("%.1f", delta * 0.6f);
+            if (e.note != null) {
+                // Sweep-plan simulator line: the pre-formatted cleave/side message.
+                log.info("[mad-angel][plan] tick={} (+{}t / +{}s) {} [{}]", e.tick, delta, sec, e.note, phase);
+            } else if ("player-hit".equals(e.kind)) {
                 // For hits the "anim" field carries the damage amount, and health isn't sampled.
                 log.info("[mad-angel][anim] tick={} (+{}t / +{}s) *** TOOK {} DAMAGE ***",
-                        e.tick, delta, String.format("%.1f", delta * 0.6f), e.anim);
+                        e.tick, delta, sec, e.anim);
             } else {
                 log.info("[mad-angel][anim] tick={} (+{}t / +{}s) anim={} kind={} hp={} [{}]",
                         e.tick, delta, String.format("%.1f", delta * 0.6f), e.anim, e.kind, hp, phase);

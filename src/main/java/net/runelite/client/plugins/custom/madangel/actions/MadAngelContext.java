@@ -44,6 +44,26 @@ public class MadAngelContext {
     /** Client tick of the most recent cleave animation; the sweep is "over" once these stop arriving. */
     private volatile int sweepLastAnimTick = -100;
 
+    // --- Sweep-plan simulator (diagnostics): a tick-scheduled log of the dodge cadence, armed at the
+    //     first cleave. Prints once per cleave at a fixed interval (normal vs enrage), N times, then
+    //     disarms — proving out the tick schedule + per-cleave side before we change the movement. ---
+    private volatile boolean sweepPlanActive;
+    private volatile int sweepPlanNextTick;
+    private volatile int sweepPlanInterval;
+    private volatile int sweepPlanIndex;
+    private volatile int sweepPlanTotal;
+    private volatile boolean sweepPlanEnrage;
+    /** Side derived from the FIRST cleave's animation; a fallback when a scheduled tick lands between
+     *  cleaves (current animation isn't a sweep id). */
+    private volatile Side sweepPlanFirstSide;
+
+    /** The boss-frame safe tile for the current cleave, set by the tick schedule (client thread) and
+     *  walked to by {@code SweepDodgeAction} (script thread). Also serves as the fallback tile when a
+     *  scheduled tick lands between cleaves. */
+    private volatile WorldPoint sweepDodgeTile;
+    /** One-shot: a new dodge tile is waiting to be walked to. */
+    private volatile boolean sweepDodgeWalkPending;
+
     // --- Blast / "burst" (energy ball to a marked tile: stand on it to bounce it back) ---
     private volatile boolean blastActive;
     /** The marked tile to stand on — from the projectile's target, or the id-1448 graphics object. */
@@ -77,13 +97,20 @@ public class MadAngelContext {
         public final int healthRatio;
         public final int healthScale;
         public final String kind;
+        /** Optional pre-formatted message (used by sweep-plan lines); null for plain samples. */
+        public final String note;
 
         public AnimEvent(int tick, int anim, int healthRatio, int healthScale, String kind) {
+            this(tick, anim, healthRatio, healthScale, kind, null);
+        }
+
+        public AnimEvent(int tick, int anim, int healthRatio, int healthScale, String kind, String note) {
             this.tick = tick;
             this.anim = anim;
             this.healthRatio = healthRatio;
             this.healthScale = healthScale;
             this.kind = kind;
+            this.note = note;
         }
     }
 
@@ -104,6 +131,15 @@ public class MadAngelContext {
         sweepThroughTile = null;
         sweepNextIsThrough = true;
         sweepLastAnimTick = -100;
+        sweepPlanActive = false;
+        sweepPlanNextTick = 0;
+        sweepPlanInterval = 0;
+        sweepPlanIndex = 0;
+        sweepPlanTotal = 0;
+        sweepPlanEnrage = false;
+        sweepPlanFirstSide = null;
+        sweepDodgeTile = null;
+        sweepDodgeWalkPending = false;
         blastActive = false;
         blastTile = null;
         blastArmedTick = -100;

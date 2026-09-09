@@ -120,4 +120,16 @@ public interface MadAngelConfig extends Config {
     default boolean logAnimTiming() {
         return true;
     }
+
+    @ConfigItem(
+            keyName = "sweepDodgeDryRun",
+            name = "Sweep dodge: dry-run",
+            description = "Detect sweeps and draw the dodge tiles/overlay, but DON'T actually move. "
+                    + "Lets you stand still and verify the green safe-tile against the sword visually",
+            section = diagnosticsSection,
+            position = 1
+    )
+    default boolean sweepDodgeDryRun() {
+        return false;
+    }
 }

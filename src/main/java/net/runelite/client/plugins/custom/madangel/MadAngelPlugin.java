@@ -62,6 +62,8 @@ public class MadAngelPlugin extends Plugin {
     @Inject
     private MadAngelOverlay overlay;
     @Inject
+    private MadAngelSceneOverlay sceneOverlay;
+    @Inject
     private MadAngelScript script;
 
     @Provides
@@ -78,6 +80,7 @@ public class MadAngelPlugin extends Plugin {
     protected void startUp() {
         if (overlayManager != null) {
             overlayManager.add(overlay);
+            overlayManager.add(sceneOverlay);
         }
         script.run();
     }
@@ -86,6 +89,12 @@ public class MadAngelPlugin extends Plugin {
     protected void shutDown() {
         script.shutdown();
         overlayManager.remove(overlay);
+        overlayManager.remove(sceneOverlay);
+    }
+
+    /** Compact "x,y" rendering of a WorldPoint for the diagnostic logs (null-safe). */
+    private static String pt(WorldPoint p) {
+        return p == null ? "?" : p.getX() + "," + p.getY();
     }
 
     /** True if {@code actor} is a Mad Angel. It's a solo/instanced boss, so any Mad Angel is ours. */
@@ -137,6 +146,7 @@ public class MadAngelPlugin extends Plugin {
                 ctx.setSweepOriginTile(Rs2Player.getWorldLocation());
                 ctx.setSweepThroughTile(MadAngelHelpers.computeSweepThroughTile((NPC) actor));
                 ctx.setSweepNextIsThrough(true);
+                armSweepPlan(ctx, actor, tick, sweepLeft);
             }
             ctx.setSweepPending(true);
             ctx.setSweepSide(sweepLeft ? Side.LEFT : Side.RIGHT);
@@ -151,6 +161,29 @@ public class MadAngelPlugin extends Plugin {
             armSmite(ctx, tick, MadAngelHelpers.SMITE_ENRAGE_ON_TICKS);
             ctx.setLastReaction("smite-enrage");
         }
+    }
+
+    /**
+     * Arms the tick-scheduled sweep-plan simulator at the first cleave (diagnostics only — no movement).
+     * Phase is read from the boss's health bar (enrage ≤ {@code ENRAGE_HP_PERCENT}); that sets the cleave
+     * count and interval. The per-cleave prints then fire from onGameTick counting ticks off {@code tick}.
+     */
+    private void armSweepPlan(MadAngelContext ctx, Actor actor, int tick, boolean sweepLeft) {
+        if (ctx.isSweepPlanActive()) {
+            return; // one plan per sweep; drives both the (real) tick-scheduled dodge and the diag log
+        }
+        int ratio = actor.getHealthRatio();
+        int scale = actor.getHealthScale();
+        boolean enrage = scale > 0 && ratio >= 0 && ratio * 100 <= scale * MadAngelHelpers.ENRAGE_HP_PERCENT;
+        ctx.setSweepPlanActive(true);
+        ctx.setSweepPlanEnrage(enrage);
+        ctx.setSweepPlanInterval(enrage
+                ? MadAngelHelpers.SWEEP_ENRAGE_INTERVAL_TICKS : MadAngelHelpers.SWEEP_NORMAL_INTERVAL_TICKS);
+        ctx.setSweepPlanTotal(enrage
+                ? MadAngelHelpers.SWEEP_ENRAGE_CLEAVES : MadAngelHelpers.SWEEP_NORMAL_CLEAVES);
+        ctx.setSweepPlanIndex(0);
+        ctx.setSweepPlanNextTick(tick);
+        ctx.setSweepPlanFirstSide(sweepLeft ? Side.LEFT : Side.RIGHT);
     }
 
     private void armBlast(MadAngelContext ctx, int tick) {
@@ -295,6 +328,67 @@ public class MadAngelPlugin extends Plugin {
         // --- Sweep ends once no cleave animation has fired for a couple ticks; then AttackAction resumes. ---
         if (ctx.isSweepActive() && tick - ctx.getSweepLastAnimTick() > MadAngelHelpers.SWEEP_END_TICKS) {
             ctx.setSweepActive(false);
+        }
+
+        // --- Sweep-plan simulator: emit one scheduled line per cleave (interval + count by phase), then
+        //     disarm. Side is read from the CURRENT animation at each tick so we can see if the safe side
+        //     flips per cleave; falls back to the first cleave's side when the tick lands between cleaves.
+        //     Logs only — no movement — so we can validate the tick schedule before changing the dodge. ---
+        if (ctx.isSweepPlanActive()) {
+            var t = ctx.getCurrentTarget();
+            NPC angel = t != null ? t.getNpc() : null;
+            if (angel == null || angel.isDead()) {
+                ctx.setSweepPlanActive(false);
+            } else {
+                while (ctx.isSweepPlanActive() && tick >= ctx.getSweepPlanNextTick()
+                        && ctx.getSweepPlanIndex() < ctx.getSweepPlanTotal()) {
+                    int anim = angel.getAnimation();
+                    // Safe side alternates per cleave, tracked by the current cleave animation. Sword side
+                    // is the danger side → dodge to the OPPOSITE side of the boss (boss-frame tiles).
+                    Side sword = MadAngelHelpers.sweepSideFor(anim);
+                    MadAngelHelpers.DodgeSpots spots = MadAngelHelpers.computeDodgeSpots(client, angel);
+                    WorldPoint safeTile = null;
+                    if (spots != null) {
+                        if (sword == Side.LEFT) {
+                            safeTile = spots.dodgeRight;      // sword left -> go boss-right
+                        } else if (sword == Side.RIGHT) {
+                            safeTile = spots.dodgeLeft;       // sword right -> go boss-left
+                        }
+                    }
+
+                    // Hand the tile to SweepDodgeAction (script thread) to walk. Reuse the previous safe
+                    // tile if this scheduled tick landed between cleaves (non-sweep anim). Skipped in
+                    // dry-run so the overlay can still be validated without moving.
+                    if (config.enableSweepDodge() && !config.sweepDodgeDryRun()) {
+                        WorldPoint go = safeTile != null ? safeTile : ctx.getSweepDodgeTile();
+                        if (go != null) {
+                            ctx.setSweepDodgeTile(go);
+                            ctx.setSweepDodgeWalkPending(true);
+                        }
+                    }
+
+                    if (config.logAnimTiming()) {
+                        String side = sword == Side.LEFT ? "RIGHT"
+                                : sword == Side.RIGHT ? "LEFT"
+                                : "(" + ctx.getSweepPlanFirstSide() + "?)";
+                        String geom = spots == null ? "spots=?"
+                                : String.format("safe=%s (ori=%d facing=%s player=%s)",
+                                pt(safeTile), angel.getOrientation(), spots.playerSide,
+                                pt(Rs2Player.getWorldLocation()));
+                        String note = String.format("SWEEP %s cleave %d/%d -> go %s (anim=%d) | %s",
+                                ctx.isSweepPlanEnrage() ? "ENRAGE" : "normal",
+                                ctx.getSweepPlanIndex() + 1, ctx.getSweepPlanTotal(), side, anim, geom);
+                        ctx.getAnimEventLog().offer(new MadAngelContext.AnimEvent(
+                                tick, anim, angel.getHealthRatio(), angel.getHealthScale(), "sweep-plan", note));
+                    }
+
+                    ctx.setSweepPlanIndex(ctx.getSweepPlanIndex() + 1);
+                    ctx.setSweepPlanNextTick(ctx.getSweepPlanNextTick() + ctx.getSweepPlanInterval());
+                }
+                if (ctx.getSweepPlanIndex() >= ctx.getSweepPlanTotal()) {
+                    ctx.setSweepPlanActive(false);
+                }
+            }
         }
 
         // --- Default defensive overhead = Protect from Melee (the angel's standard hit). The smite flick
