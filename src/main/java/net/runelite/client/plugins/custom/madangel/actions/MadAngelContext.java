@@ -22,6 +22,10 @@ public class MadAngelContext {
     /** Which side of the 2x2 angel to strafe to for a sweep, from the player's facing perspective. */
     public enum Side {LEFT, RIGHT}
 
+    /** Between-fights sequence: drop prayers → loot → LEAVE the finished instance (pew 62251) → ENTER a
+     *  fresh one (pew 62250) → "Wake" the angel. ENTER/WAKE also run at plugin start (no LOOT/LEAVE). */
+    public enum PostKillPhase {NONE, LOOT, LEAVE, ENTER, WAKE}
+
     // --- Target ---
     private volatile Rs2NpcModel currentTarget;
     private volatile int failedAttacks;
@@ -83,6 +87,23 @@ public class MadAngelContext {
     private volatile int[] smiteOnTicks;
     /** Whether we currently have Protect from Magic toggled on for the flick (so we know when to flick off). */
     private volatile boolean smitePrayerOn;
+
+    // --- Post-kill sequence ---
+    /** Set true whenever a live angel is seen; used to detect "kill just ended" (was alive, now gone). */
+    private volatile boolean sawLiveAngel;
+    private volatile PostKillPhase postKillPhase = PostKillPhase.NONE;
+    /** Wall-clock the current post-kill phase started, for grace/timeout windows. */
+    private volatile long postKillPhaseMs;
+    /** Wall-clock of the last successful loot pickup, so we linger until pickups stop. */
+    private volatile long lastLootMs;
+    /** True once any lootable drop has been seen on the ground (drops land after the death animation). */
+    private volatile boolean postKillSawLoot;
+    /** Wall-clock we last saw a lootable item on the ground, for the post-loot settle window. */
+    private volatile long postKillLastItemsMs;
+
+    public boolean isInPostKill() {
+        return postKillPhase != PostKillPhase.NONE;
+    }
 
     // --- Prayer tracking ---
     private volatile Rs2PrayerEnum currentOffensivePrayer;
@@ -150,6 +171,12 @@ public class MadAngelContext {
         smiteOnTicks = null;
         smitePrayerOn = false;
         currentOffensivePrayer = null;
+        sawLiveAngel = false;
+        postKillPhase = PostKillPhase.NONE;
+        postKillPhaseMs = 0;
+        lastLootMs = 0;
+        postKillSawLoot = false;
+        postKillLastItemsMs = 0;
         lastAnimation = -1;
         lastReaction = "none";
         animEventLog.clear();

@@ -24,9 +24,16 @@ public interface MadAngelConfig extends Config {
     String sustainSection = "sustain";
 
     @ConfigSection(
+            name = "Post-kill",
+            description = "After a kill: drop prayers, loot, and re-enter via the church pew",
+            position = 2
+    )
+    String postKillSection = "postkill";
+
+    @ConfigSection(
             name = "Diagnostics",
             description = "Logging aids for tuning the reactions",
-            position = 2
+            position = 3
     )
     String diagnosticsSection = "diagnostics";
 
@@ -107,6 +114,41 @@ public interface MadAngelConfig extends Config {
     )
     default int minPrayerPercent() {
         return 30;
+    }
+
+    @ConfigItem(
+            keyName = "enablePostKill",
+            name = "Post-kill loop",
+            description = "When the boss dies: turn off all prayers, loot, click the church pew and "
+                    + "confirm \"Yes!\" to start the next kill",
+            section = postKillSection,
+            position = 0
+    )
+    default boolean enablePostKill() {
+        return true;
+    }
+
+    @Range(min = 0)
+    @ConfigItem(
+            keyName = "minLootValue",
+            name = "Loot: min value",
+            description = "Pick up ground items worth at least this many gp (0 = pick up everything)",
+            section = postKillSection,
+            position = 1
+    )
+    default int minLootValue() {
+        return 1;
+    }
+
+    @ConfigItem(
+            keyName = "lootUntradeables",
+            name = "Loot: untradeables",
+            description = "Also pick up untradeable drops (e.g. uniques) regardless of value",
+            section = postKillSection,
+            position = 2
+    )
+    default boolean lootUntradeables() {
+        return true;
     }
 
     @ConfigItem(

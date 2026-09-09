@@ -6,6 +6,8 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
+import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
+import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 
 /**
  * Default state: keep the fight going. Eats/drinks to the configured thresholds and (re)issues an
@@ -32,16 +34,34 @@ public class AttackAction implements MadAngelAction {
     @Override
     public boolean needsExecution(MadAngelState state) {
         MadAngelContext ctx = state.context();
+        if (ctx.isInPostKill()) {
+            return false; // between fights (loot / enter / wake) — don't attack or re-engage prayers
+        }
+        // Definitive guard: never click Attack unless the angel actually exposes the "Attack" action.
+        // It has NO actions ("Actions=[]") while loading and only "Wake" while asleep — attacking then
+        // just spam-errors. This is independent of the phase machine, so it can't be raced.
+        if (!MadAngelHelpers.isAngelAttackable()) {
+            return false;
+        }
+        // Don't attack until prayers are up (turned on at wake). The offensive prayer stays active for the
+        // whole fight — smite only flips the overhead protection prayer — so this is safe mid-fight.
+        if (state.config().enableOffensivePrayer()) {
+            Rs2PrayerEnum best = Rs2Prayer.getBestMeleePrayer();
+            if (best != null && !Rs2Prayer.isPrayerActive(best)) {
+                return false;
+            }
+        }
         if (ctx.isBlastActive()) {
             // Reaching + holding the marked tile is the priority (BlastStandAction, order 210). Only once
             // we're standing EXACTLY on it do we attack for DPS, and only if the boss is orthogonally
             // adjacent (attacking in place won't move us off the tile). If the tile moves between bounces,
             // player != tile again → we stop attacking and re-walk to the new tile before resuming.
-            WorldPoint tile = ctx.getBlastTile();
+            /* WorldPoint tile = ctx.getBlastTile();
             WorldPoint player = Rs2Player.getWorldLocation();
             boolean onMarkedTile = tile != null && tile.equals(player);
             NPC angel = ctx.getCurrentTarget() != null ? ctx.getCurrentTarget().getNpc() : null;
-            return onMarkedTile && MadAngelHelpers.isInMeleeRange(Microbot.getClient(), angel);
+            return onMarkedTile && MadAngelHelpers.isInMeleeRange(Microbot.getClient(), angel); */
+            return false;
         }
         if (ctx.isSweepActive() || ctx.isSweepPlanActive()) {
             // Between cleaves: re-attack for DPS, but only after the dodge walk has finished (we've

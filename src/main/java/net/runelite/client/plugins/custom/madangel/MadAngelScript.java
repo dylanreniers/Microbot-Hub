@@ -42,6 +42,11 @@ public class MadAngelScript extends ActionScript<MadAngelState> {
     protected void onInitialize() {
         log.info("Initializing Mad Angel (Custom)");
         context.reset();
+        // Start every cycle by entering the arena + waking the angel (skips straight to WAKE/combat if
+        // we're already in the battle area). Combat actions stay suppressed until the angel is awake.
+        if (config.enablePostKill()) {
+            context.setPostKillPhase(MadAngelContext.PostKillPhase.ENTER);
+        }
     }
 
     @Override

@@ -24,7 +24,9 @@ public class OffensivePrayerAction implements MadAngelAction {
 
     @Override
     public boolean needsExecution(MadAngelState state) {
-        return state.config().enableOffensivePrayer() && state.context().getCurrentTarget() != null;
+        return state.config().enableOffensivePrayer()
+                && !state.context().isInPostKill() // keep prayers off between kills
+                && state.context().getCurrentTarget() != null;
     }
 
     @Override

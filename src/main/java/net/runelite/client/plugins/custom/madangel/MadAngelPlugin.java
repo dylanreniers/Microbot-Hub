@@ -392,8 +392,9 @@ public class MadAngelPlugin extends Plugin {
         }
 
         // --- Default defensive overhead = Protect from Melee (the angel's standard hit). The smite flick
-        //     to Protect from Magic disables it, so restore/keep Protect from Melee whenever not smiting. ---
-        if (config.enableProtectFromMelee() && !ctx.isSmiteActive()) {
+        //     to Protect from Magic disables it, so restore/keep Protect from Melee whenever not smiting.
+        //     Suppressed during the post-kill sequence so all prayers stay off. ---
+        if (config.enableProtectFromMelee() && !ctx.isSmiteActive() && !ctx.isInPostKill()) {
             MadAngelHelpers.ensureProtectFromMelee();
         }
     }

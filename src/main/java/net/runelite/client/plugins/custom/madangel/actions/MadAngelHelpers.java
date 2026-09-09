@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GraphicsObject;
 import net.runelite.api.NPC;
+import net.runelite.api.NPCComposition;
 import net.runelite.api.Projectile;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
@@ -24,6 +25,23 @@ public final class MadAngelHelpers {
 
     public static final String ANGEL_NAME = "Mad Angel";
     public static final int ANGEL_ID = 16314;
+    /** Church pew to (re-)ENTER the battle area (start of each cycle / after leaving). */
+    public static final int ENTER_OBJECT_ID = 62250;
+    /** Church pew to LEAVE the finished instance after looting, before re-entering. */
+    public static final int LEAVE_OBJECT_ID = 62251;
+    /** Action on the (sleeping-statue) Mad Angel that starts the fight. */
+    public static final String WAKE_ACTION = "Wake";
+    /** How far (tiles) to search for the church pew. */
+    public static final int PEW_SEARCH_RANGE = 30;
+    /** How close (tiles) a live Mad Angel counts as "still fighting"; also the loot search radius. */
+    public static final int LOOT_RANGE = 20;
+    /** Boss drops don't hit the ground until the death animation finishes (~several seconds after it
+     *  "dies"), so wait up to this long for drops to APPEAR before concluding nothing dropped. */
+    public static final long LOOT_APPEAR_MS = 8000;
+    /** Once the ground is clear of lootables, linger this long (late/staggered drops) before the pew. */
+    public static final long LOOT_SETTLE_MS = 2000;
+    /** Hard cap on the whole loot phase so a full inventory / unreachable item can't hang the loop. */
+    public static final long LOOT_MAX_MS = 20000;
     /** The boss occupies a 3x3 tile footprint. */
     public static final int ANGEL_SIZE = 3;
     /** How far to move to dodge a sweep: 5 tiles opposite the angel's facing (counts the tile we stand
@@ -165,6 +183,48 @@ public final class MadAngelHelpers {
     }
 
     // ---- Target acquisition ----------------------------------------------------------------
+
+    /** True if a living (not dead) Mad Angel is nearby — i.e. the fight is still on. */
+    public static boolean isAngelAlive() {
+        Rs2NpcModel a = Microbot.getRs2NpcCache().query().withName(ANGEL_NAME).nearest();
+        return a != null && a.getNpc() != null && !a.getNpc().isDead();
+    }
+
+    /**
+     * True if the nearest Mad Angel's CURRENT npc-id definition exposes {@code action}. The statue and the
+     * awake angel are DIFFERENT ids, and there's also a transitional state with NO actions ({@code []}),
+     * so we must check the specific action. Read via {@code getNpcDefinition(npc.getId())} — exactly what
+     * {@code Rs2NpcModel.click} uses — so it matches what a click would actually find.
+     */
+    public static boolean angelHasAction(String action) {
+        Rs2NpcModel a = Microbot.getRs2NpcCache().query().withName(ANGEL_NAME).nearest();
+        if (a == null || a.getNpc() == null) {
+            return false;
+        }
+        int id = a.getNpc().getId();
+        return Boolean.TRUE.equals(Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            NPCComposition def = Microbot.getClient().getNpcDefinition(id);
+            if (def == null || def.getActions() == null) {
+                return false;
+            }
+            for (String act : def.getActions()) {
+                if (action.equalsIgnoreCase(act)) {
+                    return true;
+                }
+            }
+            return false;
+        }).orElse(false));
+    }
+
+    /** The sleeping statue (has the "Wake" action). */
+    public static boolean isAngelAsleep() {
+        return angelHasAction(WAKE_ACTION);
+    }
+
+    /** The awake, attackable angel (has the "Attack" action) — NOT true in the asleep or loading states. */
+    public static boolean isAngelAttackable() {
+        return angelHasAction("Attack");
+    }
 
     /** Keeps the current angel while it lives; otherwise finds the nearest Mad Angel. */
     public static Rs2NpcModel getTarget(MadAngelContext ctx) {
