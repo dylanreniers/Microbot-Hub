@@ -7,6 +7,7 @@ import net.runelite.api.gameval.NpcID;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
+import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
@@ -93,8 +94,11 @@ public class MoonlightMothScript extends AbstractScript {
     private void handleBanking(MoonlightMothConfig config) {
         Microbot.status = "Banking process initiated";
 
-        if (!Rs2Bank.walkToBankAndUseBank()) {
-            logOnceToChat("Failed to open bank.", false);
+        // Always use the Hunters' Guild bank. Using the no-arg nearest-bank logic can
+        // pick a home-teleport bank, which strands the script since it can't walk back
+        // to the Hunters' Guild moth area afterwards.
+        if (!Rs2Bank.walkToBankAndUseBank(BankLocation.HUNTERS_GUILD)) {
+            logOnceToChat("Failed to open Hunters' Guild bank.", false);
             return;
         }
 

@@ -145,6 +145,49 @@ public final class GorillaHelpers {
         }
     }
 
+    /** Minimum gap between worn-gear recovery attempts (a couple ticks), so a full inventory that keeps
+     *  blocking the swap can't hot-loop wearEquipment() and back the client thread up into a freeze. */
+    private static final long GEAR_VERIFY_INTERVAL_MS = 1500;
+
+    /**
+     * Verifies the WORN equipment matches the setup for our intended combat style and re-equips if not.
+     * A gear swap can silently fail — e.g. the inventory fills with loot, leaving no slot for the piece
+     * being unequipped — which {@link #handleGearSwitching} won't retry because it only acts on an overhead
+     * change. Left unhandled we keep fighting with the wrong weapon and get stuck on the gorilla. This runs
+     * every tick but only actually checks/re-equips once per {@link #GEAR_VERIFY_INTERVAL_MS}; once a slot
+     * frees (food eaten, potion finished) the retry succeeds and we recover on our own.
+     */
+    public static void verifyGear(GorillaContext ctx, CustomDemonicGorillaConfig config) {
+        Rs2InventorySetup setup = setupFor(ctx, ctx.getCurrentGear());
+        if (setup == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - ctx.getLastGearVerifyMs() < GEAR_VERIFY_INTERVAL_MS) {
+            return;
+        }
+        ctx.setLastGearVerifyMs(now);
+        if (setup.doesEquipmentMatch()) {
+            return; // already wearing the right gear
+        }
+        logOnce(ctx, "Wrong gear worn for " + ctx.getCurrentGear() + " — re-equipping");
+        setup.wearEquipment();
+    }
+
+    /** The inventory setup backing an {@link ArmorEquiped} style, or null if that style isn't configured. */
+    private static Rs2InventorySetup setupFor(GorillaContext ctx, ArmorEquiped gear) {
+        switch (gear) {
+            case MELEE:
+                return ctx.getMeleeGear();
+            case RANGED:
+                return ctx.getRangeGear();
+            case MAGIC:
+                return ctx.getMagicGear();
+            default:
+                return null;
+        }
+    }
+
     /** Picks the counter-style gear for the gorilla's current overhead and equips it. */
     public static void switchGear(GorillaContext ctx, CustomDemonicGorillaConfig config, HeadIcon combatNpcHeadIcon) {
         boolean useRange = config.useRangeStyle();

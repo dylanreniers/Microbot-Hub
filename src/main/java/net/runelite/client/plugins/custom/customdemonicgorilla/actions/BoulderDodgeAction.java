@@ -8,14 +8,17 @@ import net.runelite.client.plugins.microbot.util.tile.Rs2Tile;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
-
-import static net.runelite.client.plugins.microbot.util.Global.sleep;
+import java.util.Set;
 
 /**
- * FIGHTING phase: dodge the AOE boulder. Armed by the plugin's ProjectileMoved handler from the
- * projectile's target tile (early — well before impact). Runs regardless of whether we currently have
- * a target, so we still dodge during the between-kills loot wait when no gorilla is engaged.
+ * FIGHTING phase: dodge the AOE boulder(s). The plugin's ProjectileMoved handler records every inbound
+ * boulder's landing tile (early — well before impact) plus a danger window. This action re-evaluates
+ * EVERY tick while that window is open (it never sleeps): if we're standing on any tile a boulder is
+ * about to hit, it steps to a nearby tile clear of ALL inbound boulders. The old version dodged once and
+ * then blocked the whole pipeline on a multi-tick sleep, so during a barrage the next boulder landed on
+ * the tile we'd just fled to while we sat asleep on it — the "hit a few times in a row" bug.
  */
 @Slf4j
 public class BoulderDodgeAction implements GorillaAction {
@@ -32,40 +35,40 @@ public class BoulderDodgeAction implements GorillaAction {
 
     @Override
     public boolean needsExecution(GorillaState state) {
-        return state.context().getBotStatus() == State.FIGHTING && state.context().isBoulderDodgePending();
+        GorillaContext ctx = state.context();
+        // Active whenever a dodge was just armed OR a boulder is still in its danger window — so we keep
+        // re-checking each tick through a barrage instead of acting once and going quiet.
+        return ctx.getBotStatus() == State.FIGHTING
+                && (ctx.isBoulderDodgePending() || System.currentTimeMillis() < ctx.getBoulderDangerUntilMs());
     }
 
     @Override
     public Object execute(GorillaState state) {
         GorillaContext ctx = state.context();
+        long now = System.currentTimeMillis();
         ctx.setBoulderDodgePending(false);
-        WorldPoint danger = ctx.getBoulderTargetTile();
-        long landsAt = ctx.getBoulderLandsAtMs();
-        if (danger == null) {
+        ctx.pruneInboundBoulders(now);
+
+        WorldPoint player = Rs2Player.getWorldLocation();
+        if (player == null) {
             return null;
         }
 
-        WorldPoint player = Rs2Player.getWorldLocation();
-        if (danger.equals(player)) {
-            // Standing on the boulder tile — step off to a safe tile.
-            List<WorldPoint> dangerousWorldPoints = new ArrayList<>(Rs2Tile.getDangerousGraphicsObjectTiles().keySet());
-            dangerousWorldPoints.add(danger);
-            WorldPoint safeTile = GorillaHelpers.findSafeTile(ctx, player, dangerousWorldPoints);
-            log.info("[gorilla-boulder] on tile, dodging danger={} -> safe={}", danger, safeTile);
+        // Full danger set: every inbound boulder's landing tile plus any already-spawned AOE graphics tiles.
+        Set<WorldPoint> danger = new HashSet<>(ctx.getInboundBoulders().keySet());
+        danger.addAll(Rs2Tile.getDangerousGraphicsObjectTiles().keySet());
+
+        if (danger.contains(player)) {
+            // Standing on a tile a boulder will hit — step to a nearby tile clear of ALL inbound boulders.
+            List<WorldPoint> dangerList = new ArrayList<>(danger);
+            WorldPoint safeTile = GorillaHelpers.findSafeTile(ctx, player, dangerList);
+            log.info("[gorilla-boulder] on danger tile, dodging player={} danger={} -> safe={}", player, danger, safeTile);
             if (safeTile != null) {
                 Rs2Walker.walkFastCanvas(safeTile);
             }
-        } else {
-            log.info("[gorilla-boulder] off tile (danger={} player={}) — holding until it lands", danger, player);
         }
-
-        // Hold off the tile until the boulder lands, so the melee re-attack can't walk us back onto it
-        // before impact. Prayer stays protected meanwhile — the AnimationChanged fail-check is independent
-        // of this tick. Bounded so a bad landing estimate can't stall us.
-        long sleepMs = landsAt - System.currentTimeMillis() + 300;
-        if (sleepMs > 0) {
-            sleep((int) Math.min(sleepMs, 3000));
-        }
+        // Not on a danger tile: stay put. AttackAction suppresses re-approach while the danger window is
+        // open (see its boulder guard), so we can't path back onto a boulder — no blocking sleep needed.
         return null;
     }
 }

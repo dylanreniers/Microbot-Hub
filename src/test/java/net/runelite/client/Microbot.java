@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingPlugin;
+import net.runelite.client.plugins.custom.customdemonicgorilla.CustomDemonicGorillaPlugin;
+import net.runelite.client.plugins.custom.madangel.MadAngelPlugin;
 import net.runelite.client.plugins.kourendlibrary.KourendLibraryPlugin;
 import net.runelite.client.plugins.microbot.GiantSeaweedFarmer.GiantSeaweedFarmerPlugin;
 import net.runelite.client.plugins.microbot.agentserver.AgentServerPlugin;
@@ -51,7 +53,9 @@ public class Microbot
 		KourendLibraryPlugin.class,
 		ArceuusLibraryPlugin.class,
 		AIOFighterPlugin.class,
-		MSailingPlugin.class
+		MSailingPlugin.class,
+		CustomDemonicGorillaPlugin.class,
+		MadAngelPlugin.class
 	};
 
     public static void main(String[] args) throws Exception

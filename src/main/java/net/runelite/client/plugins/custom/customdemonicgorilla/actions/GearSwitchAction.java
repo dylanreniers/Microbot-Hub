@@ -30,7 +30,12 @@ public class GearSwitchAction implements GorillaAction {
 
     @Override
     public Object execute(GorillaState state) {
+        // Swap gear on an overhead flip...
         GorillaHelpers.handleGearSwitching(state.context(), state.config());
+        // ...then verify the swap actually took. A full inventory (loot) can make wearEquipment() silently
+        // fail, and handleGearSwitching won't retry until the next overhead change — so we'd fight with the
+        // wrong weapon and stall. This re-equips (rate-limited) until the worn gear matches the style.
+        GorillaHelpers.verifyGear(state.context(), state.config());
         return state.context().getCurrentGear();
     }
 }

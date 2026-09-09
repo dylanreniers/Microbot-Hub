@@ -111,8 +111,18 @@ public class BankingAction implements GorillaAction {
                     Rs2Inventory.waitForInventoryChanges(1800);
                 }
 
-                // 5. Heal / restore before travelling, then refill whatever that consumed.
+                // 5. Heal / restore before travelling.
                 topUpBeforeTravel(config);
+
+                // 5b. Restoring at the bank leaves junk that isn't in the setup: drinking turns a full
+                //     potion into a part-used dose (e.g. Prayer potion(4) -> (3)) with a DIFFERENT item id,
+                //     and empty vials appear once a potion is finished. Deposit everything not in the setup
+                //     again so those leftovers don't linger and fill the inventory — a full inventory later
+                //     starves the mid-fight gear swap of the free slot it needs and makes it fail.
+                Rs2Bank.depositAllExcept(item -> item != null && desired.containsKey(item.getId()));
+                sleep(Rs2Random.between(400, 800));
+
+                // 6. Refill whatever the top-up / re-deposit consumed.
                 for (Map.Entry<Integer, Integer> want : desired.entrySet()) {
                     Rs2Bank.withdrawDeficit(want.getKey(), want.getValue());
                     Rs2Inventory.waitForInventoryChanges(1200);

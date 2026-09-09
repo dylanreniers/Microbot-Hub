@@ -7,7 +7,6 @@ import net.runelite.client.plugins.custom.customdemonicgorilla.actions.GorillaCo
 import net.runelite.client.plugins.custom.customdemonicgorilla.actions.GorillaContext.State;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
-import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 
 /**
@@ -55,37 +54,18 @@ public class GorillaAttacksAction implements GorillaAction {
         boolean weRanging = ctx.getCurrentGear() == ArmorEquiped.RANGED
                 || ctx.getCurrentGear() == ArmorEquiped.MAGIC;
 
-        Rs2PrayerEnum newDefensivePrayer = null;
         boolean movedThisTick = false;
 
         if (ctx.isStyleSwitchCryPending()) {
             // The cry's prayer was already pre-set immediately in the plugin's event handler. Here we only
-            // open the read gap (worker thread) — and only if we're too close; if already at range, stay
-            // put so we don't walk across the room each cry.
+            // open the read gap — and only if we're too close; if already at range, stay put so we don't
+            // walk across the room each cry. The melee-vs-ranged read itself (and its PROTECT_MELEE flip)
+            // now runs per game tick in the plugin's onGameTick (Phase 2), off this 50 ms pipeline.
             ctx.setStyleSwitchCryPending(false);
             AttackStyle prev = ctx.getPreviousAttackStyle();
             if ((prev == AttackStyle.MAGIC || prev == AttackStyle.RANGED) && dist < 4 && !Rs2Player.isMoving()) {
                 movedThisTick = GorillaHelpers.moveAwayFromTarget(ctx, 4);
             }
-        } else if (ctx.isAwaitingStyleSwitch()) {
-            // Melee tell: a melee gorilla must CLOSE the gap to reach us; a range/magic one attacks from
-            // afar. Only trust "within 2 tiles" AFTER the gap has actually opened (>= 4 reached) — before
-            // that we're still mid-step and close, which would falsely read magic/range as melee.
-            AttackStyle prev = ctx.getPreviousAttackStyle();
-            if (prev == AttackStyle.MAGIC || prev == AttackStyle.RANGED) {
-                if (!ctx.isAwaitingGapOpened() && dist >= 4) {
-                    ctx.setAwaitingGapOpened(true);
-                }
-                if (ctx.isAwaitingGapOpened() && dist <= 2) {
-                    newDefensivePrayer = Rs2PrayerEnum.PROTECT_MELEE;
-                }
-            }
-        }
-
-        // Re-pray whenever the needed overhead isn't ACTUALLY active (safe if points ran out then a
-        // restore was drunk — we don't get stuck praying the wrong/no overhead).
-        if (newDefensivePrayer != null && !Rs2Prayer.isPrayerActive(newDefensivePrayer)) {
-            GorillaHelpers.switchDefensivePrayer(ctx, newDefensivePrayer);
         }
 
         // While ranging AND the gorilla is using range/magic, keep a ~3–4 tile gap so a melee switch shows
