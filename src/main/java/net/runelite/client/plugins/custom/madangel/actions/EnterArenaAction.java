@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GameObject;
 import net.runelite.client.plugins.custom.madangel.actions.MadAngelContext.PostKillPhase;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
+import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
@@ -48,6 +49,9 @@ public class EnterArenaAction implements MadAngelAction {
 
         GameObject enter = pew(MadAngelHelpers.ENTER_OBJECT_ID);
         log.info("[mad-angel] entering battle area via pew {}", MadAngelHelpers.ENTER_OBJECT_ID);
+        if (enter != null) {
+            Rs2Camera.turnTo(enter); // face the pew before clicking it
+        }
         Rs2GameObject.interact(enter);
         sleepUntil(() -> pew(MadAngelHelpers.ENTER_OBJECT_ID) == null, 5000);
 

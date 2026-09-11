@@ -5,6 +5,7 @@ import net.runelite.api.GameObject;
 import net.runelite.client.plugins.custom.madangel.actions.MadAngelContext.PostKillPhase;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
+import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
@@ -61,7 +62,21 @@ public class PostKillAction implements MadAngelAction {
 
     @Override
     public Object execute(MadAngelState state) {
+        MadAngelContext ctx = state.context();
         log.info("post kill sequence");
+        // Mark that we're in the post-kill sequence BEFORE anything else, so isInPostKill() is true for
+        // the whole (blocking) sequence. Otherwise the phase stays NONE while we loot and the plugin's
+        // onGameTick re-enables Protect-from-Melee (and lingering smite flicks re-enable Protect-Magic),
+        // which is why prayers came back on during looting. Also clear any reaction flags still armed from
+        // the final attacks (e.g. an enrage smite whose flick schedule outlives the kill).
+        ctx.setPostKillPhase(PostKillPhase.LOOT);
+        ctx.setSmiteActive(false);
+        ctx.setSmitePrayerOn(false);
+        ctx.setSweepActive(false);
+        ctx.setSweepPlanActive(false);
+        ctx.setBlastActive(false);
+        ctx.setSawLiveAngel(false);
+
         Rs2Prayer.disableAllPrayers();
         log.info("prayers disabled");
         sleepUntil(() -> lootablePresent());
@@ -71,9 +86,9 @@ public class PostKillAction implements MadAngelAction {
 
         GameObject leave = pew(MadAngelHelpers.LEAVE_OBJECT_ID);
         if (leave != null) {
+            Rs2Camera.turnTo(leave); // face the pew before clicking it
             Rs2GameObject.interact(leave);
             log.info("leaving");
-            sleepUntil(() -> pew(MadAngelHelpers.LEAVE_OBJECT_ID) == null);
         }
 
         sleepUntil(Rs2Dialogue::isInDialogue);
@@ -81,6 +96,7 @@ public class PostKillAction implements MadAngelAction {
         Rs2Dialogue.clickOption("Yes!");
 
         log.info("clicked yes");
+        sleepUntil(() -> pew(MadAngelHelpers.LEAVE_OBJECT_ID) == null);
         sleep(1800);
         state.context().setPostKillPhase(PostKillPhase.ENTER);
         return "leaving";

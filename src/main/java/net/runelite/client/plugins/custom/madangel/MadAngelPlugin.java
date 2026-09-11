@@ -278,8 +278,10 @@ public class MadAngelPlugin extends Plugin {
                 && localPlayer.getInteracting() == tgt.getNpc();
         ctx.setEngagedWithAngel(engaged);
 
-        // --- Smite: flick Protect from Magic ON on each scheduled tick, OFF the tick after. ---
-        if (ctx.isSmiteActive() && ctx.getSmiteOnTicks() != null) {
+        // --- Smite: flick Protect from Magic ON on each scheduled tick, OFF the tick after. Suppressed
+        //     during the post-kill sequence so a smite whose flick schedule outlived the kill can't
+        //     re-enable Protect-from-Magic while we're looting. ---
+        if (!ctx.isInPostKill() && ctx.isSmiteActive() && ctx.getSmiteOnTicks() != null) {
             int[] onTicks = ctx.getSmiteOnTicks();
             boolean shouldTurnOn = false;
             boolean shouldTurnOff = false;
