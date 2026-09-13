@@ -1888,7 +1888,11 @@ public class SalvagingScript {
                 .toArray(String[]::new);
 
         if (junkItems.length > 0) {
-            Rs2Inventory.dropAll(junkItems);
+            // Use partial (substring) matching so dropping aligns with the substring-based detection in
+            // inventoryHasCleanupWork()/hasItem(). The default Rs2Inventory.dropAll(String...) is an EXACT
+            // match, which silently drops nothing for configured names that are substrings of the real item
+            // name (e.g. "plank" vs "Oak plank"), causing an endless "Inventory cleanup" loop.
+            Rs2Inventory.dropAll(false, junkItems);
         }
     }
 }
