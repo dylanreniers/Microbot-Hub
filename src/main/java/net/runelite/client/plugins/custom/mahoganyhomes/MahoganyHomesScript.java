@@ -4,7 +4,6 @@ import com.google.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GameObject;
 import net.runelite.api.ItemID;
-import net.runelite.api.MenuAction;
 import net.runelite.api.ObjectComposition;
 import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
@@ -25,7 +24,6 @@ import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
-import net.runelite.client.plugins.microbot.util.menu.NewMenuEntry;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.tile.Rs2Tile;
@@ -389,23 +387,12 @@ public class MahoganyHomesScript extends Script {
                             sleep(Rs2Random.randomGaussian(800, 200));
                             Rs2ItemModel plankSack = Rs2Inventory.get(ItemID.PLANK_SACK);
                             if (plankSack != null) {
-                                NewMenuEntry plankSackEntry = new NewMenuEntry();
-                                plankSackEntry.setOption("Use");
-                                plankSackEntry.setTarget("<col=ff9040>Plank sack</col>");
-                                plankSackEntry.setIdentifier(9);
-                                plankSackEntry.setType(MenuAction.CC_OP);
-                                plankSackEntry.setParam0(plankSack.getSlot());
-                                plankSackEntry.setParam1(983043);
-                                plankSackEntry.setItemId(plankSack.getId());
-                                plankSackEntry.setWorldViewId(-1);
-                                plankSackEntry.setForceLeftClick(false);
-                                plankSackEntry.setDeprioritized(false);
-                                Microbot.doInvoke(plankSackEntry, Rs2Inventory.itemBounds(plankSack));
+                                Rs2Inventory.interact(plankSack, "Fill");
                                 Rs2Inventory.waitForInventoryChanges(1000);
                                 if (Rs2Inventory.isFull()) {
                                     plugin.setPlankCount(28);
                                 }
-                                log.info("Checking plank sack...");
+                                log.info("Filling plank sack...");
                             }
                         }, 20000, 1000);
 
