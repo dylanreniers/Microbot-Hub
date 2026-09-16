@@ -62,7 +62,7 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 )
 @Slf4j
 public class DonderWoodcuttingPlugin extends Plugin {
-    public static final String version = "2.0.0";
+    public static final String version = "2.1.0";
     private static final Pattern WOOD_CUT_PATTERN = Pattern.compile("You get (?:some|an)[\\w ]+(?:logs?|mushrooms)\\.");
     // Forestry event variables
     public final List<Rs2NpcModel> ritualCircles = new ArrayList<>();

@@ -18,8 +18,11 @@ public enum WoodcuttingTree {
     MAHOGANY("mahogany tree", "Mahogany logs", ItemID.MAHOGANY_LOGS, 50, "Chop down"),
     YEW("yew tree", "Yew logs", ItemID.YEW_LOGS, 60, "Chop down"),
     BLISTERWOOD("blisterwood tree", "Blisterwood logs", ItemID.BLISTERWOOD_LOGS, 62, "Chop"),
+    CAMPHOR_TREE("camphor tree", "Camphor logs", ItemID.CAMPHOR_LOGS, 66, "Chop down"),
     MAGIC("magic tree", "Magic logs", ItemID.MAGIC_LOGS, 75, "Chop down"),
+    IRONWOOD_TREE("ironwood tree", "Ironwood logs", ItemID.IRONWOOD_LOGS, 80, "Chop down"),
     REDWOOD("redwood tree", "Redwood logs", ItemID.REDWOOD_LOGS, 90, "Cut"),
+    ROSEWOOD_TREE("rosewood tree", "Rosewood logs", ItemID.ROSEWOOD_LOGS, 92, "Chop down"),
     EVERGREEN_TREE("evergreen tree", "Logs", ItemID.LOGS, 1, "Chop down"),
     DEAD_TREE("dead tree", "Logs", ItemID.LOGS, 1, "Chop down"),
     INFECTED_ROOT("infected root", "Logs", ItemID.LOGS, 80, "Chop");
