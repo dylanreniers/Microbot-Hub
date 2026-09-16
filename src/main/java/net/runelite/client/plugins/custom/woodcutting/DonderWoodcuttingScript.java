@@ -377,7 +377,19 @@ public class DonderWoodcuttingScript extends Script {
 
     private boolean handleBanking(DonderWoodcuttingConfig config) {
         BankLocation nearestBank = Rs2Bank.getNearestBank();
-        boolean isBankOpen = Rs2Bank.isNearBank(nearestBank, 8) ? Rs2Bank.openBank() : Rs2Bank.walkToBankAndUseBank(nearestBank);
+        boolean isBankOpen;
+        if (Rs2Bank.isNearBank(nearestBank, 8)) {
+            isBankOpen = Rs2Bank.openBank();
+        } else {
+            // Always walk/run to the bank when the inventory is full - never teleport.
+            boolean previousDisableTeleports = Rs2Walker.disableTeleports;
+            Rs2Walker.disableTeleports = true;
+            try {
+                isBankOpen = Rs2Bank.walkToBankAndUseBank(nearestBank);
+            } finally {
+                Rs2Walker.disableTeleports = previousDisableTeleports;
+            }
+        }
         if (!isBankOpen || !Rs2Bank.isOpen()) {
             return false;
         }
