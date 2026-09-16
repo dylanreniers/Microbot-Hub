@@ -3,7 +3,7 @@ package net.runelite.client.plugins.custom.woodcutting.Forestry;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.api.gameval.ObjectID;
-import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingPlugin;
+import net.runelite.client.plugins.custom.woodcutting.DonderWoodcuttingPlugin;
 import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
 import net.runelite.client.plugins.microbot.BlockingEvent;
 import net.runelite.client.plugins.microbot.BlockingEventPriority;
@@ -24,9 +24,9 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepGaussian;
 @Slf4j
 public class LeprechaunEvent implements BlockingEvent {
 
-    private final AutoWoodcuttingPlugin plugin;
+    private final DonderWoodcuttingPlugin plugin;
 
-    public LeprechaunEvent(AutoWoodcuttingPlugin plugin) {
+    public LeprechaunEvent(DonderWoodcuttingPlugin plugin) {
         this.plugin = plugin;
     }
 

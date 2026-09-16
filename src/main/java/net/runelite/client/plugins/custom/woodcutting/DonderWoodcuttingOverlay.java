@@ -20,16 +20,16 @@ import java.time.Instant;
 
 import static net.runelite.client.ui.overlay.OverlayUtil.renderPolygon;
 
-public class AutoWoodcuttingOverlay extends OverlayPanel {
+public class DonderWoodcuttingOverlay extends OverlayPanel {
     private static final Color WHITE_TRANSLUCENT = new Color(255, 255, 255, 127);
     private static final Color TITLE_COLOR = new Color(0, 170, 0);
     private static final Color HEADER_COLOR = new Color(140, 220, 140);
     private static final Color NORMAL_TEXT_COLOR = Color.WHITE;
     private static final Color HIGHLIGHT_COLOR = new Color(255, 235, 145);
 
-    private final AutoWoodcuttingConfig config;
+    private final DonderWoodcuttingConfig config;
     private final Client client;
-    private final AutoWoodcuttingPlugin plugin;
+    private final DonderWoodcuttingPlugin plugin;
 
     private Instant startTime;
     private int startXp;
@@ -38,7 +38,7 @@ public class AutoWoodcuttingOverlay extends OverlayPanel {
     private boolean firstRun = false;
 
     @Inject
-    AutoWoodcuttingOverlay(AutoWoodcuttingPlugin plugin, AutoWoodcuttingConfig config, Client client) {
+    DonderWoodcuttingOverlay(DonderWoodcuttingPlugin plugin, DonderWoodcuttingConfig config, Client client) {
         super(plugin);
         this.plugin = plugin;
         this.config = config;
@@ -70,7 +70,7 @@ public class AutoWoodcuttingOverlay extends OverlayPanel {
 
             // Title
             panelComponent.getChildren().add(TitleComponent.builder()
-                    .text("Micro Woodcutting v" + AutoWoodcuttingPlugin.version)
+                    .text("Micro Woodcutting v" + DonderWoodcuttingPlugin.version)
                     .color(TITLE_COLOR)
                     .build());
 
@@ -186,7 +186,7 @@ public class AutoWoodcuttingOverlay extends OverlayPanel {
 
             // Display area boundary
             if (config.distanceToStray() < 21) {
-                LocalPoint lp = LocalPoint.fromWorld(client, AutoWoodcuttingScript.getReturnPoint(config));
+                LocalPoint lp = LocalPoint.fromWorld(client, DonderWoodcuttingScript.getReturnPoint(config));
                 if (lp != null) {
                     Polygon poly = Perspective.getCanvasTileAreaPoly(client, lp, config.distanceToStray() * 2);
 

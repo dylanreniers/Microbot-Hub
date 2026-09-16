@@ -12,14 +12,14 @@ import net.runelite.client.plugins.custom.woodcutting.enums.WoodcuttingWalkBack;
 import net.runelite.client.plugins.microbot.util.inventory.InteractOrder;
 import net.runelite.client.plugins.microbot.util.skills.fletching.data.FletchingItem;
 
-@ConfigGroup(AutoWoodcuttingConfig.CONFIG_GROUP)
+@ConfigGroup(DonderWoodcuttingConfig.CONFIG_GROUP)
 @ConfigInformation(
         "<html>" +
                 "<p>This script automatically cuts trees and handles the logs based on your settings.</p>" +
                 "<p>Forestry support implemented by Yuof and TaF</p>" +
                 "<p>If forestry is enabled, remember to use one of the forestry worlds for best results</p>" +
                 "</html>")
-public interface AutoWoodcuttingConfig extends Config {
+public interface DonderWoodcuttingConfig extends Config {
     String CONFIG_GROUP = "DonderAutoWoodcutting";
 
     @ConfigSection(

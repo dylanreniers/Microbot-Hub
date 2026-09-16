@@ -2,7 +2,7 @@ package net.runelite.client.plugins.custom.woodcutting.Forestry;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Constants;
-import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingPlugin;
+import net.runelite.client.plugins.custom.woodcutting.DonderWoodcuttingPlugin;
 import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
 import net.runelite.client.plugins.custom.woodcutting.enums.WoodcuttingTree;
 import net.runelite.client.plugins.microbot.BlockingEvent;
@@ -27,12 +27,12 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 @Slf4j
 public class HivesEvent implements BlockingEvent {
 
-    private final AutoWoodcuttingPlugin plugin;
+    private final DonderWoodcuttingPlugin plugin;
     private final Set<Integer> completedBeehives = new HashSet<>();
     private Rs2NpcModel currentBeehive = null;
     private int initialLogCount = -1;
 
-    public HivesEvent(AutoWoodcuttingPlugin plugin) {
+    public HivesEvent(DonderWoodcuttingPlugin plugin) {
         this.plugin = plugin;
     }
 

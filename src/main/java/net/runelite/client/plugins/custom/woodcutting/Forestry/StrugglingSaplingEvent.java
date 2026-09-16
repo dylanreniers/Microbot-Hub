@@ -3,8 +3,8 @@ package net.runelite.client.plugins.custom.woodcutting.Forestry;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GameObject;
 import net.runelite.api.gameval.ItemID;
-import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingPlugin;
-import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingScript;
+import net.runelite.client.plugins.custom.woodcutting.DonderWoodcuttingPlugin;
+import net.runelite.client.plugins.custom.woodcutting.DonderWoodcuttingScript;
 import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
 import net.runelite.client.plugins.microbot.BlockingEvent;
 import net.runelite.client.plugins.microbot.BlockingEventPriority;
@@ -30,7 +30,7 @@ import static net.runelite.api.gameval.ObjectID.GATHERING_EVENT_SAPLING_INGREDIE
 
 @Slf4j
 public class StrugglingSaplingEvent implements BlockingEvent {
-    private final AutoWoodcuttingPlugin plugin;
+    private final DonderWoodcuttingPlugin plugin;
     private final List<Integer> ingredientIds = List.of(
             GATHERING_EVENT_SAPLING_INGREDIENT_1,
             GATHERING_EVENT_SAPLING_INGREDIENT_2,
@@ -41,7 +41,7 @@ public class StrugglingSaplingEvent implements BlockingEvent {
             GATHERING_EVENT_SAPLING_INGREDIENT_5
     );
 
-    public StrugglingSaplingEvent(AutoWoodcuttingPlugin plugin) {
+    public StrugglingSaplingEvent(DonderWoodcuttingPlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -55,7 +55,7 @@ public class StrugglingSaplingEvent implements BlockingEvent {
             if (strugglingSaplings.isEmpty()) return false;
             return strugglingSaplings.stream().anyMatch(obj ->
                     Rs2GameObject.hasAction(Rs2GameObject.convertToObjectComposition(obj), "Add-mulch") &&
-                            obj.getWorldLocation().distanceTo(Rs2Player.getWorldLocation()) <= AutoWoodcuttingScript.FORESTRY_DISTANCE
+                            obj.getWorldLocation().distanceTo(Rs2Player.getWorldLocation()) <= DonderWoodcuttingScript.FORESTRY_DISTANCE
             );
         } catch (Exception e) {
             log.error("StrugglingSaplingEvent: Exception in validate method", e);
@@ -73,7 +73,7 @@ public class StrugglingSaplingEvent implements BlockingEvent {
                     .stream()
                     .filter(obj ->
                             Rs2GameObject.hasAction(Rs2GameObject.convertToObjectComposition(obj), "Add-mulch") &&
-                                    obj.getWorldLocation().distanceTo(Rs2Player.getWorldLocation()) <= AutoWoodcuttingScript.FORESTRY_DISTANCE
+                                    obj.getWorldLocation().distanceTo(Rs2Player.getWorldLocation()) <= DonderWoodcuttingScript.FORESTRY_DISTANCE
                     )
                     .findFirst()
                     .orElse(null);

@@ -53,15 +53,15 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
         description = "Microbot woodcutting plugin",
         tags = {"Woodcutting", "microbot", "skilling"},
         authors = {"Mocrosoft"},
-        version = AutoWoodcuttingPlugin.version,
+        version = DonderWoodcuttingPlugin.version,
         minClientVersion = "2.0.7",
-        cardUrl = "https://chsami.github.io/Microbot-Hub/AutoWoodcuttingPlugin/assets/card.jpg",
-        iconUrl = "https://chsami.github.io/Microbot-Hub/AutoWoodcuttingPlugin/assets/icon.jpg",
+        cardUrl = "https://chsami.github.io/Microbot-Hub/DonderWoodcuttingPlugin/assets/card.jpg",
+        iconUrl = "https://chsami.github.io/Microbot-Hub/DonderWoodcuttingPlugin/assets/icon.jpg",
         enabledByDefault = PluginConstants.DEFAULT_ENABLED,
         isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
-public class AutoWoodcuttingPlugin extends Plugin {
+public class DonderWoodcuttingPlugin extends Plugin {
     public static final String version = "2.0.0";
     private static final Pattern WOOD_CUT_PATTERN = Pattern.compile("You get (?:some|an)[\\w ]+(?:logs?|mushrooms)\\.");
     // Forestry event variables
@@ -72,16 +72,16 @@ public class AutoWoodcuttingPlugin extends Plugin {
     private final AtomicInteger completedForestryEvents = new AtomicInteger(0);
     @Inject
     @Getter(AccessLevel.MODULE)
-    public AutoWoodcuttingScript autoWoodcuttingScript;
+    public DonderWoodcuttingScript autoWoodcuttingScript;
     @Inject
-    public AutoWoodcuttingConfig config;
+    public DonderWoodcuttingConfig config;
     public ForestryEvents currentForestryEvent = ForestryEvents.NONE;
     @Inject
     public Rs2TileObjectCache rs2TileObjectCache;
     @Inject
     private OverlayManager overlayManager;
     @Inject
-    private AutoWoodcuttingOverlay woodcuttingOverlay;
+    private DonderWoodcuttingOverlay woodcuttingOverlay;
     private EggEvent eggEvent;
     private EntlingsEvent entlingsEvent;
     private FlowersEvent flowersEvent;
@@ -93,8 +93,8 @@ public class AutoWoodcuttingPlugin extends Plugin {
     private StrugglingSaplingEvent saplingEvent;
 
     @Provides
-    AutoWoodcuttingConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(AutoWoodcuttingConfig.class);
+    DonderWoodcuttingConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(DonderWoodcuttingConfig.class);
     }
 
     @Override
@@ -307,7 +307,7 @@ public class AutoWoodcuttingPlugin extends Plugin {
 
     @Subscribe
     public void onConfigChanged(ConfigChanged ev) {
-        if (ev.getGroup().equals(AutoWoodcuttingConfig.CONFIG_GROUP)) {
+        if (ev.getGroup().equals(DonderWoodcuttingConfig.CONFIG_GROUP)) {
             if (ev.getKey().equals("enableForestry")) {
                 if (config.enableForestry()) {
                     this.addEvents();

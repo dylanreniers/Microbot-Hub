@@ -4,7 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingPlugin;
+import net.runelite.client.plugins.custom.woodcutting.DonderWoodcuttingPlugin;
 import net.runelite.client.plugins.custom.customdemonicgorilla.CustomDemonicGorillaPlugin;
 import net.runelite.client.plugins.custom.madangel.MadAngelPlugin;
 import net.runelite.client.plugins.kourendlibrary.KourendLibraryPlugin;
@@ -28,12 +28,14 @@ import net.runelite.client.plugins.microbot.plankrunner.PlankRunnerPlugin;
 import net.runelite.client.plugins.microbot.sulphurnaguafigther.SulphurNaguaPlugin;
 import net.runelite.client.plugins.microbot.tempoross.TemporossPlugin;
 import net.runelite.client.plugins.microbot.varrockanvil.VarrockAnvilPlugin;
+import net.runelite.client.plugins.microbot.woodcutting.AutoWoodcuttingPlugin;
+import net.runelite.client.plugins.woodcutting.WoodcuttingPlugin;
 
 public class Microbot
 {
 
 	private static final Class<?>[] debugPlugins = {
-		AgentServerPlugin.class,
+			AgentServerPlugin.class,
 			AgilityPlugin.class,
 			PlankRunnerPlugin.class,
 			SulphurNaguaPlugin.class,
@@ -43,25 +45,26 @@ public class Microbot
 			MmCavesPlugin.class,
 			HerbrunPlugin.class,
 			TemporossPlugin.class,
-			AutoWoodcuttingPlugin.class,
+			DonderWoodcuttingPlugin.class,
 			VarrockAnvilPlugin.class,
 			AIOMagicPlugin.class,
-		FornBirdhouseRunsPlugin.class,
-		GiantSeaweedFarmerPlugin.class,
-		PitfallHunterPlugin.class,
-		MotherloadMinePlugin.class,
-		KourendLibraryPlugin.class,
-		ArceuusLibraryPlugin.class,
-		AIOFighterPlugin.class,
-		MSailingPlugin.class,
-		CustomDemonicGorillaPlugin.class,
-		MadAngelPlugin.class
+			FornBirdhouseRunsPlugin.class,
+			GiantSeaweedFarmerPlugin.class,
+			PitfallHunterPlugin.class,
+			MotherloadMinePlugin.class,
+			KourendLibraryPlugin.class,
+			ArceuusLibraryPlugin.class,
+			AIOFighterPlugin.class,
+			MSailingPlugin.class,
+			CustomDemonicGorillaPlugin.class,
+			MadAngelPlugin.class,
+			AutoWoodcuttingPlugin.class
 	};
 
-    public static void main(String[] args) throws Exception
-    {
+	public static void main(String[] args) throws Exception
+	{
 		List<Class<?>> _debugPlugins = Arrays.stream(debugPlugins).collect(Collectors.toList());
-        RuneLiteDebug.pluginsToDebug.addAll(_debugPlugins);
-        RuneLiteDebug.main(args);
-    }
+		RuneLiteDebug.pluginsToDebug.addAll(_debugPlugins);
+		RuneLiteDebug.main(args);
+	}
 }

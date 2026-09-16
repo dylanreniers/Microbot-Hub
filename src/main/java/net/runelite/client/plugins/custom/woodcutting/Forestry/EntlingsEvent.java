@@ -2,7 +2,7 @@ package net.runelite.client.plugins.custom.woodcutting.Forestry;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.gameval.NpcID;
-import net.runelite.client.plugins.custom.woodcutting.AutoWoodcuttingPlugin;
+import net.runelite.client.plugins.custom.woodcutting.DonderWoodcuttingPlugin;
 import net.runelite.client.plugins.custom.woodcutting.enums.ForestryEvents;
 import net.runelite.client.plugins.microbot.BlockingEvent;
 import net.runelite.client.plugins.microbot.BlockingEventPriority;
@@ -18,9 +18,9 @@ import java.util.stream.Collectors;
 @Slf4j
 public class EntlingsEvent implements BlockingEvent {
 
-    private final AutoWoodcuttingPlugin plugin;
+    private final DonderWoodcuttingPlugin plugin;
 
-    public EntlingsEvent(AutoWoodcuttingPlugin plugin) {
+    public EntlingsEvent(DonderWoodcuttingPlugin plugin) {
         this.plugin = plugin;
     }
 
