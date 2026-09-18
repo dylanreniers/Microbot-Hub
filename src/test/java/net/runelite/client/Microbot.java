@@ -4,8 +4,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import net.runelite.client.plugins.custom.fletching.FletchingPlugin;
 import net.runelite.client.plugins.custom.woodcutting.DonderWoodcuttingPlugin;
 import net.runelite.client.plugins.custom.customdemonicgorilla.CustomDemonicGorillaPlugin;
+import net.runelite.client.plugins.custom.abyssalsire.AbyssalSirePlugin;
 import net.runelite.client.plugins.custom.madangel.MadAngelPlugin;
 import net.runelite.client.plugins.kourendlibrary.KourendLibraryPlugin;
 import net.runelite.client.plugins.microbot.GiantSeaweedFarmer.GiantSeaweedFarmerPlugin;
@@ -57,8 +59,10 @@ public class Microbot
 			AIOFighterPlugin.class,
 			MSailingPlugin.class,
 			CustomDemonicGorillaPlugin.class,
+			AbyssalSirePlugin.class,
 			MadAngelPlugin.class,
-			AutoWoodcuttingPlugin.class
+			AutoWoodcuttingPlugin.class,
+			FletchingPlugin.class,
 	};
 
 	public static void main(String[] args) throws Exception
