@@ -62,6 +62,13 @@ public class Phase1Action implements SireAction {
             return "gear-wait";
         }
 
+        // Before the kill actually starts (first barrage), top up to the configured minimum HP — the
+        // pool of Rejuvenation doesn't heal HP, so we do it here. eatAt eats one food when below the
+        // threshold and returns false once we're there (or out of food), so this stops on its own.
+        if (!ctx.isFightStarted() && Rs2Player.eatAt(ctx.getStartKillMinHpPercent(), true)) {
+            return "prekill-eat";
+        }
+
         // All respiratory systems down: stop phase-1 combat NOW. Re-barraging here would re-stun the
         // Sire to 5888 and block the 5886 phase-2 tell (the exact stuck-in-phase-1 bug). Hold at the
         // original spot; the script advances us to phase 2 (advanceToPhase2IfRespiratoryCleared).

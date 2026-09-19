@@ -28,6 +28,8 @@ public final class SireConstants {
     public static final int SIRE_PHASE1_ASLEEP = 5888;
     /** Exposed and being fought head-on (melee window). */
     public static final int SIRE_HEAD_ON = 5990;
+    /** Phase 2, fully exposed and attacking with melee — only then is Protect from Melee needed. */
+    public static final int SIRE_PHASE2_MELEE = 5890;
     /** Walking to the arena centre — marks the start of phase 3. */
     public static final int SIRE_WALKING = 5889;
     /** Winding up the miasma explosion. */
@@ -38,7 +40,7 @@ public final class SireConstants {
     /** Every id the Sire NPC can present as (used to recognise the boss on spawn/change). */
     public static final int[] SIRE_IDS = {
             SIRE_STANDING, SIRE_PHASE1_AWAKE, SIRE_PHASE1_ASLEEP, SIRE_HEAD_ON,
-            SIRE_WALKING, SIRE_PREP_EXPLOSION, SIRE_POST_EXPLOSION
+            SIRE_PHASE2_MELEE, SIRE_WALKING, SIRE_PREP_EXPLOSION, SIRE_POST_EXPLOSION
     };
 
     public static boolean isSireId(int id) {

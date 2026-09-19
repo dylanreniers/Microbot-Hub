@@ -84,6 +84,43 @@ public interface AbyssalSireConfig extends Config {
         return true;
     }
 
+    @Range(min = 1, max = 99)
+    @ConfigItem(
+            keyName = "startKillMinHpPercent",
+            name = "Min HP % to start",
+            description = "Before starting a kill, eat until health is at least this percentage.",
+            section = combatSection,
+            position = 3
+    )
+    default int startKillMinHpPercent() {
+        return 85;
+    }
+
+    @ConfigItem(
+            keyName = "useSpecialAttacks",
+            name = "Special attacks at phase 2",
+            description = "At the start of phase 2 (after drinking combat potions), dump as many special "
+                    + "attacks as your spec energy allows before switching to normal attacks.",
+            section = combatSection,
+            position = 4
+    )
+    default boolean useSpecialAttacks() {
+        return true;
+    }
+
+    @Range(min = 1, max = 100)
+    @ConfigItem(
+            keyName = "specAttackCostPercent",
+            name = "Spec cost %",
+            description = "Special attack energy your weapon uses per spec (e.g. 50 for DWH/BGS, 25 for "
+                    + "an AGS). Used to decide how many specs to fire at phase 2 start.",
+            section = combatSection,
+            position = 5
+    )
+    default int specAttackCostPercent() {
+        return 50;
+    }
+
     @ConfigSection(
             name = "Looting",
             description = "What to pick up after a kill",
@@ -102,5 +139,28 @@ public interface AbyssalSireConfig extends Config {
     )
     default int lootMinValue() {
         return 1000;
+    }
+
+    @ConfigSection(
+            name = "Restock",
+            description = "Between-kills house trip: restore, resupply and travel back",
+            position = 3,
+            closedByDefault = true
+    )
+    String restockSection = "restockSection";
+
+    @ConfigItem(
+            keyName = "restockBetweenKills",
+            name = "Restock between kills",
+            description = "After looting, teleport home (house tablet). If eating to full would leave fewer "
+                    + "than 3 food, take the POH portal to the Grand Exchange and restock the RANGE setup; "
+                    + "otherwise just restore at the pool. Then fairy ring (last-destination = DIP) back and "
+                    + "walk to the spot. Requires a POH with a pool of Rejuvenation, a fairy ring (last code "
+                    + "DIP) and a portal set to the Grand Exchange, plus a house tablet in the setup.",
+            section = restockSection,
+            position = 0
+    )
+    default boolean restockBetweenKills() {
+        return true;
     }
 }

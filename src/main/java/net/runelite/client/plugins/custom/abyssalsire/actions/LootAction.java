@@ -32,7 +32,8 @@ public class LootAction implements SireAction {
 
     @Override
     public boolean needsExecution(SireState state) {
-        return state.context().getPhase() == SirePhase.DEAD;
+        // Stop once the restock trip is armed — ReturnToSireAction owns the between-kills flow then.
+        return state.context().getPhase() == SirePhase.DEAD && !state.context().isPrepPending();
     }
 
     @Override
@@ -57,8 +58,14 @@ public class LootAction implements SireAction {
         }
 
         if (now >= ctx.getLootDeadlineMs()) {
-            // Looting done — walk back to the original spot before resetting, so phase 1 of the next
-            // kill starts from the barrage position with clean pathing.
+            // Looting done. If the restock trip is enabled, hand off to ReturnToSireAction (house ->
+            // resupply/restore -> travel back); it resets the context when it's done.
+            if (ctx.isRestockEnabled()) {
+                log.info("[sire] loot complete — starting the between-kills restock trip");
+                ctx.setPrepPending(true);
+                return "loot-done-restock";
+            }
+            // No restock: walk back to the original spot and reset so phase 1 loops in place.
             WorldPoint pos = SireHelpers.playerLocation();
             if (pos != null && pos.distanceTo(SireConstants.ORIGINAL_POSITION) > 1) {
                 SireHelpers.walkTo(SireConstants.ORIGINAL_POSITION);

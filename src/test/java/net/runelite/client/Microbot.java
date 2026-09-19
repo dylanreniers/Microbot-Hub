@@ -15,6 +15,7 @@ import net.runelite.client.plugins.microbot.agentserver.AgentServerPlugin;
 import net.runelite.client.plugins.microbot.aiofighter.AIOFighterPlugin;
 import net.runelite.client.plugins.microbot.aiomagic.AIOMagicPlugin;
 import net.runelite.client.plugins.microbot.arceuuslibrary.ArceuusLibraryPlugin;
+import net.runelite.client.plugins.microbot.banksshopper.BanksShopperPlugin;
 import net.runelite.client.plugins.microbot.birdhouseruns.FornBirdhouseRunsPlugin;
 import net.runelite.client.plugins.microbot.pitfallhunter.PitfallHunterPlugin;
 import net.runelite.client.plugins.microbot.sailing.MSailingPlugin;
@@ -63,6 +64,7 @@ public class Microbot
 			MadAngelPlugin.class,
 			AutoWoodcuttingPlugin.class,
 			FletchingPlugin.class,
+			BanksShopperPlugin.class
 	};
 
 	public static void main(String[] args) throws Exception

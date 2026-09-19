@@ -163,14 +163,12 @@ public class AbyssalSirePlugin extends Plugin {
 
     @Subscribe
     private void onGameStateChanged(GameStateChanged event) {
-        switch (event.getGameState()) {
-            case LOADING:
-            case CONNECTION_LOST:
-            case HOPPING:
-                script.reset();
-                break;
-            default:
-                break;
+        // Only a world HOP resets here. LOADING and CONNECTION_LOST fire spuriously mid-fight (a scene
+        // refresh when the Sire walks to the centre, a brief network blip) and must NOT wipe the fight
+        // — the phase may only leave an active phase on death or when the player leaves the arena
+        // (handled by AbyssalSireScript.resetIfLeftArena()).
+        if (event.getGameState() == net.runelite.api.GameState.HOPPING) {
+            script.reset();
         }
     }
 }

@@ -67,6 +67,10 @@ public class AbyssalSireScript extends ActionScript<SireState> {
         context.setPrayerPercent(config.prayerPercent());
         context.setLootMinValue(config.lootMinValue());
         context.setHopEnabled(config.hopIfPlayerPresent());
+        context.setRestockEnabled(config.restockBetweenKills());
+        context.setStartKillMinHpPercent(config.startKillMinHpPercent());
+        context.setSpecEnabled(config.useSpecialAttacks());
+        context.setSpecCostPercent(config.specAttackCostPercent());
         context.reset();
     }
 
@@ -171,6 +175,7 @@ public class AbyssalSireScript extends ActionScript<SireState> {
             log.info("[sire] fresh Sire spawn (5886) during phase {} — resetting context for the next kill", phase);
             context.reset();
         }
+        context.setCurrentSireId(id);
         if (context.getPhase() == SirePhase.DEAD) {
             return; // still looting; the next fight starts from the re-armed bootstrap / a fresh spawn
         }

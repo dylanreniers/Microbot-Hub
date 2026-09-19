@@ -31,12 +31,27 @@ public class SireContext {
     private int prayerPercent;
     private int lootMinValue;
     private boolean hopEnabled;
+    private boolean restockEnabled;
+    /** Minimum HP% to top up to before starting a kill. */
+    private int startKillMinHpPercent;
+    /** Whether to dump special attacks at the start of phase 2, and the per-spec energy cost (%). */
+    private boolean specEnabled;
+    private int specCostPercent;
+
+    // --- Between-kills restock. Armed by LootAction once looting finishes (when restock is enabled),
+    //     consumed by ReturnToSireAction, which runs the whole house/resupply/travel trip and clears it.
+    //     Deliberately NOT cleared by reset(): the trip's teleports fire LOADING -> onGameStateChanged
+    //     resets the fight state mid-trip, and this flag must outlive that so the trip keeps running. ---
+    private volatile boolean prepPending;
 
     // --- Phase ---
     private volatile SirePhase phase = SirePhase.IDLE;
     /** True once the Sire has woken/engaged this fight (observed id 5887/5888). Distinguishes the
      *  phase-2 tell (a CHANGE to 5886 once fighting) from the initial 5886 spawn. */
     private volatile boolean fightStarted;
+    /** The Sire's current NPC id, updated on every spawn/transform. Phase 2 only enables Protect from
+     *  Melee once this is 5890 (the exposed, melee-attacking state) — before that the Sire can't hit us. */
+    private volatile int currentSireId = -1;
     /** Set on the Sire's death animation; consumed by LootAction, which resets for the next kill. */
     private volatile boolean dead;
     /** Re-armed on start and after each kill: the script does a one-time live query to catch a Sire
@@ -66,6 +81,16 @@ public class SireContext {
      *  false while it's still down. Written from the event thread, read/pruned on the tick thread. */
     private final Map<GraphicsObject, WorldPoint> miasmaPools = new ConcurrentHashMap<>();
 
+    /** One-shot latch: drink the melee stat boosts (super combat / super att-str-def) once at the start
+     *  of phase 2, then leave them alone. Reset each fight. */
+    private volatile boolean boostsDrunk;
+
+    /** Phase-2 special-attack dump: latched once spec energy is spent (or the window elapses / no spec
+     *  weapon), so we spec at the start of phase 2 and then attack normally. {@code specStartMs} bounds
+     *  the dump so a non-spec weapon (energy never drops) can't hold us in spec mode forever. */
+    private volatile boolean specsDone;
+    private volatile long specStartMs;
+
     /** Set whenever we reposition (miasma/explosion dodge). Walking breaks the melee interaction, so on
      *  arrival the phase actions force a fresh attack click instead of assuming we're still attacking
      *  (getInteracting() lingers stale on the Sire after a move). */
@@ -87,6 +112,7 @@ public class SireContext {
     public void reset() {
         phase = SirePhase.IDLE;
         fightStarted = false;
+        currentSireId = -1;
         dead = false;
         needsBootstrap = true;
         barrageCastAtMs = 0;
@@ -96,6 +122,9 @@ public class SireContext {
         rebarragePending = false;
         sireStunnedUntilMs = 0;
         attackAfterMove = false;
+        boostsDrunk = false;
+        specsDone = false;
+        specStartMs = 0;
         exploding = false;
         nextAntipoisonMs = 0;
         lootDeadlineMs = 0;

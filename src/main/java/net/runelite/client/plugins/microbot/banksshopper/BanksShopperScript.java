@@ -91,24 +91,43 @@ public class BanksShopperScript extends Script {
                                 if (itemName.length() <= 1) continue;
 
                                 switch (plugin.getSelectedAction()) {
-                                    case BUY:
-                                        // Check if name is purely numeric or alphanumeric
-                                        if (itemName.matches("\\d+")) {
-                                            outOfStock = !Rs2Shop.hasMinimumStock(Integer.parseInt(itemName), plugin.getMinStock());
-                                            if (outOfStock) continue;
-                                            successfullAction = processBuyAction(Integer.parseInt(itemName), plugin.getSelectedQuantity().toString());
-                                        } else {
-                                            outOfStock = !Rs2Shop.hasMinimumStock(itemName, plugin.getMinStock());
-                                            if (outOfStock) continue;
-                                            successfullAction = processBuyAction(itemName, plugin.getSelectedQuantity().toString());
-                                        }
-                                        if (Rs2Inventory.isFull()){
-                                            System.out.println("Inventory is full, stopping buy action to bank.");
-                                            Rs2Shop.closeShop();
-                                            state = ShopperState.BANKING;
-                                            return;
+                                    case BUY: {
+                                        boolean isNumeric = itemName.matches("\\d+");
+                                        int itemId = isNumeric ? Integer.parseInt(itemName) : -1;
+                                        // Keep buying from this same shop until stock drops below the
+                                        // configured minimum. Only then do we flag outOfStock and let
+                                        // the caller hop to another world.
+                                        while (isRunning() && !Microbot.pauseAllScripts.get()) {
+                                            boolean hasStock = isNumeric
+                                                    ? Rs2Shop.hasMinimumStock(itemId, plugin.getMinStock())
+                                                    : Rs2Shop.hasMinimumStock(itemName, plugin.getMinStock());
+                                            if (!hasStock) {
+                                                outOfStock = true;
+                                                break;
+                                            }
+
+                                            boolean boughtItem = isNumeric
+                                                    ? processBuyAction(itemId, plugin.getSelectedQuantity().toString())
+                                                    : processBuyAction(itemName, plugin.getSelectedQuantity().toString());
+                                            if (boughtItem) {
+                                                successfullAction = true;
+                                            }
+
+                                            if (Rs2Inventory.isFull()){
+                                                System.out.println("Inventory is full, stopping buy action to bank.");
+                                                Rs2Shop.closeShop();
+                                                state = ShopperState.BANKING;
+                                                return;
+                                            }
+
+                                            // Couldn't buy despite the shop reporting stock (e.g. out of
+                                            // coins) — bail out of the loop to avoid spinning forever.
+                                            if (!boughtItem) break;
+
+                                            sleepGaussian(200, 40);
                                         }
                                         break;
+                                    }
                                     case SELL:
                                         if (Rs2Shop.isFull()) continue;
                                         // Check if name is purely numeric or alphanumeric
