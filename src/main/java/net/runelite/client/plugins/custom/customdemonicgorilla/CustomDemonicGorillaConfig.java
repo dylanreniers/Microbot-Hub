@@ -97,7 +97,7 @@ public interface CustomDemonicGorillaConfig extends Config {
             position = 3
     )
     default boolean lootMyLootOnly() {
-        return false;
+        return true;
     }
 
     @ConfigItem(

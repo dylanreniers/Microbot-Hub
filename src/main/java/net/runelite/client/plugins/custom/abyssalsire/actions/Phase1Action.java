@@ -34,6 +34,8 @@ public class Phase1Action implements SireAction {
     private static final long POST_CAST_GRACE_MS = 4000;
     /** If no "disorientated" message arrives this long after a cast, treat it as a miss and re-cast. */
     private static final long CAST_MISS_TIMEOUT_MS = 7000;
+    /** "Under attack" window: a hitsplat within this long counts as currently taking damage. ~4 ticks. */
+    private static final long UNDER_ATTACK_WINDOW_MS = 2400;
 
     /** Throttles the per-second tentacle diagnostic log. */
     private long lastTentacleLogMs;
@@ -57,16 +59,11 @@ public class Phase1Action implements SireAction {
     public Object execute(SireState state) {
         SireContext ctx = state.context();
 
-        // Hold combat until the range gear is on (GearSwitchAction equips it on this same tick).
+        // Hold combat until the range gear is on. Before a kill starts, EatAction (order 100) tops HP up
+        // to the "start kill" threshold and GearSwitchAction holds the swap until that's done — so by the
+        // time we're here the pre-kill eat has already happened and the range gear is being equipped.
         if (!SireHelpers.gearReady(ctx)) {
             return "gear-wait";
-        }
-
-        // Before the kill actually starts (first barrage), top up to the configured minimum HP — the
-        // pool of Rejuvenation doesn't heal HP, so we do it here. eatAt eats one food when below the
-        // threshold and returns false once we're there (or out of food), so this stops on its own.
-        if (!ctx.isFightStarted() && Rs2Player.eatAt(ctx.getStartKillMinHpPercent(), true)) {
-            return "prekill-eat";
         }
 
         // All respiratory systems down: stop phase-1 combat NOW. Re-barraging here would re-stun the
@@ -86,7 +83,8 @@ public class Phase1Action implements SireAction {
         final long now = System.currentTimeMillis();
         final long stunRemainingMs = Math.max(0, ctx.getSireStunnedUntilMs() - now);
         final boolean stunned = stunRemainingMs > 0;
-        tentaclesActive(); // diagnostic log only; the 46-tick stun timer drives re-barrage timing now
+        tentaclesActive(); // diagnostic log only — tentacle animation is unreliable, so it does NOT drive
+                           // re-barrage timing (the 46-tick stun timer + hitsplat fail-safe do)
 
         final boolean hasCast = ctx.getBarrageCastAtMs() != 0;
         final long sinceCastMs = hasCast ? now - ctx.getBarrageCastAtMs() : Long.MAX_VALUE;
@@ -101,10 +99,17 @@ public class Phase1Action implements SireAction {
         final boolean castMissed = hasCast && !stunned && sinceCastMs >= CAST_MISS_TIMEOUT_MS;
         final boolean stunExpiring = stunned && stunRemainingMs <= REBARRAGE_LEAD_MS
                 && sinceCastMs >= POST_CAST_GRACE_MS;
+        // Fail-safe: if we've taken a hit recently (reliable signal, unlike tentacle animation) past the
+        // post-cast grace, the stun has effectively lapsed no matter what the timer says — re-barrage
+        // instead of standing there ranging while getting hit. Gated by the grace so a pre-stun hit during
+        // the cast -> stun window can't trigger it.
+        final boolean underAttack = hasCast && sinceCastMs >= POST_CAST_GRACE_MS
+                && ctx.getLastDamagedMs() != 0 && (now - ctx.getLastDamagedMs()) <= UNDER_ATTACK_WINDOW_MS;
 
-        if (!ctx.isRebarragePending() && (!hasCast || castMissed || stunExpiring)) {
+        if (!ctx.isRebarragePending() && (!hasCast || castMissed || stunExpiring || underAttack)) {
             if (hasCast) {
-                log.info("[sire] committing to a re-barrage (stun {}ms left, missed={})", stunRemainingMs, castMissed);
+                log.info("[sire] committing to a re-barrage (stun {}ms left, missed={}, underAttack={})",
+                        stunRemainingMs, castMissed, underAttack);
             }
             ctx.setRebarragePending(true);
         }
@@ -180,7 +185,15 @@ public class Phase1Action implements SireAction {
         }
         Boolean cast = Microbot.getClientThread().invoke((Supplier<Boolean>)
                 () -> Microbot.getRs2NpcCache().query().withName(SireConstants.SIRE_NAME).interact("Attack"));
-        return Boolean.TRUE.equals(cast);
+        // The spell is selected and the cast click was issued — treat the cast as done and let the
+        // disorient message confirm the stun (that's the authoritative signal; the miss-timeout retries
+        // if none lands). The interact boolean is an unreliable false-negative here: trusting it made us
+        // report "failed" while the barrage actually landed, leaving rebarragePending set so the very
+        // next tick fired a wasteful second barrage the instant the Sire was stunned.
+        if (!Boolean.TRUE.equals(cast)) {
+            log.info("[sire] barrage: interact returned {} — treating as cast; awaiting the disorient message", cast);
+        }
+        return true;
     }
 
     /** Attack the nearest living respiratory system (auto-walks into range). */

@@ -74,6 +74,9 @@ public class SireContext {
     /** Wall-clock when the current barrage disorient expires (set from the "disorientated" chat message
      *  = now + 46 ticks). 0 = not stunned. Drives when to range vs re-barrage in phase 1. */
     private volatile long sireStunnedUntilMs;
+    /** Wall-clock of the last hitsplat on the local player. Phase 1's "under attack" fail-safe: if we're
+     *  taking damage past the post-cast grace, the stun has lapsed no matter what the timer says. */
+    private volatile long lastDamagedMs;
 
     /** Active miasma pools, tracked from their GraphicsObjectCreated event (spot-anim 1275) until the
      *  object despawns. The tile is captured ONCE at spawn (stable) rather than re-derived each tick,
@@ -121,6 +124,7 @@ public class SireContext {
         miasmaPools.clear();
         rebarragePending = false;
         sireStunnedUntilMs = 0;
+        lastDamagedMs = 0;
         attackAfterMove = false;
         boostsDrunk = false;
         specsDone = false;

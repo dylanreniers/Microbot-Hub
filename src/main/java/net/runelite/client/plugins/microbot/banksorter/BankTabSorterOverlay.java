@@ -55,7 +55,7 @@ public class BankTabSorterOverlay extends Overlay {
         }
 
         // Get the tutorial button (positioned to the right in the bank interface)
-        Widget tutorialButton = client.getWidget(ComponentID.BANK_TUTORIAL_BUTTON);
+        Widget tutorialButton = client.getWidget(786436); //ComponentID.BANK_TUTORIAL_BUTTON
         if (tutorialButton == null) {
             // If tutorial button not found, use a fallback position
             int buttonWidth = 70;

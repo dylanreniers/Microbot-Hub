@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 
 import net.runelite.client.plugins.custom.fletching.FletchingPlugin;
 import net.runelite.client.plugins.custom.woodcutting.DonderWoodcuttingPlugin;
+import net.runelite.client.plugins.custom.gotr.DonderGotrPlugin;
 import net.runelite.client.plugins.custom.customdemonicgorilla.CustomDemonicGorillaPlugin;
 import net.runelite.client.plugins.custom.abyssalsire.AbyssalSirePlugin;
 import net.runelite.client.plugins.custom.madangel.MadAngelPlugin;
@@ -39,6 +40,7 @@ public class Microbot
 
 	private static final Class<?>[] debugPlugins = {
 			AgentServerPlugin.class,
+			DonderGotrPlugin.class,
 			AgilityPlugin.class,
 			PlankRunnerPlugin.class,
 			SulphurNaguaPlugin.class,

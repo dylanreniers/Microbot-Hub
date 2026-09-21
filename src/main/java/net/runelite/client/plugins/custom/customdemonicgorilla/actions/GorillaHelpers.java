@@ -171,6 +171,16 @@ public final class GorillaHelpers {
             return; // already wearing the right gear
         }
         logOnce(ctx, "Wrong gear worn for " + ctx.getCurrentGear() + " — re-equipping");
+        // A full inventory (loot) can silently block the swap: equipping the new weapon has to place the
+        // currently-worn one in the inventory, and with no free slot wearEquipment() just fails. Eat one
+        // food to open a slot before retrying. This is the ONE place we eat for a gear swap — it's gated to
+        // once per GEAR_VERIFY_INTERVAL_MS above, so it can't hot-loop and saturate the client thread (the
+        // freeze mode called out in equipGear). eatAt(100) always eats when food is present, freeing a slot
+        // regardless of current HP.
+        if (Rs2Inventory.isFull() && !Rs2Inventory.getInventoryFood().isEmpty()) {
+            logOnce(ctx, "Inventory full — eating to free a slot for the gear switch");
+            Rs2Player.eatAt(100);
+        }
         setup.wearEquipment();
     }
 
@@ -236,12 +246,13 @@ public final class GorillaHelpers {
         if (gear == null) return;
         if (!gear.wearEquipment()) {
             // Couldn't fully equip (missing items / inventory full / bank closed). Do NOT eat food to
-            // free a slot and retry in-place: useFood() -> Rs2Inventory.interact -> invokeMenu ->
-            // Rs2Bank.isOpen -> handleBankPin fires a chain of client-thread invoke()s, and combined
-            // with waitForInventoryChanges() this floods the single client thread on every overhead
-            // flip. When the client thread backs up, the AWT EDT (antiban MasterPanel calling
-            // Rs2Combat.inCombat) blocks on its own invoke and the whole game window freezes.
-            // Log once and move on; the next overhead change re-evaluates.
+            // free a slot and retry in-place HERE: useFood() -> Rs2Inventory.interact -> invokeMenu ->
+            // Rs2Bank.isOpen -> handleBankPin fires a chain of client-thread invoke()s, and this runs on
+            // every overhead flip — combined with waitForInventoryChanges() it floods the single client
+            // thread. When it backs up, the AWT EDT (antiban MasterPanel calling Rs2Combat.inCombat)
+            // blocks on its own invoke and the whole game window freezes. The eat-to-free-a-slot recovery
+            // for a full inventory lives in verifyGear() instead, gated to once per GEAR_VERIFY_INTERVAL_MS
+            // so it can't hot-loop. Log once and move on; verifyGear (and the looter) free the slot shortly.
             logOnce(ctx, "Failed to equip " + ctx.getCurrentGear() + " gear (missing items / inv full)");
         }
     }

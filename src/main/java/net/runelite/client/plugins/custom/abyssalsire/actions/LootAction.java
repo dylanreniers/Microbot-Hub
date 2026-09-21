@@ -3,8 +3,11 @@ package net.runelite.client.plugins.custom.abyssalsire.actions;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.custom.abyssalsire.constants.SireConstants;
+import net.runelite.client.plugins.grounditems.GroundItem;
 import net.runelite.client.plugins.microbot.util.grounditem.LootingParameters;
 import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
+import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
+import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 
 /**
  * After the Sire dies (prayers are already dropped in onSireDeath), loots the drop: every untradeable
@@ -44,6 +47,17 @@ public class LootAction implements SireAction {
             ctx.setLootDeadlineMs(now + INITIAL_LOOT_WAIT_MS);
         }
 
+        // Inventory full but there's loot we want on the ground? Eat one food to free a slot so we can
+        // pick it up. Only eats when there's actually wanted loot down, and extends the loot deadline so
+        // we don't time out while making room. (No food -> nothing we can do; fall through.)
+        if (Rs2Inventory.isFull() && wantedLootPresent(ctx)) {
+            if (Rs2Player.eatAt(100, true)) {
+                log.info("[sire] inventory full — eating to make space for loot");
+                ctx.setLootDeadlineMs(now + LOOT_EXTEND_MS);
+                return "loot-eat-for-space";
+            }
+        }
+
         // Always grab untradeables (Unsired / pet), then anything worth at least the configured value.
         LootingParameters untradeables = new LootingParameters(LOOT_RANGE, 1, 1, 0, false, false);
         boolean lootedUntradeables = Rs2GroundItem.lootUntradables(untradeables);
@@ -76,5 +90,27 @@ public class LootAction implements SireAction {
             return "loot-complete";
         }
         return "loot-wait";
+    }
+
+    /**
+     * True if there's loot we actually want within range: anything at/above the configured value, or any
+     * untradeable (e.g. the Unsired — coins are tradeable, so this excludes them). Used to decide whether
+     * a full inventory is worth eating for.
+     */
+    private boolean wantedLootPresent(SireContext ctx) {
+        if (Rs2GroundItem.isItemBasedOnValueOnGround(ctx.getLootMinValue(), LOOT_RANGE)) {
+            return true;
+        }
+        WorldPoint me = SireHelpers.playerLocation();
+        if (me == null) {
+            return false;
+        }
+        for (GroundItem item : Rs2GroundItem.getGroundItems().values()) {
+            if (item != null && !item.isTradeable() && item.getLocation() != null
+                    && item.getLocation().distanceTo(me) <= LOOT_RANGE) {
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -45,6 +45,7 @@ public class TemporossScript extends Script {
     public static final Pattern DIGIT_PATTERN = Pattern.compile("(\\d+)");
     public static final int TEMPOROSS_REGION = 12076;
 
+    private static final int TEMPOROSS_INTERFACE_ID = 437;
     // Game state variables
 
     // ---- Client-thread snapshot ---------------------------------------------------------------
@@ -1772,9 +1773,9 @@ public class TemporossScript extends Script {
 
     public static void handleWidgetInfo() {
         try {
-            Widget energyWidget = Microbot.getClient().getWidget(InterfaceID.TEMPOROSS, 35);
-            Widget essenceWidget = Microbot.getClient().getWidget(InterfaceID.TEMPOROSS, 45);
-            Widget intensityWidget = Microbot.getClient().getWidget(InterfaceID.TEMPOROSS, 55);
+            Widget energyWidget = Microbot.getClient().getWidget(TEMPOROSS_INTERFACE_ID, 35);
+            Widget essenceWidget = Microbot.getClient().getWidget(TEMPOROSS_INTERFACE_ID, 45);
+            Widget intensityWidget = Microbot.getClient().getWidget(TEMPOROSS_INTERFACE_ID, 55);
 
             if (energyWidget == null || essenceWidget == null || intensityWidget == null) {
                 if(Rs2AntibanSettings.devDebug)

@@ -239,9 +239,20 @@ public class AbyssalSireScript extends ActionScript<SireState> {
     /** A barrage landed ("...disorientated temporarily."): the Sire is stunned for 46 ticks. Setting the
      *  stun timer is the signal for phase 1 to stop holding and start ranging the vents. */
     public void onSireStunned() {
-        context.setSireStunnedUntilMs(System.currentTimeMillis() + SireConstants.STUN_DURATION_MS);
+        long now = System.currentTimeMillis();
+        context.setSireStunnedUntilMs(now + SireConstants.STUN_DURATION_MS);
+        // A stun proves a barrage just landed. Mark the cast time and clear any pending re-barrage so we
+        // range the vents now — never fire a second barrage the instant the stun registers (which would
+        // happen if the cast's interact returned a false-negative and left the pending flag set).
+        context.setBarrageCastAtMs(now);
+        context.setRebarragePending(false);
         log.info("[sire] barrage landed — Sire disoriented for {} ticks (~{}s); ranging vents",
                 SireConstants.STUN_DURATION_TICKS, SireConstants.STUN_DURATION_MS / 1000);
+    }
+
+    /** A hitsplat landed on the player: record when, for phase 1's "under attack" re-barrage fail-safe. */
+    public void onPlayerDamaged() {
+        context.setLastDamagedMs(System.currentTimeMillis());
     }
 
     /**

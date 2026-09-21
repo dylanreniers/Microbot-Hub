@@ -25,6 +25,7 @@ import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Spellbook;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
+import net.runelite.client.plugins.microbot.util.misc.Rs2UiHelper;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
@@ -33,6 +34,7 @@ import net.runelite.client.plugins.microbot.util.tabs.Rs2Tab;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
+import java.awt.Rectangle;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -48,6 +50,10 @@ public class GotrScript extends Script {
 
     public static long totalTime = 0;
     public static boolean shouldMineGuardianRemains = true;
+    // The first mine of a round builds the full configured batch (maxFragmentAmount). Once that is
+    // done we only top up in small chunks so we don't mine for the rest of the round. Reset per round.
+    public static boolean initialBatchMined = false;
+    private static final int TOP_UP_FRAGMENTS = 50;
     public static final String rewardPointRegex = "Total elemental energy:[^>]+>([\\d,]+).*Total catalytic energy:[^>]+>([\\d,]+).";
     public static final Pattern rewardPointPattern = Pattern.compile(rewardPointRegex);
 
@@ -125,6 +131,7 @@ public class GotrScript extends Script {
         // across plugin disable/re-enable (see docs/PLUGIN_DEBUGGING_NOTES.md §5). Reset it here
         // so a restart behaves like a first start instead of inheriting a stale state machine.
         shouldMineGuardianRemains = true;
+        initialBatchMined = false;
         isInMiniGame = false;
         isFirstPortal = true;
         state = null;
@@ -314,10 +321,15 @@ public class GotrScript extends Script {
     /**
      * Decide whether we've mined enough guardian fragments and, if so, switch to crafting.
      *
-     * <p>Target: below full guardian power we bank up to {@code maxFragmentAmount} (the "Max. amount
-     * fragments" config option), but never fewer than a full run — every empty inventory slot plus
-     * all remaining pouch capacity — or we'd thrash between the remains and the workbench. Once power
-     * is high we only top up a single run to avoid wasting end-game time over-mining.
+     * <p>The <b>first</b> mine of a round builds the full configured batch — the "Max. amount
+     * fragments" config option ({@code maxFragmentAmount}, e.g. 130). This is the authoritative
+     * fragment count (the workbench burns roughly two fragments per essence, so a full run needs far
+     * more fragments than there are essence slots to fill).
+     *
+     * <p>Once that opening batch is done ({@link #initialBatchMined}) we only ever <b>top up</b> in
+     * small chunks (at most {@link #TOP_UP_FRAGMENTS}) so we don't spend the rest of the round at the
+     * rocks — mine a little, craft it all, mine a little more. {@link #initialBatchMined} is reset per
+     * round (see {@code DonderGotrPlugin.onChatMessage}).
      *
      * <p>We compare {@link Rs2Inventory#itemQuantity(String)} directly (rather than
      * {@code hasItemAmount}) so the number logged is exactly the number driving the decision, and log
@@ -325,20 +337,19 @@ public class GotrScript extends Script {
      */
     private void updateMiningTarget() {
         int fragments = Rs2Inventory.itemQuantity(GUARDIAN_FRAGMENTS);
-        int emptySlots = Rs2Inventory.emptySlotCount();
-        int pouchRemaining = Rs2Inventory.getRemainingCapacityInPouches();
-        int fullRun = emptySlots + pouchRemaining;
-        int power = getGuardiansPower();
-        int target = power > 70 ? fullRun : Math.max(config.maxFragmentAmount(), fullRun);
+        int target = initialBatchMined
+                ? Math.min(TOP_UP_FRAGMENTS, config.maxFragmentAmount())
+                : config.maxFragmentAmount();
 
         if (System.currentTimeMillis() - lastTargetLog > 2000) {
             lastTargetLog = System.currentTimeMillis();
-            log(String.format("[GOTR mining] fragments=%d / target=%d  (maxCfg=%d, fullRun=%d [empty=%d + pouchRemaining=%d], power=%d%%)",
-                    fragments, target, config.maxFragmentAmount(), fullRun, emptySlots, pouchRemaining, power));
+            log(String.format("[GOTR mining] fragments=%d / target=%d (cfg=%d, initialBatchMined=%b)",
+                    fragments, target, config.maxFragmentAmount(), initialBatchMined));
         }
 
         if (fragments >= target) {
             shouldMineGuardianRemains = false;
+            initialBatchMined = true;
         }
     }
 
@@ -430,7 +441,17 @@ public class GotrScript extends Script {
     }
 
     private boolean usePortal() {
-        if (!isInHugeMine() && Microbot.getClient().hasHintArrow() && Rs2Inventory.count() < config.maxAmountEssence()) {
+        // A hint arrow marks a freshly-spawned huge-guardian portal. Enter it whenever we still have
+        // room for more essence — either a free inventory slot or spare pouch capacity. Only skip
+        // when we're completely maxed (inventory full AND pouches full), where entering would gain
+        // nothing and we should go craft instead.
+        //
+        // NB: the old gate was `Rs2Inventory.count() < config.maxAmountEssence()`, but count() is the
+        // number of occupied *slots* (not essence), so the colossal pouch + 10 uncharged cells +
+        // fragments alone pushed it past the cap and the portal was ignored on every spawn
+        // regardless of how much essence we actually held.
+        boolean hasEssenceRoom = !Rs2Inventory.isFull() || Rs2Inventory.getRemainingCapacityInPouches() > 0;
+        if (!isInHugeMine() && Microbot.getClient().hasHintArrow() && hasEssenceRoom) {
             if (leaveLargeMine()) return true;
             // Human reaction latency: don't sprint to a freshly-spawned portal on the exact tick it
             // appears. Occasionally we "don't notice" it for a beat, otherwise we react after a
@@ -533,11 +554,18 @@ public class GotrScript extends Script {
     }
 
     private boolean isOutOfFragments() {
-        if ((!Rs2Inventory.hasItem(GUARDIAN_FRAGMENTS) && !Rs2Inventory.isFull()) || (getTimeSincePortal() > 85 && !Rs2Inventory.hasItem(GUARDIAN_ESSENCE))) {
+        // In the main region we build an essence batch by converting fragments at the workbench. Two
+        // rules:
+        //   - While we still hold fragments, keep converting them (don't mine) — handled by the
+        //     !hasItem(FRAGMENTS) guard below.
+        //   - If we've run out of fragments but the inventory isn't full of essence yet, there's
+        //     nothing left to convert, so go mine more (a small top-up) instead of clicking the empty
+        //     workbench forever.
+        // Once the inventory is FULL we fall through to false and the caller heads to the altar to
+        // craft the essence into runes — so we never mine away from a completed batch.
+        if (!Rs2Inventory.hasItem(GUARDIAN_FRAGMENTS) && !Rs2Inventory.isFull()) {
             shouldMineGuardianRemains = true;
-            if(!Rs2Inventory.hasItem(GUARDIAN_FRAGMENTS))
-                log("Memorize that we no longer have guardian fragments...");
-
+            log("Out of fragments (batch not full) — mining more.");
             return true;
         }
         shouldMineGuardianRemains = false;
@@ -771,27 +799,83 @@ public class GotrScript extends Script {
         log("Repairing pouches via NPC Contact (Dark Mage)...");
         Rs2Widget.clickWidget(spell);
 
-        // A plain left-click fires the default 'Cast' action, opening the choose-character panel
-        // (widget group 75). Some setups bind the spell's left-click straight to 'Dark Mage', in
-        // which case the panel never opens and we go straight to dialogue — handle both.
+        // Casting opens the choose-character panel (widget group 75). Wait for it, then pick Dark
+        // Mage. Dark Mage is the LAST of the four contacts and is frequently scrolled below the
+        // visible area of the panel — the old code clicked it blind and, when it was off-screen, the
+        // click landed on nothing and the whole flow stalled (spell cast, then idle). Scroll it into
+        // view first (mirrors Rs2Magic.npcContact).
         final int chooseCharacterWidgetId = 75 << 16;
-        if (Global.sleepUntil(() -> !Rs2Widget.isHidden(chooseCharacterWidgetId), 3000)) {
-            sleep(Rs2Random.randomGaussian(700, 200));
-            if (!Rs2Widget.clickWidget("dark mage", Optional.of(75), 0, false)) {
-                Microbot.log("Choose-character panel open but Dark Mage entry not found.");
-                return false;
-            }
+        if (!Global.sleepUntil(() -> !Rs2Widget.isHidden(chooseCharacterWidgetId), 5000)) {
+            Microbot.log("Choose-character panel never opened after casting NPC Contact.");
+            return false;
+        }
+        if (!selectDarkMage(chooseCharacterWidgetId)) {
+            Microbot.log("Choose-character panel open but could not select Dark Mage.");
+            return false;
         }
 
-        // Dark Mage dialogue: continue past the greeting, then pick the repair option.
-        Rs2Player.waitForAnimation();
-        sleep(Rs2Random.randomGaussian(1100, 200));
-        Rs2Dialogue.clickContinue();
-        Rs2Widget.sleepUntilHasWidget("Can you repair my pouches?");
-        sleep(Rs2Random.randomGaussian(900, 300));
-        Rs2Widget.clickWidget("Can you repair my pouches?", Optional.of(162), 0, true);
+        // Dark Mage dialogue: advance the greeting until the "Select an option" list appears, then
+        // pick the repair option by its real key binding via Rs2Dialogue.clickOption.
+        //
+        // The old code selected the option with Rs2Widget.clickWidget(text, group 162, exact) plus a
+        // SPACE press. Live tracing showed that never selected anything: the option list lives under
+        // InterfaceID.DIALOG_OPTION (group 219, not 162) and needs the option's own key binding, so
+        // the script sat on the option screen, timed out, and re-cast NPC Contact over and over —
+        // repairing nothing. clickOption() finds the matching option widget and presses its binding.
+        long greetingDeadline = System.currentTimeMillis() + 12000;
+        while (System.currentTimeMillis() < greetingDeadline && !Rs2Dialogue.hasSelectAnOption()) {
+            if (Rs2Dialogue.hasContinue()) Rs2Dialogue.clickContinue();
+            sleep(Rs2Random.randomGaussian(600, 150));
+        }
+        if (!Rs2Dialogue.hasDialogueOption("Can you repair my pouches?")) {
+            Microbot.log("Dark Mage dialogue never offered the repair-pouches option.");
+            return false;
+        }
+        sleep(Rs2Random.randomGaussian(600, 150));
+        if (!Rs2Dialogue.clickOption("Can you repair my pouches?")) {
+            Microbot.log("Failed to select the repair-pouches option.");
+            return false;
+        }
+
+        // Advance the confirmation frames after the repair.
+        for (int i = 0; i < 4 && Global.sleepUntil(Rs2Dialogue::hasContinue, 1500); i++) {
+            Rs2Dialogue.clickContinue();
+            sleep(Rs2Random.randomGaussian(500, 150));
+        }
 
         return Global.sleepUntil(() -> !Rs2Inventory.hasDegradedPouch(), 8000);
+    }
+
+    /**
+     * Click the "Dark Mage" entry in the NPC-contact choose-character panel (group 75), scrolling it
+     * fully into view first — it's the last of four contacts and often sits below the visible area,
+     * where a direct click would miss and stall the repair.
+     */
+    private static boolean selectDarkMage(int chooseCharacterWidgetId) {
+        final String npcName = "dark mage";
+        Widget panel = Rs2Widget.getWidget(chooseCharacterWidgetId);
+        Widget npcWidget = Rs2Widget.findWidget(npcName);
+        if (panel == null || npcWidget == null) return false;
+
+        final Rectangle panelBounds = panel.getBounds();
+        if (!Rs2UiHelper.isRectangleWithinRectangle(panelBounds, npcWidget.getBounds())) {
+            Global.sleepUntil(
+                    () -> {
+                        Widget w = Rs2Widget.findWidget(npcName);
+                        return w != null && Rs2UiHelper.isRectangleWithinRectangle(panelBounds, w.getBounds());
+                    },
+                    () -> {
+                        Widget w = Rs2Widget.findWidget(npcName);
+                        if (w == null) return;
+                        if (w.getBounds().y > panelBounds.y)
+                            Microbot.getMouse().scrollDown(Rs2UiHelper.getClickingPoint(panelBounds, true));
+                        else
+                            Microbot.getMouse().scrollUp(Rs2UiHelper.getClickingPoint(panelBounds, true));
+                    },
+                    5000, 300);
+        }
+        sleep(Rs2Random.randomGaussian(500, 150));
+        return Rs2Widget.clickWidget(npcName, Optional.of(75), 0, false);
     }
 
     /**

@@ -9,6 +9,7 @@ import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GraphicsObjectCreated;
+import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.GraphicsObject;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
@@ -158,6 +159,15 @@ public class AbyssalSirePlugin extends Plugin {
     private void onChatMessage(ChatMessage event) {
         if (event.getMessage() != null && event.getMessage().contains(SireConstants.STUN_MESSAGE_FRAGMENT)) {
             script.onSireStunned();
+        }
+    }
+
+    /** A hitsplat landed on us — the reliable "under attack" signal for the phase-1 fail-safe. */
+    @Subscribe
+    private void onHitsplatApplied(HitsplatApplied event) {
+        if (event.getActor() == client.getLocalPlayer() && event.getHitsplat() != null
+                && event.getHitsplat().getAmount() > 0) {
+            script.onPlayerDamaged();
         }
     }
 

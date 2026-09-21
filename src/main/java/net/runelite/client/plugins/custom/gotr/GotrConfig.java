@@ -31,16 +31,6 @@ public interface GotrConfig extends Config {
     }
 
     @ConfigItem(
-            keyName = "maxAmountEssence",
-            name = "Max. amount essence before using portal",
-            description = "If you have more than the threshold defined, the player will not use the portal",
-            position = 2
-    )
-    default int maxAmountEssence() {
-        return 20;
-    }
-
-    @ConfigItem(
             keyName = "shouldDepositRunes",
             name = "Deposit runes?",
             description = "Should you deposit runes into the deposit pool?",

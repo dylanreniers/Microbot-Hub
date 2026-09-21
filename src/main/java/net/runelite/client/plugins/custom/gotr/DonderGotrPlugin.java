@@ -39,7 +39,7 @@ import java.util.regex.Matcher;
 )
 @Slf4j
 public class DonderGotrPlugin extends Plugin {
-    public static final String version = "1.6.7";
+    public static final String version = "1.6.13";
     static final String CONFIG = "dondergotr";
 
     @Inject
@@ -154,6 +154,8 @@ public class DonderGotrPlugin extends Plugin {
                 BreakHandlerScript.setLockState(true);
             }
             GotrScript.shouldMineGuardianRemains = true;
+            // New round: the next mine builds the full configured batch again; later mines top up.
+            GotrScript.initialBatchMined = false;
             GotrScript.nextGameStart = Optional.of(Instant.now().plusSeconds(30));
         } else if (msg.contains("The rift will become active in 10 seconds.")) {
             GotrScript.shouldMineGuardianRemains = true;

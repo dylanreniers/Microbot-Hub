@@ -97,16 +97,16 @@ public class ReturnToSireAction implements SireAction {
                 log.warn("[restock] no range inventory setup configured");
                 return false;
             }
-            log.info("[restock] food low — eating down, then wearing range gear and resupplying at the GE");
-            // Eat carried food FIRST: it heals and frees inventory slots so the gear switch has room.
-            eatCarriedToFull();
-            range.wearEquipment(); // wear the range armour
-            sleepUntil(range::doesEquipmentMatch, 3_000);
+            // GE path: wear the range armour first, then top up HP and resupply the range inventory (the
+            // gear must be worn for the full inventory to fit). resupply() does all three in order.
+            log.info("[restock] food low — resupplying at the Grand Exchange");
             if (!pohPortalToGe() || !resupply(range) || !teleportHome()) {
                 return false;
             }
         }
 
+        // No-GE path: don't touch the gear on the trip — eat first, then swap gear at the boss
+        // (EatAction + GearSwitchAction handle that once we're on the original tile).
         return restoreAtPool() && fairyRingBack() && walkToSpot();
     }
 
@@ -163,17 +163,6 @@ public class ReturnToSireAction implements SireAction {
         return Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS) >= Rs2Player.getRealSkillLevel(Skill.HITPOINTS);
     }
 
-    /** Eat carried food until HP is full or we run out — heals and frees inventory slots for the switch. */
-    private void eatCarriedToFull() {
-        long deadline = System.currentTimeMillis() + STEP_TIMEOUT_MS;
-        while (!isHpFull()
-                && !Rs2Inventory.getInventoryFood().isEmpty()
-                && System.currentTimeMillis() < deadline) {
-            Rs2Inventory.interact(Rs2Inventory.getInventoryFood().get(0), "Eat");
-            sleep(1_200, 1_600);
-        }
-    }
-
     /** The setup's food item id (first inventory item matching a known {@link Rs2Food}), or -1. */
     private int setupFoodId(Rs2InventorySetup setup) {
         for (InventorySetupsItem item : setup.getInventoryItems()) {
@@ -205,7 +194,10 @@ public class ReturnToSireAction implements SireAction {
         return true;
     }
 
-    /** Bank at the Grand Exchange and top the RANGE setup back up (mirrors the Zulrah restock). */
+    /**
+     * Bank at the Grand Exchange: wear the range armour FIRST (so the full inventory fits), then top up
+     * HP by eating to full, then resupply the range inventory. Mirrors the Zulrah restock.
+     */
     private boolean resupply(Rs2InventorySetup range) {
         Rs2Bank.walkToBankAndUseBank(BankLocation.GRAND_EXCHANGE);
         if (!sleepUntil(Rs2Bank::isOpen, STEP_TIMEOUT_MS)) {
@@ -213,7 +205,8 @@ public class ReturnToSireAction implements SireAction {
             return false;
         }
 
-        // Equip the range gear from the inventory; fall back to the bank for anything genuinely missing.
+        // 1) Wear the range armour first — from the inventory, falling back to the bank for anything
+        //    genuinely missing. This frees the slots those pieces used so the full inventory fits.
         range.wearEquipment();
         sleepUntil(range::doesEquipmentMatch, 3_000);
         if (!range.doesEquipmentMatch()) {
@@ -222,20 +215,15 @@ public class ReturnToSireAction implements SireAction {
         sleepUntil(range::doesEquipmentMatch, STEP_TIMEOUT_MS);
 
         // Desired inventory (id -> quantity) from the setup, skipping the rune pouch (handled by the game).
-        Map<Integer, Integer> desired = new LinkedHashMap<>();
-        for (InventorySetupsItem item : range.getInventoryItems()) {
-            if (item == null || item.getId() <= 0 || isRunePouch(item.getName())) {
-                continue;
-            }
-            desired.merge(item.getId(), Math.max(1, item.getQuantity()), Integer::sum);
-        }
+        Map<Integer, Integer> desired = setupItemQuantities(range.getInventoryItems());
+
         // Deposit loot / part-used items; keep the rune pouch and everything that belongs in the setup.
         Rs2Bank.depositAllExcept(item -> item != null
                 && (isRunePouch(item.getName()) || desired.containsKey(item.getId())));
         sleep(400, 800);
 
-        // Eat to full using the setup's food from the bank (like the Zulrah restock), then deposit all
-        // food so the top-up loop below refills the carried food to exactly the setup target.
+        // 2) Top up HP: eat to full using the setup's food from the bank, then deposit all food so the
+        //    top-up loop below refills the carried food to exactly the setup target.
         int foodId = setupFoodId(range);
         if (foodId > 0 && !isHpFull()) {
             log.info("[restock] HP below full — eating to full at the bank");
@@ -250,7 +238,7 @@ public class ReturnToSireAction implements SireAction {
             sleep(300, 600);
         }
 
-        // Top each setup item up to its target quantity.
+        // 3) Resupply: top each setup inventory item up to its target quantity.
         for (Map.Entry<Integer, Integer> want : desired.entrySet()) {
             if (!Rs2Bank.withdrawDeficit(want.getKey(), want.getValue())) {
                 log.warn("[restock] could not top up item id {} to {}", want.getKey(), want.getValue());
@@ -270,6 +258,18 @@ public class ReturnToSireAction implements SireAction {
             }
         }
         return true;
+    }
+
+    /** Collapse a setup item list to id -> total quantity, skipping blanks and the rune pouch. */
+    private Map<Integer, Integer> setupItemQuantities(List<InventorySetupsItem> items) {
+        Map<Integer, Integer> quantities = new LinkedHashMap<>();
+        for (InventorySetupsItem item : items) {
+            if (item == null || item.getId() <= 0 || isRunePouch(item.getName())) {
+                continue;
+            }
+            quantities.merge(item.getId(), Math.max(1, item.getQuantity()), Integer::sum);
+        }
+        return quantities;
     }
 
     private boolean restoreAtPool() {

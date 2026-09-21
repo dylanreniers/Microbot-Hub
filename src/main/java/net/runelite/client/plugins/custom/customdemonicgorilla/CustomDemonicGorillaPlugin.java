@@ -44,7 +44,7 @@ import java.time.Instant;
 @Slf4j
 public class CustomDemonicGorillaPlugin extends Plugin {
 
-    public final static String version = "1.6.2";
+    public final static String version = "1.6.5";
 
     private static final int DEMONIC_GORILLA_ROCK = 856;
 
