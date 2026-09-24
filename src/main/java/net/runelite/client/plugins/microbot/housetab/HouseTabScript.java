@@ -6,17 +6,22 @@ import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
+import net.runelite.client.plugins.microbot.globval.enums.InterfaceTab;
 import net.runelite.client.plugins.microbot.housetab.enums.HOUSETABS_CONFIG;
 
+import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2RunePouch;
 import net.runelite.client.plugins.microbot.util.keyboard.Rs2Keyboard;
 import net.runelite.client.plugins.microbot.util.magic.Runes;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
+import net.runelite.client.plugins.microbot.util.tabs.Rs2Tab;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
+import java.awt.event.KeyEvent;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -29,9 +34,26 @@ public class HouseTabScript extends Script {
     private final int RIMMINGTON_PORTAL_OBJECT = 15478;
     private final int HOUSE_PORTAL_OBJECT = 4525;
 
+    // POH entry portal object varies per house location; match them all so the
+    // script works regardless of where the player's house portal is set.
+    private final int[] POH_PORTAL_OBJECTS = {
+            ObjectID.POH_RIMMINGTON_PORTAL,
+            ObjectID.POH_TAVERLY_PORTAL,
+            ObjectID.POH_POLLNIVNEACH_PORTAL,
+            ObjectID.POH_RELLEKKA_PORTAL,
+            ObjectID.POH_BRIMHAVEN_PORTAL,
+            ObjectID.POH_YANILLE_PORTAL,
+            ObjectID.POH_KOUREND_PORTAL
+    };
+
     private final int HOUSE_ADVERTISEMENT_OBJECT = 29091;
 
     private final int HOUSE_ADVERTISEMENT_NAME_PARENT_INTERFACE = 3407881;
+
+    // House servant un-noting (own-house mode). Widget ids match the Construction plugin's butler flow.
+    private static final String[] SERVANT_NAMES = {"Rick", "Maid", "Cook", "Butler", "Demon butler"};
+    private static final int HOUSE_OPTIONS_WIDGET = 7602207;
+    private static final int CALL_SERVANT_WIDGET = 24248342;
 
     private final Map<Integer, Integer> lecternToHouseTabButton = Map.of(
             ObjectID.POH_LECTERN_6, 26411031,
@@ -200,12 +222,59 @@ public class HouseTabScript extends Script {
         }
     }
 
+    private Rs2NpcModel getServant() {
+        return Microbot.getRs2NpcCache().query().withNames(SERVANT_NAMES).nearestOnClientThread();
+    }
+
+    // Own-house un-noting: call the house servant (Settings tab -> house options -> Call Servant),
+    // then work the dialogue to have it un-note our soft clay from the bank. Adapted from the
+    // Construction plugin's demon-butler flow.
+    public void unnoteClayWithServant() {
+        Rs2NpcModel servant = getServant();
+        if (servant == null) {
+            Microbot.log("HouseTab stopping: no house servant found. Hire a servant (and keep coins for its fee) to un-note clay.");
+            shutdown();
+            return;
+        }
+
+        if (!servant.isInteractingWithPlayer() && !Rs2Dialogue.isInDialogue()) {
+            Rs2Tab.switchTo(InterfaceTab.SETTINGS);
+            sleepUntilOnClientThread(() -> Rs2Widget.getWidget(HOUSE_OPTIONS_WIDGET) != null, 3000);
+            Widget houseOptions = Rs2Widget.getWidget(HOUSE_OPTIONS_WIDGET);
+            if (houseOptions != null) Rs2Widget.clickWidget(houseOptions);
+            sleepUntilOnClientThread(() -> Rs2Widget.getWidget(CALL_SERVANT_WIDGET) != null, 3000);
+            Widget callServant = Rs2Widget.getWidget(CALL_SERVANT_WIDGET);
+            if (callServant != null) Rs2Widget.clickWidget(callServant);
+            sleepUntil(Rs2Dialogue::isInDialogue, 5000);
+        }
+
+        if (Rs2Dialogue.isInDialogue() || servant.click("Talk-to")) {
+            sleep(500);
+            Rs2Keyboard.keyPress(KeyEvent.VK_SPACE);
+            sleep(400, 1000);
+            if (Rs2Dialogue.hasDialogueOption("Un-note")) {
+                Rs2Dialogue.keyPressForDialogueOption("Un-note");
+                sleepUntilOnClientThread(() -> !Rs2Dialogue.hasDialogueOption("Un-note"), 3000);
+            } else if (Rs2Dialogue.hasDialogueOption("Okay, here's")) { // pay the servant's fee
+                Rs2Dialogue.keyPressForDialogueOption("Okay, here's");
+            } else if (Rs2Dialogue.hasDialogueOption("Repeat last task")) {
+                Rs2Dialogue.keyPressForDialogueOption("Repeat last task");
+            } else {
+                Rs2Keyboard.keyPress(KeyEvent.VK_SPACE);
+            }
+        }
+
+        // Wait for the servant to return with un-noted clay before the next loop.
+        sleepUntilOnClientThread(this::hasSoftClay, 10000);
+    }
+
     public boolean run(HouseTabConfig config) {
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
                 if (!Microbot.isLoggedIn()) return;
                 if (!super.run()) return;
-                if (!hasSoftClayNoted() || !hasLawRune()) {
+                if ((!hasSoftClayNoted() && !hasSoftClay()) || !hasLawRune()) {
+                    Microbot.log("HouseTab stopping: out of soft clay or law runes.");
                     shutdown();
                     return;
                 }
@@ -218,19 +287,33 @@ public class HouseTabScript extends Script {
                 }
 
                 boolean isInHouse = getHouseLectern() != null;
+
+                // Own house: stay inside and use the house servant to un-note clay from the bank,
+                // making tablets while we have unnoted clay to consume.
+                if (config.ownHouse()) {
+                    if (!isInHouse) {
+                        if (Microbot.getRs2TileObjectCache().query().withIds(POH_PORTAL_OBJECTS).interact("Home")) {
+                            sleepUntilOnClientThread(() -> getHouseLectern() != null, 8000);
+                        }
+                        return;
+                    }
+                    if (hasSoftClay()) {
+                        lookForLectern();
+                        createHouseTablet();
+                    } else {
+                        unnoteClayWithServant();
+                    }
+                    return;
+                }
+
+                // Friend's house: un-note at Phials by the advertisement board, then hop houses.
                 if (isInHouse) {
                     lookForLectern();
                     createHouseTablet();
                     leaveHouse();
                 } else {
                     unnoteClay();
-                    if (config.ownHouse()) {
-                        if (Microbot.getRs2TileObjectCache().query().interact(ObjectID.POH_RIMMINGTON_PORTAL, "Home")) {
-                            sleep(800, 1200);
-                        }
-                        return;
-                    }
-                    if (Microbot.getRs2TileObjectCache().query().interact(ObjectID.POH_RIMMINGTON_PORTAL, "Friend's house")) {
+                    if (Microbot.getRs2TileObjectCache().query().withIds(POH_PORTAL_OBJECTS).interact("Friend's house")) {
                         sleepUntil(() -> Rs2Widget.hasWidget("Enter name"));
                         if (Rs2Widget.hasWidget(config.housePlayerName())) {
                             Rs2Widget.clickWidget(config.housePlayerName());

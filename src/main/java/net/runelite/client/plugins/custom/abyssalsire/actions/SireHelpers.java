@@ -5,18 +5,44 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.custom.abyssalsire.constants.SireConstants;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
+import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
+import net.runelite.client.plugins.microbot.util.poh.PohTeleports;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
+import static net.runelite.client.plugins.microbot.util.Global.sleep;
+import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
+
 /** Stateless combat/query helpers shared by more than one Abyssal Sire action. Single-use helpers
  *  live as private methods in the action that needs them. */
 final class SireHelpers {
 
+    private static final String HOUSE_TABLET = "Teleport to House";
+    private static final int TELEPORT_TIMEOUT_MS = 20_000;
+
     private SireHelpers() {
+    }
+
+    /** Break a "Teleport to House" tablet and wait until we're inside the POH. True if we made it (or
+     *  were already there); false if there's no tablet or the teleport didn't fire. Shared by the
+     *  between-kills restock and the out-of-food emergency escape. */
+    static boolean teleportToHouse() {
+        if (PohTeleports.isInHouse()) {
+            return true;
+        }
+        if (!Rs2Inventory.hasItem(HOUSE_TABLET)) {
+            return false;
+        }
+        Rs2Inventory.interact(HOUSE_TABLET, "Break");
+        if (!sleepUntil(PohTeleports::isInHouse, TELEPORT_TIMEOUT_MS)) {
+            return false;
+        }
+        sleep(600, 1000);
+        return true;
     }
 
     // ---- Gear ----
@@ -42,10 +68,16 @@ final class SireHelpers {
 
     // ---- Sire ----
 
+    /** True if we're currently interacting with (attacking) the Sire. NOTE: lingers stale for a tick or
+     *  two after a walk, so callers that just moved should force a fresh attack instead of trusting this. */
+    static boolean isAttackingSire() {
+        Actor interacting = Rs2Player.getInteracting();
+        return interacting != null && SireConstants.SIRE_NAME.equalsIgnoreCase(interacting.getName());
+    }
+
     /** Attack the Sire if we aren't already interacting with it. Uses the invoke+query+interact pattern. */
     static void attackSire() {
-        Actor interacting = Rs2Player.getInteracting();
-        if (interacting != null && SireConstants.SIRE_NAME.equalsIgnoreCase(interacting.getName())) {
+        if (isAttackingSire()) {
             return;
         }
         forceAttackSire();
@@ -58,11 +90,16 @@ final class SireHelpers {
                 () -> Microbot.getRs2NpcCache().query().withName(SireConstants.SIRE_NAME).interact("Attack"));
     }
 
-    /** True if a consuming action (eat / prayer potion / antidote) fired its click this tick. Attacking
-     *  on the same tick would clobber that menu action, and the consume also breaks the interaction —
-     *  so callers should hold their attack and re-issue it next tick. */
+    /** True if a consuming action ACTUALLY consumed something this tick (food/prayer/antidote). We check
+     *  each action's RESULT, not merely that it ran: {@code executed("eat")} is true whenever HP is below
+     *  the eat threshold, but food is on a 3-tick cooldown, so most of those ticks no bite happens. Using
+     *  the result means we only hold the attack on real consume ticks — otherwise, with minions keeping
+     *  HP low in phase 3, every tick looked like a consume and we never hit the boss. Attacking on the
+     *  same tick as a real consume would clobber the click, so callers hold just that one tick. */
     static boolean consumedThisTick(SireState state) {
-        return state.executed("eat") || state.executed("drink-prayer") || state.executed("anti-poison");
+        return Boolean.TRUE.equals(state.result("eat"))
+                || Boolean.TRUE.equals(state.result("drink-prayer"))
+                || Boolean.TRUE.equals(state.result("anti-poison"));
     }
 
     // ---- Miasma pools ----
@@ -87,6 +124,16 @@ final class SireHelpers {
         return tile != null && pools.contains(tile);
     }
 
+    /** True if a miasma pool is on the player's current tile (only meaningful in phases 2/3). Used to
+     *  make the dodge preempt everything else — including eating — so we vacate the pool immediately. */
+    static boolean standingInMiasma(SireContext ctx) {
+        if (ctx.getPhase() != SirePhase.PHASE2 && ctx.getPhase() != SirePhase.PHASE3) {
+            return false;
+        }
+        WorldPoint me = playerLocation();
+        return me != null && miasmaPools(ctx).contains(me);
+    }
+
     // ---- Movement ----
 
     static WorldPoint playerLocation() {
@@ -107,6 +154,16 @@ final class SireHelpers {
             Rs2Walker.walkFastCanvas(tile, true);
             return true;
         }
+        return false;
+    }
+
+    /** Walk toward {@code tile} every tick, even while already moving — a "spam click" for urgent dodges
+     *  (miasma / explosion) where we must react as fast as possible. Returns true once we're on it. */
+    static boolean spamWalkTo(WorldPoint tile) {
+        if (atTile(tile)) {
+            return true;
+        }
+        Rs2Walker.walkFastCanvas(tile, true);
         return false;
     }
 }

@@ -106,10 +106,16 @@ public class SireContext {
 
     /** Cooldown gate so we don't re-drink antipoison every tick while the varbit is still updating. */
     private volatile long nextAntipoisonMs;
+    /** Wall-clock of the last actual food eaten. Gates EatAction to the ~3-tick food cooldown so it
+     *  doesn't spam-click food every tick (which lands only every 3rd tick anyway) — that spam made
+     *  every tick look like a consume and permanently held the attack, killing DPS in phase 3. */
+    private volatile long lastEatMs;
 
     // --- Loot ---
     /** Give-up time for looting, extended on each successful pickup. */
     private volatile long lootDeadlineMs;
+    /** When the current loot phase began — bounds how long we keep waiting for a stubborn/settling drop. */
+    private volatile long lootStartMs;
 
     /** Clears per-fight state so a fresh encounter starts at phase 1 (via the re-armed bootstrap). */
     public void reset() {
@@ -131,6 +137,8 @@ public class SireContext {
         specStartMs = 0;
         exploding = false;
         nextAntipoisonMs = 0;
+        lastEatMs = 0;
         lootDeadlineMs = 0;
+        lootStartMs = 0;
     }
 }

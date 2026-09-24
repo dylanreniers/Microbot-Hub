@@ -40,16 +40,33 @@ public class Phase2Action implements SireAction {
 
     @Override
     public boolean needsExecution(SireState state) {
-        return state.context().getPhase() == SirePhase.PHASE2;
+        // Stand down while a restock trip is armed/running (emergency escape or between-kills).
+        return state.context().getPhase() == SirePhase.PHASE2 && !state.context().isPrepPending();
     }
 
     @Override
     public Object execute(SireState state) {
-        if (!SireHelpers.gearReady(state.context())) {
-            return "gear-wait";
+        SireContext ctx = state.context();
+        Set<WorldPoint> pools = SireHelpers.miasmaPools(ctx);
+
+        // Safe attack tile: the original spot, unless a pool is on it — then the dodge tile.
+        WorldPoint desired = SireHelpers.miasmaOn(pools, SireConstants.ORIGINAL_POSITION)
+                ? SireConstants.PHASE2_MIASMA_DODGE
+                : SireConstants.ORIGINAL_POSITION;
+
+        // 0) URGENT: a pool is on OUR CURRENT tile -> drop everything and spam-walk off it immediately
+        // (before gear/boosts/spec/eat). Checking our actual tile (not just the original) means we also
+        // dodge when the Sire nudged us a tile south, or when a pool lands on the dodge tile.
+        WorldPoint me = SireHelpers.playerLocation();
+        if (me != null && pools.contains(me)) {
+            SireHelpers.spamWalkTo(desired);
+            ctx.setAttackAfterMove(true); // the walk breaks the interaction; force a fresh attack on arrival
+            return "miasma-dodge";
         }
 
-        SireContext ctx = state.context();
+        if (!SireHelpers.gearReady(ctx)) {
+            return "gear-wait";
+        }
 
         // At the start of phase 2, drink the melee stat boosts once — one consume per tick until every
         // melee stat is boosted (or there's nothing left to drink), holding the attack while we do it.
@@ -72,37 +89,12 @@ public class Phase2Action implements SireAction {
             }
         }
 
-        Set<WorldPoint> pools = SireHelpers.miasmaPools(ctx);
-
-        // Dodge two tiles east while a pool sits on the original spot; return to the original spot only
-        // once that pool has DESPAWNED. The pools are event-tracked (spawn -> despawn), so this no
-        // longer flips back to the original spot while the pool is still down. Being on the original
-        // spot keeps the Sire's pathing clean when it starts moving to prep phase 3.
-        WorldPoint desired = SireHelpers.miasmaOn(pools, SireConstants.ORIGINAL_POSITION)
-                ? SireConstants.PHASE2_MIASMA_DODGE
-                : SireConstants.ORIGINAL_POSITION;
-
-        // Accept being exactly on the tile OR one tile south of it (same X): the Sire sometimes nudges
-        // us a tile south, which is still a fine spot, so we don't want to keep repositioning for it.
+        // Reposition to the attack tile if we've drifted off it (accept one tile south — the Sire nudges
+        // us there sometimes, which is still a fine spot).
         if (!atTileOrSouth(desired)) {
             SireHelpers.walkTo(desired);
             ctx.setAttackAfterMove(true); // re-attack once we arrive; the walk broke the interaction
             return "reposition";
-        }
-
-        // Ate/drank this tick: don't also click attack (menu actions collide, and the consume broke the
-        // interaction). Hold this tick and re-attack next tick.
-        if (SireHelpers.consumedThisTick(state)) {
-            ctx.setAttackAfterMove(true);
-            return "consumed-hold";
-        }
-
-        // Just arrived from a dodge/reposition (or a consume last tick): force a fresh attack
-        // (getInteracting() lingers stale).
-        if (ctx.isAttackAfterMove()) {
-            ctx.setAttackAfterMove(false);
-            SireHelpers.forceAttackSire();
-            return "attack-after-move";
         }
 
         // In position and boosted — dump special attacks first, then fall through to normal attacks.
@@ -110,9 +102,36 @@ public class Phase2Action implements SireAction {
             return "special-attack";
         }
 
-        // On our tile — attack. From the original spot the (large) Sire is in reach, so this doesn't
-        // drag us off it.
-        SireHelpers.attackSire();
+        return attackTail(state, ctx);
+    }
+
+    /**
+     * Keeps the melee attack up without stalling DPS when we eat. Eating does NOT break an existing
+     * auto-attack, so if we're already locked onto the Sire we simply keep attacking even on a tick we
+     * ate. We only hold (one tick) when we still need to issue a fresh attack CLICK and also consumed
+     * this tick — two menu actions in one tick would collide.
+     */
+    private Object attackTail(SireState state, SireContext ctx) {
+        // Just moved (dodge/reposition/consume): the interaction reads stale, so force a fresh attack —
+        // but not on a tick we also ate; hold and force next tick.
+        if (ctx.isAttackAfterMove()) {
+            if (SireHelpers.consumedThisTick(state)) {
+                return "consumed-hold";
+            }
+            ctx.setAttackAfterMove(false);
+            SireHelpers.forceAttackSire();
+            return "attack-after-move";
+        }
+        // Already attacking the Sire: keep going — eating this tick doesn't break it, so we don't stall.
+        if (SireHelpers.isAttackingSire()) {
+            return "attack";
+        }
+        // Not attacking and we ate this tick: a fresh attack click would collide with the eat — hold.
+        if (SireHelpers.consumedThisTick(state)) {
+            ctx.setAttackAfterMove(true);
+            return "consumed-hold";
+        }
+        SireHelpers.forceAttackSire();
         return "attack";
     }
 

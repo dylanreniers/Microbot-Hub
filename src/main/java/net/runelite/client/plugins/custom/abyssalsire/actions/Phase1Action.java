@@ -52,7 +52,8 @@ public class Phase1Action implements SireAction {
 
     @Override
     public boolean needsExecution(SireState state) {
-        return state.context().getPhase() == SirePhase.PHASE1;
+        // Stand down while a restock trip is armed/running (emergency escape or between-kills).
+        return state.context().getPhase() == SirePhase.PHASE1 && !state.context().isPrepPending();
     }
 
     @Override

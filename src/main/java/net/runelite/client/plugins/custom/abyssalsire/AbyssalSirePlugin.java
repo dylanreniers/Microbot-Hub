@@ -150,7 +150,10 @@ public class AbyssalSirePlugin extends Plugin {
         }
         LocalPoint lp = go.getLocation();
         if (lp != null) {
-            script.context().getMiasmaPools().put(go, WorldPoint.fromLocal(client, lp));
+            WorldPoint tile = WorldPoint.fromLocal(client, lp);
+            script.context().getMiasmaPools().put(go, tile);
+            // React on the spawn tick (client thread) — the pipeline dodge is a tick behind.
+            script.onMiasmaPoolSpawned(tile);
         }
     }
 

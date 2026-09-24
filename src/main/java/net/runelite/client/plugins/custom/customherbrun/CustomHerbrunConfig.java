@@ -1,0 +1,326 @@
+package net.runelite.client.plugins.custom.customherbrun;
+
+import net.runelite.client.config.*;
+import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
+
+@ConfigInformation("Automated Herb Runs across all patches<br/><br/>" +
+        "<b>Two Setup Options:</b><br/>" +
+        "1. Inventory Setup: Use your custom inventory configuration<br/>" +
+        "2. Auto Banking: Let the plugin handle everything!<br/><br/>" +
+        "<b>Auto Banking withdraws:</b><br/>" +
+        "• Farming tools (rake, spade, seed dibber, magic secateurs)<br/>" +
+        "• Teleportation runes (law, air, earth, fire, water)<br/>" +
+        "• Your selected herb seeds<br/>" +
+        "• Your selected compost type<br/>" +
+        "• Ectophial (if Morytania is enabled)<br/><br/>" +
+        "<b>Repeat Timer:</b> optionally log out after each run, wait X minutes, " +
+        "log back in and run again automatically.<br/><br/>" +
+        "Credits to liftedmango and See1Duck")
+@ConfigGroup("CustomHerbrun")
+public interface CustomHerbrunConfig extends Config {
+
+    @ConfigSection(
+            name = "Inventory Setup Method",
+            description = "Choose between inventory setup or auto banking",
+            position = 0
+    )
+    String inventorySection = "inventory";
+
+    @ConfigItem(
+            keyName = "useInventorySetup",
+            name = "Use Inventory Setup",
+            description = "Enable to use RuneLite inventory setups | Disable for automatic banking",
+            section = inventorySection,
+            position = 0
+    )
+    default boolean useInventorySetup() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "inventorySetup",
+            name = "Inventory Setup Name",
+            description = "Select your pre-configured inventory setup",
+            section = inventorySection,
+            position = 1
+    )
+    default InventorySetup inventorySetup() {
+        return null;
+    }
+
+    @ConfigSection(
+            name = "Auto Banking Settings",
+            description = "Configure automatic banking options",
+            position = 1
+    )
+    String autoSection = "autobanking";
+
+    @ConfigItem(
+            keyName = "herbSeedType",
+            name = "Herb Seed Type",
+            description = "Choose which herb seeds to plant",
+            section = autoSection,
+            position = 0
+    )
+    default HerbSeedType herbSeedType() {
+        return HerbSeedType.RANARR;
+    }
+
+    @ConfigItem(
+            keyName = "compostType",
+            name = "Compost Type",
+            description = "Type of compost to use (select NONE to disable composting)",
+            section = autoSection,
+            position = 1
+    )
+    default CompostType compostType() {
+        return CompostType.ULTRA;
+    }
+
+    @ConfigItem(
+            keyName = "allowPartialRuns",
+            name = "Allow Partial Runs",
+            description = "Allow herb runs with fewer seeds than patches available",
+            section = autoSection,
+            position = 2
+    )
+    default boolean allowPartialRuns() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "dropEmptyBuckets",
+            name = "Drop Empty Buckets",
+            description = "Drop empty buckets after applying compost to patches",
+            section = autoSection,
+            position = 3
+    )
+    default boolean dropEmptyBuckets() {
+        return true;
+    }
+
+    @ConfigSection(
+            name = "General Settings",
+            description = "General plugin settings",
+            position = 2
+    )
+    String settingsSection = "settings";
+
+    @ConfigItem(
+            keyName = "goToBank",
+            name = "Bank After Run",
+            description = "Go to closest bank after completing the herb run",
+            position = 0,
+            section = settingsSection
+    )
+    default boolean goToBank() {
+        return true;
+    }
+
+    @ConfigSection(
+            name = "Repeat Timer",
+            description = "Log out between runs and resume automatically after a delay",
+            position = 3
+    )
+    String timerSection = "timer";
+
+    @ConfigItem(
+            keyName = "enableRepeatTimer",
+            name = "Enable Repeat Timer",
+            description = "After a run, log out, wait for the interval, log back in and run again",
+            section = timerSection,
+            position = 0
+    )
+    default boolean enableRepeatTimer() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "runIntervalMinutes",
+            name = "Interval (minutes)",
+            description = "Base minutes to stay logged out between herb runs",
+            section = timerSection,
+            position = 1
+    )
+    @Range(min = 1, max = 600)
+    default int runIntervalMinutes() {
+        return 80;
+    }
+
+    @ConfigItem(
+            keyName = "runIntervalRandomMinutes",
+            name = "Random range (minutes)",
+            description = "A random amount between 0 and this value is added on top of the base interval each run, so it never logs in on the exact same minute",
+            section = timerSection,
+            position = 2
+    )
+    @Range(min = 0, max = 120)
+    default int runIntervalRandomMinutes() {
+        return 5;
+    }
+
+    @ConfigItem(
+            keyName = "enableTrollheim",
+            name = "Enable Trollheim Patch",
+            description = "Enable Trollheim patch in herb run",
+            position = 1,
+            section = locationSection
+    )
+    default boolean enableTrollheim() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "enableCatherby",
+            name = "Enable Catherby Patch",
+            description = "Enable Catherby patch in herb run",
+            position = 2,
+            section = locationSection
+    )
+    default boolean enableCatherby() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "enableMorytania",
+            name = "Enable Morytania Patch",
+            description = "Enable Morytania patch in herb run",
+            position = 3,
+            section = locationSection
+    )
+    default boolean enableMorytania() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "enableVarlamore",
+            name = "Enable Varlamore Patch",
+            description = "Enable Varlamore patch in herb run",
+            position = 4,
+            section = locationSection
+    )
+    default boolean enableVarlamore() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "enableHosidius",
+            name = "Enable Hosidius Patch",
+            description = "Enable Hosidius patch in herb run",
+            position = 5,
+            section = locationSection
+    )
+    default boolean enableHosidius() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "enableArdougne",
+            name = "Enable Ardougne Patch",
+            description = "Enable Ardougne patch in herb run",
+            position = 6,
+            section = locationSection
+    )
+    default boolean enableArdougne() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "enableFalador",
+            name = "Enable Falador Patch",
+            description = "Enable Falador patch in herb run",
+            position = 7,
+            section = locationSection
+    )
+    default boolean enableFalador() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "enableWeiss",
+            name = "Enable Weiss Patch",
+            description = "Enable Weiss patch in herb run",
+            position = 8,
+            section = locationSection
+    )
+    default boolean enableWeiss() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "enableGuild",
+            name = "Enable Farming Guild Patch",
+            description = "Enable Farming Guild patch in herb run",
+            position = 9,
+            section = locationSection
+    )
+    default boolean enableGuild() {
+        return true;
+    }
+
+    @ConfigSection(
+            name = "Location toggles",
+            description = "Location toggles",
+            position = 4
+    )
+    String locationSection = "Location";
+
+    @ConfigSection(
+            name = "Allotments",
+            description = "Allotment patch settings",
+            position = 5
+    )
+    String allotmentSection = "allotments";
+
+    @ConfigItem(
+            keyName = "enableAllotments",
+            name = "Enable Allotments",
+            description = "Plant and harvest allotment patches at each location",
+            section = allotmentSection,
+            position = 0
+    )
+    default boolean enableAllotments() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "allotmentSeedType",
+            name = "Allotment Seed Type",
+            description = "Choose which allotment seeds to plant (3 seeds per patch)",
+            section = allotmentSection,
+            position = 1
+    )
+    default AllotmentSeedType allotmentSeedType() {
+        return AllotmentSeedType.SWEETCORN;
+    }
+
+    @ConfigSection(
+            name = "Flowers",
+            description = "Flower patch settings",
+            position = 6
+    )
+    String flowerSection = "flowers";
+
+    @ConfigItem(
+            keyName = "enableFlowers",
+            name = "Enable Flowers",
+            description = "Plant and harvest flower patches at each location",
+            section = flowerSection,
+            position = 0
+    )
+    default boolean enableFlowers() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "flowerSeedType",
+            name = "Flower Seed Type",
+            description = "Choose which flower seeds to plant (White lily protects all allotments)",
+            section = flowerSection,
+            position = 1
+    )
+    default FlowerSeedType flowerSeedType() {
+        return FlowerSeedType.LIMPWURT;
+    }
+
+}

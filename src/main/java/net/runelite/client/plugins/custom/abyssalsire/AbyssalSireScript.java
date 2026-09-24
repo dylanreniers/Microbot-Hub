@@ -12,7 +12,9 @@ import net.runelite.client.plugins.custom.actions.ActionScript;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
+import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
+import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 
 import javax.inject.Inject;
 
@@ -253,6 +255,57 @@ public class AbyssalSireScript extends ActionScript<SireState> {
     /** A hitsplat landed on the player: record when, for phase 1's "under attack" re-barrage fail-safe. */
     public void onPlayerDamaged() {
         context.setLastDamagedMs(System.currentTimeMillis());
+    }
+
+    /**
+     * A miasma pool just spawned (called from the GraphicsObjectCreated event, on the client thread). If
+     * it lands on OUR tile in phase 2/3, issue the dodge walk RIGHT NOW instead of waiting for the next
+     * worker tick — the pipeline dodge is a tick or two behind because it runs async off onGameTick (and
+     * does a client-thread round-trip first), which is why we were eating a hit. {@code walkFastCanvas}
+     * is non-blocking and client-thread safe, so reacting here is the fastest possible.
+     */
+    public void onMiasmaPoolSpawned(WorldPoint poolTile) {
+        SirePhase phase = context.getPhase();
+        if (phase != SirePhase.PHASE2 && phase != SirePhase.PHASE3) {
+            return;
+        }
+        WorldPoint me = Rs2Player.getWorldLocation();
+        if (me == null || poolTile == null || !me.equals(poolTile)) {
+            return; // only react when the pool lands directly under us
+        }
+        WorldPoint safe = safeDodgeTile(phase, me);
+        if (safe != null && !safe.equals(me)) {
+            log.info("[sire] miasma under us at {} — immediate dodge to {}", me, safe);
+            Rs2Walker.walkFastCanvas(safe, true);
+            context.setAttackAfterMove(true); // the walk broke the interaction; re-attack on arrival
+        }
+    }
+
+    /** The tile to flee to for a pool under us: phase 2 toggles original<->east; phase 3 dances A<->B,
+     *  preferring a pool-free tile. */
+    private WorldPoint safeDodgeTile(SirePhase phase, WorldPoint me) {
+        if (phase == SirePhase.PHASE2) {
+            return me.equals(SireConstants.ORIGINAL_POSITION)
+                    ? SireConstants.PHASE2_MIASMA_DODGE
+                    : SireConstants.ORIGINAL_POSITION;
+        }
+        WorldPoint opposite = me.equals(SireConstants.PHASE3_TILE_A)
+                ? SireConstants.PHASE3_TILE_B
+                : SireConstants.PHASE3_TILE_A;
+        if (!hasPoolAt(opposite)) {
+            return opposite;
+        }
+        if (!hasPoolAt(SireConstants.PHASE3_TILE_A)) {
+            return SireConstants.PHASE3_TILE_A;
+        }
+        if (!hasPoolAt(SireConstants.PHASE3_TILE_B)) {
+            return SireConstants.PHASE3_TILE_B;
+        }
+        return opposite; // both pooled — still move off the one we're in
+    }
+
+    private boolean hasPoolAt(WorldPoint tile) {
+        return context.getMiasmaPools().values().stream().anyMatch(t -> t != null && t.equals(tile));
     }
 
     /**

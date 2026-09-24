@@ -10,6 +10,7 @@ import net.runelite.client.plugins.custom.gotr.DonderGotrPlugin;
 import net.runelite.client.plugins.custom.customdemonicgorilla.CustomDemonicGorillaPlugin;
 import net.runelite.client.plugins.custom.abyssalsire.AbyssalSirePlugin;
 import net.runelite.client.plugins.custom.madangel.MadAngelPlugin;
+import net.runelite.client.plugins.custom.golemcrafting.GolemCraftingPlugin;
 import net.runelite.client.plugins.kourendlibrary.KourendLibraryPlugin;
 import net.runelite.client.plugins.microbot.GiantSeaweedFarmer.GiantSeaweedFarmerPlugin;
 import net.runelite.client.plugins.microbot.agentserver.AgentServerPlugin;
@@ -18,6 +19,7 @@ import net.runelite.client.plugins.microbot.aiomagic.AIOMagicPlugin;
 import net.runelite.client.plugins.microbot.arceuuslibrary.ArceuusLibraryPlugin;
 import net.runelite.client.plugins.microbot.banksshopper.BanksShopperPlugin;
 import net.runelite.client.plugins.microbot.birdhouseruns.FornBirdhouseRunsPlugin;
+import net.runelite.client.plugins.microbot.housetab.HouseTabPlugin;
 import net.runelite.client.plugins.microbot.pitfallhunter.PitfallHunterPlugin;
 import net.runelite.client.plugins.microbot.sailing.MSailingPlugin;
 import net.runelite.client.plugins.microbot.motherloadmine.MotherloadMinePlugin;
@@ -42,7 +44,6 @@ public class Microbot
 			AgentServerPlugin.class,
 			DonderGotrPlugin.class,
 			AgilityPlugin.class,
-			PlankRunnerPlugin.class,
 			SulphurNaguaPlugin.class,
 			CannonballSmelterPlugin.class,
 			MicroAgilityPlugin.class,
@@ -55,18 +56,14 @@ public class Microbot
 			AIOMagicPlugin.class,
 			FornBirdhouseRunsPlugin.class,
 			GiantSeaweedFarmerPlugin.class,
-			PitfallHunterPlugin.class,
-			MotherloadMinePlugin.class,
-			KourendLibraryPlugin.class,
-			ArceuusLibraryPlugin.class,
 			AIOFighterPlugin.class,
 			MSailingPlugin.class,
 			CustomDemonicGorillaPlugin.class,
 			AbyssalSirePlugin.class,
-			MadAngelPlugin.class,
 			AutoWoodcuttingPlugin.class,
 			FletchingPlugin.class,
-			BanksShopperPlugin.class
+			BanksShopperPlugin.class,
+			HouseTabPlugin.class,
 	};
 
 	public static void main(String[] args) throws Exception

@@ -113,20 +113,11 @@ public class ReturnToSireAction implements SireAction {
     // ---- Steps ----
 
     private boolean teleportHome() {
-        if (PohTeleports.isInHouse()) {
-            return true;
-        }
-        if (!Rs2Inventory.hasItem(HOUSE_TABLET)) {
-            log.warn("[restock] no '{}' tablet in the inventory", HOUSE_TABLET);
-            return false;
-        }
         log.info("[restock] teleporting to the house");
-        Rs2Inventory.interact(HOUSE_TABLET, "Break");
-        if (!sleepUntil(PohTeleports::isInHouse, STEP_TIMEOUT_MS)) {
-            log.warn("[restock] did not arrive in the house");
+        if (!SireHelpers.teleportToHouse()) {
+            log.warn("[restock] could not teleport home (no '{}' tablet, or it didn't fire)", HOUSE_TABLET);
             return false;
         }
-        sleep(600, 1000);
         return true;
     }
 

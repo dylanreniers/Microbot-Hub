@@ -10,9 +10,10 @@ import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 
 /**
- * After the Sire dies (prayers are already dropped in onSireDeath), loots the drop: every untradeable
- * (the Unsired) plus anything at or above the configured value. Once looting is done it walks back to
- * the original spot and resets the context, so the next fight's phase 1 starts from there.
+ * After the Sire dies (prayers are already dropped in onSireDeath), picks up EVERYTHING on the ground
+ * within range — every drop regardless of value or tradeability (value >= 0, untradeables and coins),
+ * the same "loot everything" pass the Tormented Demon script uses. Once the ground is clear it hands off
+ * to the restock trip (or walks back and resets when restock is off).
  */
 @Slf4j
 public class LootAction implements SireAction {
@@ -20,8 +21,10 @@ public class LootAction implements SireAction {
     private static final int LOOT_RANGE = 15;
     /** Grace for the drop to land after death. */
     private static final long INITIAL_LOOT_WAIT_MS = 2500;
-    /** Deadline extension after each successful pickup. */
+    /** Deadline extension after each successful pickup, or while loot is still on the ground. */
     private static final long LOOT_EXTEND_MS = 1500;
+    /** Hard cap on the whole loot phase, so a genuinely unreachable drop can't stall us forever. */
+    private static final long MAX_LOOT_MS = 12_000;
 
     @Override
     public int order() {
@@ -45,12 +48,12 @@ public class LootAction implements SireAction {
         final long now = System.currentTimeMillis();
         if (ctx.getLootDeadlineMs() == 0) {
             ctx.setLootDeadlineMs(now + INITIAL_LOOT_WAIT_MS);
+            ctx.setLootStartMs(now);
         }
 
-        // Inventory full but there's loot we want on the ground? Eat one food to free a slot so we can
-        // pick it up. Only eats when there's actually wanted loot down, and extends the loot deadline so
-        // we don't time out while making room. (No food -> nothing we can do; fall through.)
-        if (Rs2Inventory.isFull() && wantedLootPresent(ctx)) {
+        // Inventory full but there's still loot on the ground? Eat one food to free a slot so we can pick
+        // it up, and extend the deadline so we don't time out while making room. (No food -> fall through.)
+        if (Rs2Inventory.isFull() && nearestLoot() != null) {
             if (Rs2Player.eatAt(100, true)) {
                 log.info("[sire] inventory full — eating to make space for loot");
                 ctx.setLootDeadlineMs(now + LOOT_EXTEND_MS);
@@ -58,17 +61,22 @@ public class LootAction implements SireAction {
             }
         }
 
-        // Always grab untradeables (Unsired / pet), then anything worth at least the configured value.
-        LootingParameters untradeables = new LootingParameters(LOOT_RANGE, 1, 1, 0, false, false);
-        boolean lootedUntradeables = Rs2GroundItem.lootUntradables(untradeables);
-
-        LootingParameters valuable = new LootingParameters(
-                ctx.getLootMinValue(), Integer.MAX_VALUE, LOOT_RANGE, 1, 0, false, false);
-        boolean lootedValuable = Rs2GroundItem.lootItemBasedOnValue(valuable);
-
-        if (lootedUntradeables || lootedValuable) {
+        // Loot EVERYTHING within range: value >= 0 catches all drops, plus untradeables and coins. Owner
+        // filter off so it grabs the whole pile.
+        LootingParameters all = new LootingParameters(0, Integer.MAX_VALUE, LOOT_RANGE, 1, 0, false, false);
+        boolean looted = Rs2GroundItem.lootItemBasedOnValue(all);
+        looted |= Rs2GroundItem.lootUntradables(all);
+        looted |= Rs2GroundItem.lootCoins(all);
+        if (looted) {
             ctx.setLootDeadlineMs(now + LOOT_EXTEND_MS);
             return "loot";
+        }
+
+        // Nothing picked up this tick, but if anything's still on the ground keep at it (drop still
+        // settling, mid-move from a dodge, or a menu click collided) — bounded by MAX_LOOT_MS.
+        if (now - ctx.getLootStartMs() < MAX_LOOT_MS && nearestLoot() != null) {
+            ctx.setLootDeadlineMs(now + LOOT_EXTEND_MS);
+            return "loot-wait";
         }
 
         if (now >= ctx.getLootDeadlineMs()) {
@@ -92,25 +100,24 @@ public class LootAction implements SireAction {
         return "loot-wait";
     }
 
-    /**
-     * True if there's loot we actually want within range: anything at/above the configured value, or any
-     * untradeable (e.g. the Unsired — coins are tradeable, so this excludes them). Used to decide whether
-     * a full inventory is worth eating for.
-     */
-    private boolean wantedLootPresent(SireContext ctx) {
-        if (Rs2GroundItem.isItemBasedOnValueOnGround(ctx.getLootMinValue(), LOOT_RANGE)) {
-            return true;
-        }
+    /** The nearest ground item within {@link #LOOT_RANGE}, or null if the ground is clear. */
+    private GroundItem nearestLoot() {
         WorldPoint me = SireHelpers.playerLocation();
         if (me == null) {
-            return false;
+            return null;
         }
+        GroundItem nearest = null;
+        int best = Integer.MAX_VALUE;
         for (GroundItem item : Rs2GroundItem.getGroundItems().values()) {
-            if (item != null && !item.isTradeable() && item.getLocation() != null
-                    && item.getLocation().distanceTo(me) <= LOOT_RANGE) {
-                return true;
+            if (item == null || item.getLocation() == null) {
+                continue;
+            }
+            int dist = item.getLocation().distanceTo(me);
+            if (dist <= LOOT_RANGE && dist < best) {
+                best = dist;
+                nearest = item;
             }
         }
-        return false;
+        return nearest;
     }
 }

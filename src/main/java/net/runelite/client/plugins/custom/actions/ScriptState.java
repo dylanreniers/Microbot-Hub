@@ -22,12 +22,15 @@ public interface ScriptState {
         return actionStates().stream().anyMatch(a -> a.getKey().equals(key) && a.isExecuted());
     }
 
-    /** The value an earlier action returned this tick, or null if it didn't run / returned null. */
+    /** The value an earlier action returned this tick, or null if it didn't run / returned null. Find the
+     *  action state first, THEN map to its (nullable) result — mapping before {@code findFirst()} NPEs via
+     *  {@code Optional.of(null)} when a recorded result is null (e.g. an action that ran but returned null,
+     *  or one recorded with a null result because it didn't execute). */
     default Object result(String key) {
         return actionStates().stream()
                 .filter(a -> a.getKey().equals(key))
-                .map(ActionState::getResult)
                 .findFirst()
+                .map(ActionState::getResult)
                 .orElse(null);
     }
 }
