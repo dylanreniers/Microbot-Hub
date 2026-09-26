@@ -63,30 +63,43 @@ public class BankRefillAction implements GolemAction {
             return "bank-open";
         }
 
-        String furName = ctx.getFurName();
-        if (!Rs2Bank.hasBankItem(furName)) {
-            log.warn("[golem] no '{}' in the bank to refill with", furName);
-            Rs2Bank.closeBank();
-            ctx.setFurRemaining(0); // MINING's empty-bank guard will stop after retrying
-            ctx.setPhase(GolemPhase.MINING);
-            return "bank-no-furs";
-        }
-
-        // Clear the inventory of everything but the tools/pouch/gem bag, then load furs and Fill.
-        Rs2Bank.depositAllExcept(GolemConstants.CHISEL, GolemConstants.HAMMER,
+        // Deposit everything but the tools/pouch/gem bag, freeing slots for the next 25-ore batch. Keep
+        // the jeweller's chisel when present (the better tool) so the redundant regular chisel is banked;
+        // otherwise keep the regular chisel.
+        int keepChisel = Rs2Inventory.hasItem(GolemConstants.JEWELLERS_CHISEL)
+                ? GolemConstants.JEWELLERS_CHISEL : GolemConstants.CHISEL;
+        Rs2Bank.depositAllExcept(keepChisel, GolemConstants.HAMMER,
                 GolemConstants.FUR_POUCH_OPEN, GolemConstants.FUR_POUCH_CLOSED,
                 GolemConstants.GEM_BAG, GolemConstants.GEM_BAG_OPEN);
-        Rs2Bank.withdrawAll(furName);
-        sleepUntil(() -> Rs2Inventory.hasItem(furName), 2000);
 
-        Rs2Inventory.interact(GolemConstants.FUR_POUCH_OPEN, GolemConstants.ACTION_FILL);
-        sleepUntil(() -> !Rs2Inventory.hasItem(furName), 2000);
+        // Only refill furs when the pouch is actually empty; if we only came to bank the chisel, don't
+        // needlessly withdraw furs (which could leave leftovers when the pouch is already full).
+        boolean needFurs = ctx.getFurRemaining() <= 0;
+        if (needFurs) {
+            String furName = ctx.getFurName();
+            if (!Rs2Bank.hasBankItem(furName)) {
+                log.warn("[golem] no '{}' in the bank to refill with", furName);
+                Rs2Bank.closeBank();
+                ctx.setFurRemaining(0); // MINING's empty-bank guard will stop after retrying
+                ctx.setPhase(GolemPhase.MINING);
+                return "bank-no-furs";
+            }
+            // Withdraw as many furs as the inventory holds.
+            Rs2Bank.withdrawAll(furName);
+            sleepUntil(() -> Rs2Inventory.hasItem(furName), 2000);
 
-        // Any furs that didn't fit go back, then leave clean.
-        Rs2Bank.depositAll(furName);
-        Rs2Bank.closeBank();
+            // The pouch's "Fill" only works with the bank CLOSED — close first, then fill from the furs
+            // we just withdrew into the inventory.
+            Rs2Bank.closeBank();
+            sleepUntil(() -> !Rs2Bank.isOpen(), 2000);
+            Rs2Inventory.interact(GolemConstants.FUR_POUCH_OPEN, GolemConstants.ACTION_FILL);
+            sleepUntil(() -> !Rs2Inventory.hasItem(furName), 2000);
+        } else {
+            Rs2Bank.closeBank();
+            sleepUntil(() -> !Rs2Bank.isOpen(), 2000);
+        }
 
-        log.info("[golem] pouch refilled — resuming");
+        log.info("[golem] banking done — resuming");
         ctx.setFurRemaining(-1); // re-Check the new count in MINING
         ctx.setTripActive(false);
         ctx.setPhase(GolemPhase.MINING);

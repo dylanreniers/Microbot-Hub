@@ -25,13 +25,34 @@ final class GolemHelpers {
     }
 
     /**
-     * Drops any scroll box(es) in the inventory. They arrive as a random reward while mining and eat a
-     * slot, which stops us reaching the 25-sunstone batch and leaves the miner stuck. Returns true if one
-     * was dropped.
+     * Drops junk that piles up while mining and eats inventory slots — scroll boxes (random reward) and
+     * any loose "uncut" gems — since a full inventory stops us reaching the 25-sunstone batch and leaves
+     * the miner stuck. Returns true if anything was dropped.
      */
-    static boolean dropScrollBoxes() {
-        return Rs2Inventory.dropAll(i -> i.getName() != null
-                && i.getName().toLowerCase().contains("scroll box"));
+    static boolean dropMiningJunk() {
+        return Rs2Inventory.dropAll(i -> {
+            if (i.getName() == null) {
+                return false;
+            }
+            String n = i.getName().toLowerCase();
+            return n.contains("scroll box") || n.contains("uncut");
+        });
+    }
+
+    /** True if a chisel — regular OR jeweller's — is in the inventory. */
+    static boolean hasChisel() {
+        return Rs2Inventory.hasItem(GolemConstants.CHISEL) || Rs2Inventory.hasItem(GolemConstants.JEWELLERS_CHISEL);
+    }
+
+    /** The chisel to chisel with, preferring the (faster) jeweller's chisel when present. */
+    static int chiselItemId() {
+        return Rs2Inventory.hasItem(GolemConstants.JEWELLERS_CHISEL)
+                ? GolemConstants.JEWELLERS_CHISEL : GolemConstants.CHISEL;
+    }
+
+    /** True when both chisels are held — the regular one is then redundant and should be banked. */
+    static boolean hasRedundantChisel() {
+        return Rs2Inventory.hasItem(GolemConstants.JEWELLERS_CHISEL) && Rs2Inventory.hasItem(GolemConstants.CHISEL);
     }
 
     static boolean hasGemBag() {

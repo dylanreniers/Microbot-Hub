@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import net.runelite.client.plugins.custom.dashingkebbit.DashingKebbitPlugin;
 import net.runelite.client.plugins.custom.fletching.FletchingPlugin;
 import net.runelite.client.plugins.custom.woodcutting.DonderWoodcuttingPlugin;
 import net.runelite.client.plugins.custom.gotr.DonderGotrPlugin;
@@ -64,6 +65,7 @@ public class Microbot
 			FletchingPlugin.class,
 			BanksShopperPlugin.class,
 			HouseTabPlugin.class,
+			DashingKebbitPlugin.class
 	};
 
 	public static void main(String[] args) throws Exception

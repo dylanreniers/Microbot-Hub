@@ -50,6 +50,12 @@ public class MineSunstoneAction implements GolemAction {
                 ctx.setStatus("Checking fur pouch");
                 return "await-furcount";
             }
+            // Holding both chisels wastes a slot we need for the 25-ore batch — bank the redundant one.
+            if (GolemHelpers.hasRedundantChisel()) {
+                log.info("[golem] redundant chisel in inventory — banking it before mining");
+                ctx.setPhase(GolemPhase.BANKING);
+                return "bank-chisel";
+            }
             if (ctx.getFurRemaining() == 0) {
                 if (ctx.isBankForFurs() && ctx.getEmptyBankCount() < 2) {
                     ctx.setEmptyBankCount(ctx.getEmptyBankCount() + 1);
@@ -93,51 +99,51 @@ public class MineSunstoneAction implements GolemAction {
             return "mine-approach";
         }
 
-        // Momentum loop (one tick, blocking). Per rock, in this exact order:
-        //   1. wait until the player has STOPPED moving (finished walking/settling on the rock),
-        //   2. hover the NEXT rock (natural-mouse travel happens now, while the current rock is mined),
-        //   3. wait for the XP drop from the current rock,
-        //   4. click the next rock in place (already hovered) — no travel at the click moment,
-        // then repeat. This keeps the cursor pre-positioned so momentum isn't lost to mouse travel.
+        // Momentum loop (one tick, blocking). Per rock — a SINGLE click each:
+        //   1. click the rock once (interact always invokes the Mine menu action, since nothing is ever
+        //      out of the 51-tile range, so the game walks-and-mines automatically — no second click),
+        //   2. wait until we're standing next to that rock (so far rocks don't hover a stale spot),
+        //   3. hover the NEXT rock (cursor pre-positioned during the mine),
+        //   4. wait for the XP drop, then advance to the next rock.
         int len = GolemConstants.ROCK_ROTATION.length;
-        // Start mining the current rock via a proper menu invoke (also walks/faces if needed).
-        Rs2GameObject.interact(GolemConstants.ROCK_ROTATION[ctx.getRockIndex()], GolemConstants.ACTION_MINE);
 
         while (Microbot.isLoggedIn()
                 && ctx.getPhase() == GolemPhase.MINING
                 && GolemHelpers.sunstoneCount() < target
                 && !Thread.currentThread().isInterrupted()) {
 
-            // A scroll box reward eats an inventory slot and blocks reaching the 25-sunstone batch — drop
-            // it so mining can keep filling up.
-            GolemHelpers.dropScrollBoxes();
+            // Scroll boxes and loose uncut gems eat inventory slots and block reaching the 25-sunstone
+            // batch — drop them so mining can keep filling up.
+            GolemHelpers.dropMiningJunk();
 
-            // 1. Wait until we've stopped moving so the hover targets a stable clickbox.
-            sleepUntil(() -> !Rs2Player.isMoving(), () -> {
-            }, 5000, 20);
+            final WorldPoint cur = GolemConstants.ROCK_ROTATION[ctx.getRockIndex()];
+            int xpBefore = miningXp();
 
-            // 2. Hover the next rock in the rotation (pre-positions the cursor during mining).
+            // 1. One click — walks (if needed) and mines.
+            Rs2GameObject.interact(cur, GolemConstants.ACTION_MINE);
+            ctx.setLastRock(cur);
+
+            // 2. Wait until we've arrived next to this rock and stopped moving.
+            sleepUntil(() -> {
+                WorldPoint p = Rs2Player.getWorldLocation();
+                return p != null && !Rs2Player.isMoving() && p.distanceTo(cur) <= 1;
+            }, () -> {
+            }, 6000, 20);
+
+            // 3. Hover the next rock while this one is being mined.
             WorldPoint nextTile = GolemConstants.ROCK_ROTATION[(ctx.getRockIndex() + 1) % len];
             net.runelite.api.TileObject nextRock = GolemHelpers.rockAt(nextTile);
             if (nextRock != null) {
                 Rs2GameObject.hoverOverObject(nextRock);
             }
 
-            // 3. Wait for the current rock's XP drop (a sunstone). The cap only fires on an empty rock or
-            //    a missed swing, so we never dwell.
-            int xpBefore = miningXp();
+            // 4. Wait for this rock's XP drop (a sunstone), then advance. The cap only fires on an empty
+            //    rock or a missed swing, so we never dwell.
             sleepUntil(() -> miningXp() > xpBefore, () -> {
             }, 6000, 20);
 
-            // 4. Advance and click the next rock. Use interact() (menu invoke) so it targets the rock's
-            //    entry directly and can't miss — the cursor is already hovering it, so the move is tiny.
             ctx.setRockIndex((ctx.getRockIndex() + 1) % len);
-            ctx.setLastRock(nextTile);
             ctx.setStatus("Mining sunstone (" + GolemHelpers.sunstoneCount() + "/" + target + ")");
-            if (GolemHelpers.sunstoneCount() >= target) {
-                break;
-            }
-            Rs2GameObject.interact(nextTile, GolemConstants.ACTION_MINE);
         }
 
         if (GolemHelpers.sunstoneCount() >= target) {

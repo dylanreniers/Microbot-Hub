@@ -67,14 +67,36 @@ public interface CustomHerbrunConfig extends Config {
     }
 
     @ConfigItem(
-            keyName = "compostType",
-            name = "Compost Type",
-            description = "Type of compost to use (select NONE to disable composting)",
+            keyName = "herbCompostType",
+            name = "Herb Compost",
+            description = "Compost to use on herb patches (select NONE to disable composting)",
             section = autoSection,
             position = 1
     )
-    default CompostType compostType() {
+    default CompostType herbCompostType() {
         return CompostType.ULTRA;
+    }
+
+    @ConfigItem(
+            keyName = "flowerCompostType",
+            name = "Flower Compost",
+            description = "Compost to use on flower patches (select NONE to disable composting)",
+            section = autoSection,
+            position = 2
+    )
+    default CompostType flowerCompostType() {
+        return CompostType.REGULAR;
+    }
+
+    @ConfigItem(
+            keyName = "allotmentCompostType",
+            name = "Allotment Compost",
+            description = "Compost to use on allotment patches (select NONE to disable composting)",
+            section = autoSection,
+            position = 3
+    )
+    default CompostType allotmentCompostType() {
+        return CompostType.REGULAR;
     }
 
     @ConfigItem(
@@ -82,7 +104,7 @@ public interface CustomHerbrunConfig extends Config {
             name = "Allow Partial Runs",
             description = "Allow herb runs with fewer seeds than patches available",
             section = autoSection,
-            position = 2
+            position = 4
     )
     default boolean allowPartialRuns() {
         return false;
@@ -93,7 +115,7 @@ public interface CustomHerbrunConfig extends Config {
             name = "Drop Empty Buckets",
             description = "Drop empty buckets after applying compost to patches",
             section = autoSection,
-            position = 3
+            position = 5
     )
     default boolean dropEmptyBuckets() {
         return true;

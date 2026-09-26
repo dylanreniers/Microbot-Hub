@@ -17,6 +17,7 @@ public final class GolemConstants {
     public static final int SUNSTONE = 34020;
     public static final int SUNSTONE_CORE = 34022;
     public static final int CHISEL = 1755;
+    public static final int JEWELLERS_CHISEL = 34024;
     public static final int HAMMER = 2347;
     public static final int FUR_POUCH_CLOSED = 29303;
     public static final int FUR_POUCH_OPEN = 29470;
@@ -34,7 +35,7 @@ public final class GolemConstants {
     public static final int BANK_CHEST = 62390;
 
     // --- Tiles ---
-    public static final WorldPoint BANK_CHEST_TILE = new WorldPoint(2587, 2260, 0);
+    public static final WorldPoint BANK_CHEST_TILE = new WorldPoint(2588, 2259, 0);
     public static final WorldPoint PLINTH_AREA = new WorldPoint(2596, 2255, 0);
     public static final WorldPoint ROCK_AREA = new WorldPoint(2601, 2243, 0);
     /** Stand here to start momentum mining — three rocks are adjacent. */

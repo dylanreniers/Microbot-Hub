@@ -400,7 +400,7 @@ public class CustomHerbrunScript extends Script {
                 log("No herb seeds found in inventory, skipping patch");
                 return true;
             }
-            if (!applyCompost(obj)) return false;
+            if (!applyCompost(obj, config.herbCompostType())) return false;
             Rs2Inventory.use(seedInInventory.getItemId());
             obj.click("Plant");
             Rs2Player.waitForWalking();
@@ -521,7 +521,7 @@ public class CustomHerbrunScript extends Script {
                     log("[Flower] No " + flowerSeed.getSeedName() + " in inventory, skipping");
                     return true;
                 }
-                if (!applyCompost(obj)) return false;
+                if (!applyCompost(obj, config.flowerCompostType())) return false;
                 Rs2Inventory.use(flowerSeed.getItemId());
                 obj.click("Plant");
                 Rs2Player.waitForWalking();
@@ -633,7 +633,7 @@ public class CustomHerbrunScript extends Script {
                     currentAllotmentId = -1;
                     return false;
                 }
-                if (!applyCompost(obj)) return false;
+                if (!applyCompost(obj, config.allotmentCompostType())) return false;
                 Rs2Inventory.use(allotmentSeed.getItemId());
                 obj.click("Plant");
                 Rs2Player.waitForWalking();
@@ -673,8 +673,7 @@ public class CustomHerbrunScript extends Script {
 
     // --- Shared compost application ---
 
-    private boolean applyCompost(Rs2TileObjectModel obj) {
-        CompostType compost = config.compostType();
+    private boolean applyCompost(Rs2TileObjectModel obj, CompostType compost) {
         if (compost == CompostType.NONE) return true;
 
         if (compost.isBottomless()) {
@@ -897,10 +896,13 @@ public class CustomHerbrunScript extends Script {
             }
         }
 
-        // Withdraw compost (bottomless only — non-bottomless comes from leprechaun)
-        CompostType compostType = config.compostType();
-        if (compostType != CompostType.NONE && compostType.isBottomless()) {
-            if (!Rs2Bank.withdrawX(compostType.getItemId(), 1)) {
+        // Withdraw compost (bottomless only — non-bottomless comes from leprechaun). A single
+        // bottomless bucket works on every patch type, so withdraw one if any active category uses it.
+        boolean needsBottomless = config.herbCompostType().isBottomless()
+                || (config.enableFlowers() && config.flowerCompostType().isBottomless())
+                || (config.enableAllotments() && config.allotmentCompostType().isBottomless());
+        if (needsBottomless) {
+            if (!Rs2Bank.withdrawX(CompostType.BOTTOMLESS.getItemId(), 1)) {
                 log("Failed to withdraw bottomless compost bucket");
                 return false;
             }

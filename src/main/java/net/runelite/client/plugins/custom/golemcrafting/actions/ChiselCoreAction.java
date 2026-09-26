@@ -46,7 +46,7 @@ public class ChiselCoreAction implements GolemAction {
                 && !Thread.currentThread().isInterrupted()) {
             int before = GolemHelpers.coreCount();
             ctx.setStatus("Chiselling cores (" + before + "/" + target + ")");
-            Rs2Inventory.combine(GolemConstants.CHISEL, GolemConstants.SUNSTONE);
+            Rs2Inventory.combine(GolemHelpers.chiselItemId(), GolemConstants.SUNSTONE);
             sleepUntil(() -> GolemHelpers.coreCount() > before, () -> {
             }, 3000, 50);
         }
