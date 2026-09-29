@@ -22,6 +22,7 @@ public class GolemContext {
     private String furName = "";
     private boolean useMonolith = false;
     private boolean bankForFurs = true;
+    private boolean useGemBag = false;
     private CraftingMode craftingMode = CraftingMode.LAZY;
 
     /** Sunstone to mine this trip (golemsTarget * 5); computed when a mining phase begins. */
@@ -57,6 +58,8 @@ public class GolemContext {
     private long lastCarveMs = 0;
     /** Cores in inventory last tick — a drop means a golem just completed (fur consumed). */
     private int lastCoreCount = -1;
+    /** Grace deadline to stay put and collect a finished golem's ground drops before the next golem. */
+    private long lootDeadlineMs = 0;
     /** Rock tile last mined, so momentum mining can hop to a fresh rock. */
     private net.runelite.api.coords.WorldPoint lastRock;
     /** Index into the fixed momentum rotation ({@code GolemConstants.ROCK_ROTATION}). */

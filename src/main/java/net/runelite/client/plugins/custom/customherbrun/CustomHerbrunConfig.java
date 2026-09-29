@@ -140,9 +140,64 @@ public interface CustomHerbrunConfig extends Config {
     }
 
     @ConfigSection(
+            name = "Supercompost Bin",
+            description = "Sustain supercompost via the Farming Guild's Big Compost Bin",
+            position = 3
+    )
+    String compostBinSection = "compostBin";
+
+    @ConfigItem(
+            keyName = "sustainSupercompost",
+            name = "Sustain Supercompost",
+            description = "At the end of each run, collect ready supercompost from the Farming Guild's Big Compost Bin " +
+                    "(storing it in the tool leprechaun), then refill the bin with watermelons from the bank",
+            section = compostBinSection,
+            position = 0
+    )
+    default boolean sustainSupercompost() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "compostBinOnly",
+            name = "Compost Bin Only (debug)",
+            description = "DEBUG: skip the herb run entirely and only run the compost bin routine, then stop. " +
+                    "Start this while standing at the Farming Guild bin to test collect/store/refill in isolation",
+            section = compostBinSection,
+            position = 1
+    )
+    default boolean compostBinOnly() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "addVolcanicAsh",
+            name = "Add Volcanic Ash (ultracompost)",
+            description = "Also add volcanic ash to the bin before closing, turning the batch into ultracompost " +
+                    "instead of supercompost. Requires enough volcanic ash in the bank",
+            section = compostBinSection,
+            position = 2
+    )
+    default boolean addVolcanicAsh() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "volcanicAshAmount",
+            name = "Volcanic Ash Amount",
+            description = "How much volcanic ash to withdraw and add to the bin before closing (at least 50 for a full big bin)",
+            section = compostBinSection,
+            position = 3
+    )
+    @Range(min = 1, max = 100)
+    default int volcanicAshAmount() {
+        return 50;
+    }
+
+    @ConfigSection(
             name = "Repeat Timer",
             description = "Log out between runs and resume automatically after a delay",
-            position = 3
+            position = 4
     )
     String timerSection = "timer";
 
@@ -283,14 +338,14 @@ public interface CustomHerbrunConfig extends Config {
     @ConfigSection(
             name = "Location toggles",
             description = "Location toggles",
-            position = 4
+            position = 5
     )
     String locationSection = "Location";
 
     @ConfigSection(
             name = "Allotments",
             description = "Allotment patch settings",
-            position = 5
+            position = 6
     )
     String allotmentSection = "allotments";
 
@@ -319,7 +374,7 @@ public interface CustomHerbrunConfig extends Config {
     @ConfigSection(
             name = "Flowers",
             description = "Flower patch settings",
-            position = 6
+            position = 7
     )
     String flowerSection = "flowers";
 

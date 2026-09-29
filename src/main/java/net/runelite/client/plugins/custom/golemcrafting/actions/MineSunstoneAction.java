@@ -112,9 +112,15 @@ public class MineSunstoneAction implements GolemAction {
                 && GolemHelpers.sunstoneCount() < target
                 && !Thread.currentThread().isInterrupted()) {
 
-            // Scroll boxes and loose uncut gems eat inventory slots and block reaching the 25-sunstone
-            // batch — drop them so mining can keep filling up.
-            GolemHelpers.dropMiningJunk();
+            // Scroll boxes always block the batch; loose uncut gems only when we're not keeping them for
+            // the gem bag. Drop them so mining can keep filling up.
+            GolemHelpers.dropMiningJunk(ctx.isUseGemBag());
+
+            // With a gem bag, stash any loose uncut gems (picked up from golems, or mined) into the bag
+            // before clicking the next rock, so they don't take a batch slot.
+            if (ctx.isUseGemBag() && GolemHelpers.hasLooseUncut()) {
+                GolemHelpers.fillGemBag();
+            }
 
             final WorldPoint cur = GolemConstants.ROCK_ROTATION[ctx.getRockIndex()];
             int xpBefore = miningXp();

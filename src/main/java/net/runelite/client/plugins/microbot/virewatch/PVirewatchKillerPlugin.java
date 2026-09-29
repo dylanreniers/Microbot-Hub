@@ -187,7 +187,7 @@ public class PVirewatchKillerPlugin extends Plugin {
                 if (currentQuantity > previousQuantity)
                 {
                     int newQuantity = currentQuantity - previousQuantity;
-                    int itemValue = itemManager.getItemPrice(itemId);
+                    int itemValue = (int) itemManager.getItemPrice(itemId);
                     totalItemValue += itemValue * newQuantity;
                 }
             }

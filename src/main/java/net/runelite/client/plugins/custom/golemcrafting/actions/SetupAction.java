@@ -35,8 +35,8 @@ public class SetupAction implements GolemAction {
         if (!GolemHelpers.hasChisel()) {
             return stop(ctx, "No chisel (regular or jeweller's) in inventory.");
         }
-        if (!Rs2Inventory.hasItem(GolemConstants.HAMMER)) {
-            return stop(ctx, "No hammer in inventory.");
+        if (!GolemHelpers.hasHammer()) {
+            return stop(ctx, "No hammer (regular or imcando) available.");
         }
         if (!GolemHelpers.hasFurPouch()) {
             return stop(ctx, "No large fur pouch in inventory.");

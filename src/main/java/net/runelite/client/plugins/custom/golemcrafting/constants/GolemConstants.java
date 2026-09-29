@@ -19,6 +19,8 @@ public final class GolemConstants {
     public static final int CHISEL = 1755;
     public static final int JEWELLERS_CHISEL = 34024;
     public static final int HAMMER = 2347;
+    public static final int IMCANDO_HAMMER = 25644;
+    public static final int IMCANDO_HAMMER_OFFHAND = 29775;
     public static final int FUR_POUCH_CLOSED = 29303;
     public static final int FUR_POUCH_OPEN = 29470;
     public static final int DEFAULT_FUR = 10127; // Dashing kebbit fur
@@ -27,6 +29,10 @@ public final class GolemConstants {
 
     /** Uncut gems that a completed golem can reward (sapphire/emerald/ruby/diamond). */
     public static final int[] UNCUT_GEMS = {1623, 1621, 1619, 1617};
+    public static final String JEWELLERS_CHISEL_NAME = "Jeweller's chisel";
+    public static final String[] UNCUT_GEM_NAMES = {"Uncut sapphire", "Uncut emerald", "Uncut ruby", "Uncut diamond"};
+    /** Range for looting a finished golem's drops. */
+    public static final int LOOT_RANGE = 8;
 
     // --- Objects ---
     /** Both are minable "Sunstone rocks" variants — mine whichever is nearest to preserve momentum. */
@@ -59,6 +65,7 @@ public final class GolemConstants {
     public static final String ACTION_INSERT = "Insert-core";
     public static final String ACTION_MINE = "Mine";
     public static final String ACTION_FILL = "Fill";
+    public static final String ACTION_EMPTY = "Empty";
     public static final String ACTION_CHECK = "Check";
     public static final String ACTION_OPEN = "Open";
 

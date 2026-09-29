@@ -6,6 +6,7 @@ import net.runelite.api.*;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.AnimationChanged;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GraphicsObjectCreated;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -47,7 +48,7 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 @Slf4j
 public class CustomTormentedDemonPlugin extends Plugin {
 
-    public static final String version = "1.0.0";
+    public static final String version = "1.0.1";
 
     // Tormented Demon (LUC2_UNDEAD_DEMON) per-attack animations — each is set the tick the demon launches
     // that attack, so they tell us the style of the incoming hit.
@@ -228,6 +229,16 @@ public class CustomTormentedDemonPlugin extends Plugin {
         return WorldPoint.fromLocal(Microbot.getClient(), localPoint);
     }
 
+
+    @Subscribe
+    public void onChatMessage(ChatMessage event) {
+        if (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM) {
+            return;
+        }
+        if (event.getMessage().contains("light creature is too far away")) {
+            tormentedDemonScript.onLightCreatureTooFar();
+        }
+    }
 
     @Subscribe
     public void onAnimationChanged(AnimationChanged event) {

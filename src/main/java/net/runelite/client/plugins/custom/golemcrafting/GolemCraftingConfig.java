@@ -52,6 +52,16 @@ public interface GolemCraftingConfig extends Config {
     }
 
     @ConfigItem(
+            keyName = "useGemBag",
+            name = "Use gem bag",
+            description = "Carry a gem bag: pick up all uncut gems (mined + from golems) and Empty the bag into the bank each trip.",
+            position = 4
+    )
+    default boolean useGemBag() {
+        return false;
+    }
+
+    @ConfigItem(
             keyName = "useMonolith",
             name = "Mine the monolith",
             description = "Mine the single Sunstone monolith instead of hopping rocks with momentum. Simpler but lower yield.",

@@ -20,6 +20,7 @@ import net.runelite.client.plugins.microbot.aiomagic.AIOMagicPlugin;
 import net.runelite.client.plugins.microbot.arceuuslibrary.ArceuusLibraryPlugin;
 import net.runelite.client.plugins.microbot.banksshopper.BanksShopperPlugin;
 import net.runelite.client.plugins.microbot.birdhouseruns.FornBirdhouseRunsPlugin;
+import net.runelite.client.plugins.microbot.farmtreerun.FarmTreeRunPlugin;
 import net.runelite.client.plugins.microbot.housetab.HouseTabPlugin;
 import net.runelite.client.plugins.microbot.pitfallhunter.PitfallHunterPlugin;
 import net.runelite.client.plugins.microbot.sailing.MSailingPlugin;
@@ -65,7 +66,8 @@ public class Microbot
 			FletchingPlugin.class,
 			BanksShopperPlugin.class,
 			HouseTabPlugin.class,
-			DashingKebbitPlugin.class
+			DashingKebbitPlugin.class,
+			FarmTreeRunPlugin.class
 	};
 
 	public static void main(String[] args) throws Exception

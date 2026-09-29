@@ -39,6 +39,9 @@ public class CustomTormentedDemonScript extends Script {
     private boolean lootAttempted = false;
     private String lastChatMessage = "";
 
+    /** Set by the plugin's chat listener when the game reports the light creature is too far to be used. */
+    private volatile boolean lightCreatureTooFar = false;
+
     // Gear/inventory setups resolved LIVE by name from the config (never the stale InventorySetup
     // snapshot the config returns). Resolved once on the first tick, when mainScheduledFuture is set.
     private boolean setupsResolved = false;
@@ -69,10 +72,21 @@ public class CustomTormentedDemonScript extends Script {
     private static final int TOG_ROCKS_ID = 6673;       // "Climb"
     private static final int WALL_ONE_ID = 53623;        // "Climb-up"
     private static final int WALL_TWO_ID = 53624;        // "Climb-up"
-    private static final int OPENING_ID = 53622;         // "Climb-through"
+    /** Matched by name rather than id — the id shifts between updates (was a stale 53622). Action "Climb-through". */
+    private static final String OPENING_NAME = "Opening";
     private static final WorldPoint DEMON_LOCATION = new WorldPoint(4041, 4452, 0);
     /** Time the light creature takes to carry us into the chasm before the walls are reachable. */
     private static final int CHASM_TRAVEL_WAIT_MS = 15000;
+    /** How close (tiles) to {@link #DEMON_LOCATION} counts as "already at the demons". */
+    private static final int NEAR_DEMONS_DISTANCE = 20;
+    /** Spot in Juna's cave to stand on before using the lantern, so a light creature is in range. */
+    private static final WorldPoint LANTERN_APPROACH_POINT = new WorldPoint(3228, 9527, 0);
+    /**
+     * The light-creature travel dialogue option that carries us DOWN into the chasm to the demons. Must match
+     * "into the chasm" and not the sibling option "Travel across the chasm." — note the "the": matching on
+     * "Travel into chasm" would fail the substring check against the real text "Travel into the chasm.".
+     */
+    private static final String TRAVEL_INTO_CHASM_OPTION = "Travel into the chasm";
 
     private enum State {BANKING, TRAVEL_TO_TORMENTED, FIGHTING}
 
@@ -153,6 +167,20 @@ public class CustomTormentedDemonScript extends Script {
             logOnceToChat("No 'Gear & Inventory setup' selected — cannot restock. Select one in the config.");
             shutdown();
             return;
+        }
+
+        // If we're already geared and stocked (the banking setup fully matches) but not yet at the demons,
+        // there's nothing to restock — skip the bank trip and head straight for the demons via Tears of
+        // Guthix. Gated to the first banking step so it can't fire mid-restock (e.g. right after resupply).
+        if (bankingStep == BankingStep.TELE_HOUSE_TO_FEROX
+                && !isNearDemons()
+                && bankingSetup.doesEquipmentMatch()
+                && bankingSetup.doesInventoryMatch()) {
+            logOnceToChat("Already geared & stocked — heading to the demons.");
+            if (Rs2Bank.isOpen()) {
+                Rs2Bank.closeBank();
+            }
+            bankingStep = BankingStep.TELE_HOUSE_TO_TOG;
         }
 
         switch (bankingStep) {
@@ -276,8 +304,8 @@ public class CustomTormentedDemonScript extends Script {
                 break;
 
             case SELECT_TRAVEL:
-                Microbot.status = "Selecting 'Travel into chasm'...";
-                if (Rs2Dialogue.sleepUntilSelectAnOption() && Rs2Dialogue.clickOption("Travel into chasm")) {
+                Microbot.status = "Selecting 'Travel into the chasm'...";
+                if (Rs2Dialogue.sleepUntilSelectAnOption() && Rs2Dialogue.clickOption(TRAVEL_INTO_CHASM_OPTION)) {
                     travelStep = TravelStep.WAIT_IN_CHASM;
                 }
                 break;
@@ -308,7 +336,7 @@ public class CustomTormentedDemonScript extends Script {
 
             case CLIMB_OPENING:
                 Microbot.status = "Climbing through the opening...";
-                if (Microbot.getRs2TileObjectCache().query().interact(OPENING_ID, "Climb-through")) {
+                if (Microbot.getRs2TileObjectCache().query().withName(OPENING_NAME).interact("Climb-through")) {
                     Rs2Player.waitForAnimation();
                     sleepUntil(() -> !Rs2Player.isAnimating());
                     travelStep = TravelStep.RUN_TO_DEMONS;
@@ -326,18 +354,60 @@ public class CustomTormentedDemonScript extends Script {
         }
     }
 
-    /** Uses the Sapphire lantern on the nearest light creature to begin chasm travel. */
+    /** True if we're already at (or very close to) the Tormented Demon area. */
+    private boolean isNearDemons() {
+        WorldPoint location = Rs2Player.getWorldLocation();
+        return location != null && DEMON_LOCATION.distanceTo(location) <= NEAR_DEMONS_DISTANCE;
+    }
+
+    /** Called by the plugin's chat listener when the game reports the light creature is too far away. */
+    public void onLightCreatureTooFar() {
+        lightCreatureTooFar = true;
+    }
+
+    /**
+     * Walks onto the light-creature approach spot, then uses the Sapphire lantern on the nearest light
+     * creature to begin chasm travel. If the game reports "...too far away to see you clearly.", steps
+     * onto that creature's tile and retries on whatever is then nearest to the player.
+     */
     private boolean useLanternOnLightCreature() {
         Rs2ItemModel lantern = Rs2Inventory.get("Sapphire lantern");
         if (lantern == null) {
             logOnceToChat("No Sapphire lantern in inventory for the light creature.");
             return false;
         }
-        var lightCreature = Rs2Npc.getNpc(LIGHT_CREATURE_ID);
-        if (lightCreature == null) {
-            return false;
+
+        // Position ourselves so a light creature is in range before the first attempt.
+        Rs2Walker.walkFastCanvas(LANTERN_APPROACH_POINT);
+        sleepUntil(() -> LANTERN_APPROACH_POINT.equals(Rs2Player.getWorldLocation()) || !Rs2Player.isMoving(), 5000);
+
+        for (int attempt = 0; attempt < 3; attempt++) {
+            // getNpc(id) returns the creature nearest the player (getNpcs sorts by distance).
+            var lightCreature = Rs2Npc.getNpc(LIGHT_CREATURE_ID);
+            if (lightCreature == null) {
+                return false;
+            }
+
+            lightCreatureTooFar = false;
+            if (!Rs2Inventory.useItemOnNpc(lantern.getId(), lightCreature)) {
+                continue;
+            }
+
+            // The creature has to walk over to us before the travel dialogue opens, so give it time. Success =
+            // the options dialogue appears (SELECT_TRAVEL then picks "Travel into the chasm"); the failure
+            // signal is the "too far" game message. On timeout with neither, fall through and retry the lantern.
+            boolean resolved = sleepUntil(() -> lightCreatureTooFar || Rs2Dialogue.hasSelectAnOption(), 10000);
+            if (resolved && !lightCreatureTooFar) {
+                return true;
+            }
+
+            if (lightCreatureTooFar) {
+                logOnceToChat("Light creature too far — moving closer and retrying.");
+                Rs2Walker.walkFastCanvas(lightCreature.getWorldLocation());
+                sleepUntil(() -> !Rs2Player.isMoving(), 4000);
+            }
         }
-        return Rs2Inventory.useItemOnNpc(lantern.getId(), lightCreature);
+        return false;
     }
 
     private void handleFighting(CustomTormentedDemonConfig config) {
@@ -836,6 +906,7 @@ public class CustomTormentedDemonScript extends Script {
         currentTarget = null;
         killCount = 0;
         lootAttempted = false;  // Reset here
+        lightCreatureTooFar = false;
         currentDefensivePrayer = null;
         currentOffensivePrayer = null;
         currentOverheadIcon = null;

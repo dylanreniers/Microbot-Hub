@@ -10,6 +10,7 @@ import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 
+import static net.runelite.client.plugins.microbot.util.Global.sleep;
 import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 
 /**
@@ -63,12 +64,18 @@ public class BankRefillAction implements GolemAction {
             return "bank-open";
         }
 
+        // With the gem-bag feature on, empty the bag into the bank (deposits every stored gem). Must be
+        // done with the bank open.
+        if (ctx.isUseGemBag() && GolemHelpers.emptyGemBag()) {
+            sleep(600);
+        }
+
         // Deposit everything but the tools/pouch/gem bag, freeing slots for the next 25-ore batch. Keep
         // the jeweller's chisel when present (the better tool) so the redundant regular chisel is banked;
         // otherwise keep the regular chisel.
         int keepChisel = Rs2Inventory.hasItem(GolemConstants.JEWELLERS_CHISEL)
                 ? GolemConstants.JEWELLERS_CHISEL : GolemConstants.CHISEL;
-        Rs2Bank.depositAllExcept(keepChisel, GolemConstants.HAMMER,
+        Rs2Bank.depositAllExcept(keepChisel, GolemConstants.HAMMER, GolemConstants.IMCANDO_HAMMER,
                 GolemConstants.FUR_POUCH_OPEN, GolemConstants.FUR_POUCH_CLOSED,
                 GolemConstants.GEM_BAG, GolemConstants.GEM_BAG_OPEN);
 

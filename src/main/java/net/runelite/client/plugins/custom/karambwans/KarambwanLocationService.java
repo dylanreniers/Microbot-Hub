@@ -78,7 +78,7 @@ public class KarambwanLocationService {
 
     public void teleportToKarambwanFishingSpot() {
         Rs2TileObjectModel fairyRing = Microbot.getRs2TileObjectCache().query()
-                .where(IEntity::isReachable)
+//                .where(IEntity::isReachable)
                 .where(object -> object.getId() == FAIRY_RING_ID)
                 .nearestOnClientThread(40);
 

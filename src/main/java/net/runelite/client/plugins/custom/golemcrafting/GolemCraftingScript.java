@@ -41,6 +41,7 @@ public class GolemCraftingScript extends ActionScript<GolemState> {
         context.setFurItemId(GolemConstants.DEFAULT_FUR);
         context.setBankForFurs(config.bankForFurs());
         context.setUseMonolith(config.useMonolith());
+        context.setUseGemBag(config.useGemBag());
         context.setCraftingMode(config.craftingMode());
         log.info("[golem] init — {} golems/trip, fur '{}', bankForFurs {}, monolith {}",
                 context.getGolemsPerTrip(), fur, context.isBankForFurs(), context.isUseMonolith());

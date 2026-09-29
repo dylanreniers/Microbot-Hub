@@ -111,6 +111,8 @@ public class FarmTreeRunScript extends Script {
         Rs2AntibanSettings.naturalMouse = true;
         Rs2Antiban.setActivityIntensity(ActivityIntensity.LOW);
 
+        gateFarmingGuildSpiritTree();
+
         botStatus = net.runelite.client.plugins.microbot.farmtreerun.enums.FarmTreeRunState.BANKING;
 
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
@@ -466,6 +468,19 @@ public class FarmTreeRunScript extends Script {
                 sleepUntil(() -> !Rs2Inventory.hasItem(id), 8000);
             }
         }
+    }
+
+    /**
+     * The Farming Guild spirit tree sits in the guild's advanced (85 Farming) wing, so a player below 85
+     * can't reach it. Left enabled, the walker's pathfinder routes tree-run travel through that spirit
+     * tree and gets stuck at the gate. Toggle the shortest-path "spiritTreeFarmingGuild" transport to
+     * match whether we can actually use it, so below 85 the walker takes a reachable route instead.
+     */
+    private void gateFarmingGuildSpiritTree() {
+        boolean canUse = Rs2Player.getRealSkillLevel(Skill.FARMING) >= 85;
+        Microbot.getConfigManager().setConfiguration("shortestpath", "spiritTreeFarmingGuild", canUse);
+        Microbot.log("[FarmTreeRun] Farming Guild spirit tree pathing "
+                + (canUse ? "enabled" : "disabled (needs 85 Farming to reach it)"));
     }
 
     private boolean walkToLocation(WorldPoint location) {

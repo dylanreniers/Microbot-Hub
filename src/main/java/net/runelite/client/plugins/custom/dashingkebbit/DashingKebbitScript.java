@@ -109,6 +109,7 @@ public class DashingKebbitScript extends Script {
                 if (!inFalconryArea()) {
                     falconReady = false; // falcon is lost the moment we leave the pen
                     if (config.travelToFalconry()) {
+                        rentFalcon();
                         travelToFalconry();
                     } else {
                         setStatus("Not in the falconry area");
@@ -216,7 +217,7 @@ public class DashingKebbitScript extends Script {
     /** Teleport to House -> fairy ring (AKS) -> stile -> pen. The walker handles the ring code and the stile. */
     private void travelToFalconry() {
         if (nearFalconry()) {
-            setStatus("Walking to the pen");
+            setStatus("Walking to the Matthias");
             Rs2Walker.walkTo(CATCH_CENTER, 5);
             sleepUntil(this::inFalconryArea, 15000);
             return;

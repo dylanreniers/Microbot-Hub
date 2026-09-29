@@ -29,6 +29,12 @@ public class CraftGolemAction implements GolemAction {
     private static final long CARVE_RETRY_MS = 3000;
     /** Safety cap for the spam/perfect per-side carve loop, in case a side never reports finished. */
     private static final long SIDE_CARVE_TIMEOUT_MS = 12000;
+    /** How long to wait after finishing a golem to collect its ground drops before starting the next. */
+    private static final long LOOT_GRACE_MS = 4000;
+    /** Lazy-mode natural AFK between sides: chance (%) and duration bounds (ms). */
+    private static final int AFK_CHANCE_PCT = 25;
+    private static final int AFK_MIN_MS = 500;
+    private static final int AFK_MAX_MS = 2500;
 
     @Override
     public int order() {
@@ -58,11 +64,20 @@ public class CraftGolemAction implements GolemAction {
                 ctx.setFurRemaining(Math.max(0, ctx.getFurRemaining() - done));
             }
             endGolem(ctx); // that golem is finished — reset per-golem build state
+            ctx.setLootDeadlineMs(System.currentTimeMillis() + LOOT_GRACE_MS); // stay to collect drops
         }
         ctx.setLastCoreCount(cores);
 
         int sunstone = GolemHelpers.sunstoneCount();
         ctx.setStatus("Crafting (" + ctx.getGolemsCompleted() + " done, side " + ctx.getSidesCarved() + "/4)");
+
+        // After finishing a golem, stay put and let LootGemAction (higher priority) collect the ground
+        // drops — the gem, and the rare chisel — before we walk off to the next plinth and out of range.
+        if (!ctx.isGolemActive() && System.currentTimeMillis() < ctx.getLootDeadlineMs()
+                && GolemHelpers.groundLootPresent(ctx.isUseGemBag())) {
+            ctx.setStatus("Collecting drops");
+            return "awaiting-loot";
+        }
 
         // Start a new golem if we aren't mid-build.
         if (!ctx.isGolemActive()) {
@@ -148,9 +163,25 @@ public class CraftGolemAction implements GolemAction {
             if (Rs2Player.isAnimating()) {
                 return "carving";
             }
+            // Occasionally pause a moment before carving a new side, to look more natural.
+            maybeAfkBetweenSides(ctx, action);
             return singleClick(ctx, plinth, action);
         }
         return carveSideWithMode(ctx, plinth, ctx.getCraftingMode());
+    }
+
+    /**
+     * Lazy mode only: on a NEW side (not a retry), occasionally pause a short random moment before
+     * clicking, so the switch between sides isn't robotically instant.
+     */
+    private void maybeAfkBetweenSides(GolemContext ctx, String action) {
+        String sig = ctx.getSidesCarved() + ":" + action;
+        if (sig.equals(ctx.getLastClickSig())) {
+            return; // same step (a retry) — don't add another pause
+        }
+        if (Rs2Random.between(1, 100) <= AFK_CHANCE_PCT) {
+            sleep(Rs2Random.between(AFK_MIN_MS, AFK_MAX_MS));
+        }
     }
 
     /** A single, de-duplicated click for the current (side, action) step; retries only if it missed. */

@@ -25,6 +25,10 @@ import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.security.LoginManager;
 import net.runelite.client.plugins.microbot.util.tile.Rs2Tile;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
+import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
+import net.runelite.client.plugins.microbot.util.menu.NewMenuEntry;
+import net.runelite.api.MenuAction;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.timetracking.Tab;
 import net.runelite.api.coords.WorldPoint;
@@ -76,6 +80,12 @@ public class CustomHerbrunScript extends Script {
     private boolean timerWaiting = false;
     private long resumeAtMillis = 0L;
 
+    // --- Supercompost bin state ---
+    private boolean compostBinHandled = false;
+    private boolean compostBinDepositedFirst = false;
+    private boolean compostBinAshAdded = false;
+    private int compostBinAttempts = 0;
+
     public boolean run() {
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             if (!super.run()) return;
@@ -97,6 +107,18 @@ public class CustomHerbrunScript extends Script {
                 return;
             }
 
+            // Debug: run ONLY the compost bin routine (no herb run), then stop. Lets the bin
+            // collect/store/refill flow be tested in isolation without a full run first.
+            if (config.compostBinOnly()) {
+                if (!handleCompostBin()) return;
+                CustomHerbrunPlugin.status = "Compost bin done";
+                log("[Bin] Compost-bin-only run complete");
+                if (!config.enableRepeatTimer()) {
+                    Microbot.stopPlugin(plugin);
+                }
+                return;
+            }
+
             if (!initialized) {
                 initialized = true;
                 CustomHerbrunPlugin.status = "Gearing up";
@@ -108,19 +130,8 @@ public class CustomHerbrunScript extends Script {
                     }
                 }
 
-                if (config.useInventorySetup()) {
-                    var inventorySetup = new Rs2InventorySetup(config.inventorySetup(), mainScheduledFuture);
-                    if (!inventorySetup.doesInventoryMatch() || !inventorySetup.doesEquipmentMatch()) {
-                        Rs2Walker.walkTo(Rs2Bank.getNearestBank().getWorldPoint(), 20);
-                        if (!inventorySetup.loadEquipment() || !inventorySetup.loadInventory()) {
-                            return;
-                        }
-                        Rs2Bank.closeBank();
-                    }
-                } else {
-                    if (!setupAutoInventory()) {
-                        return;
-                    }
+                if (!loadRunInventory()) {
+                    return;
                 }
 
                 int allotmentRegions = allotmentsByRegion.size();
@@ -134,12 +145,27 @@ public class CustomHerbrunScript extends Script {
             }
             if (currentPatch == null) {
                 CustomHerbrunPlugin.status = "Finishing up";
-                if (config.goToBank()) {
-                    Rs2Walker.walkTo(Rs2Bank.getNearestBank().getWorldPoint());
-                    if (!Rs2Bank.isOpen()) Rs2Bank.openBank();
-                    Rs2Bank.depositAll();
-                    Rs2Bank.closeBank();
+
+                // Sustain supercompost via the Farming Guild Big Compost Bin (multi-tick; re-enter
+                // until fully handled) before the final bank / logout.
+                if (config.sustainSupercompost() && !compostBinHandled) {
+                    if (!handleCompostBin()) return;
+                    compostBinHandled = true;
                 }
+
+                if (!config.goToBank()) {
+                    // Bank After Run disabled: the whole cycle is fully ended.
+                    CustomHerbrunPlugin.status = "Finished";
+                    if (!config.enableRepeatTimer()) {
+                        Microbot.stopPlugin(plugin);
+                    }
+                    return;
+                }
+
+                // Bank After Run enabled: deposit everything and re-stock the chosen inventory setup,
+                // so the character ends geared and ready for the next run.
+                CustomHerbrunPlugin.status = "Banking & re-stocking setup";
+                if (!loadRunInventory()) return;
 
                 if (config.enableRepeatTimer()) {
                     // Start the between-runs wait: log out now, resume after the configured interval
@@ -159,7 +185,9 @@ public class CustomHerbrunScript extends Script {
                 }
 
                 CustomHerbrunPlugin.status = "Finished";
-                Microbot.stopPlugin(plugin);
+                if (!config.enableRepeatTimer()) {
+                    Microbot.stopPlugin(plugin);
+                }
                 return;
             }
 
@@ -262,6 +290,10 @@ public class CustomHerbrunScript extends Script {
         flowerByRegion.clear();
         handledAllotmentIds.clear();
         currentAllotmentId = -1;
+        compostBinHandled = false;
+        compostBinDepositedFirst = false;
+        compostBinAshAdded = false;
+        compostBinAttempts = 0;
     }
 
     private void populatePatches() {
@@ -808,6 +840,24 @@ public class CustomHerbrunScript extends Script {
 
     // --- Banking ---
 
+    /** Deposit and re-stock the run loadout: load the configured inventory setup, or auto-withdraw
+     *  tools/seeds/runes. Used both when gearing up at the start and when re-stocking at the end.
+     *  For inventory-setup mode this is a no-op when the inventory already matches. */
+    private boolean loadRunInventory() {
+        if (config.useInventorySetup()) {
+            var inventorySetup = new Rs2InventorySetup(config.inventorySetup(), mainScheduledFuture);
+            if (!inventorySetup.doesInventoryMatch() || !inventorySetup.doesEquipmentMatch()) {
+                Rs2Walker.walkTo(Rs2Bank.getNearestBank().getWorldPoint(), 20);
+                if (!inventorySetup.loadEquipment() || !inventorySetup.loadInventory()) {
+                    return false;
+                }
+                Rs2Bank.closeBank();
+            }
+            return true;
+        }
+        return setupAutoInventory();
+    }
+
     private boolean setupAutoInventory() {
         Rs2Walker.walkTo(Rs2Bank.getNearestBank().getWorldPoint(), 20);
 
@@ -1010,6 +1060,325 @@ public class CustomHerbrunScript extends Script {
         return count;
     }
 
+    // ------------------------------------------------------------------
+    // Supercompost sustain: Farming Guild "Big Compost Bin"
+    // ------------------------------------------------------------------
+    // Object base id is 34631, but its live state is read from the IMPOSTOR (morph) id, which the
+    // client updates per state (verified live):
+    //   33762            = empty (ready to fill)
+    //   33825 .. 33854   = filling (1..30 watermelons added, lid open)
+    //   33855            = closed & rotting (NOT ready)
+    //   33856            = rotted & ready, lid closed (needs "Open")
+    //   33857 .. 33886   = lid open with 1..30 supercompost remaining ("Take" with buckets)
+    // The tool leprechaun exchange has two interfaces (verified live):
+    //   group 125 = the leprechaun's store, items have Remove-All/1/5/X (WITHDRAW)
+    //   group 126 = your carried items, items have Store-All/1/5/X (DEPOSIT)
+    // Empty buckets are withdrawn from 125,16; supercompost is deposited via 126,11 (Store-All).
+    // Everything sits within a few tiles at the Farming Guild (bin, leprechaun and bank adjacent).
+    private static final int BIN_BASE_ID = 34631;
+    private static final int BIN_EMPTY = 33762;
+    private static final int BIN_FILL_MIN = 33825;
+    private static final int BIN_FILL_MAX = 33854;
+    private static final int BIN_ROTTING = 33855;
+    private static final int BIN_READY_CLOSED = 33856;
+    private static final int BIN_COLLECT_MIN = 33857;
+    private static final int BIN_COLLECT_MAX = 33886;
+    private static final WorldPoint COMPOST_BIN_LOCATION = new WorldPoint(1272, 3729, 0);
+    private static final int BIN_CAPACITY = 30;          // big bin holds 30 items
+    private static final int MAX_FILL_PER_TRIP = 28;     // watermelons that fit in one inventory
+    private static final int LEP_WITHDRAW_GROUP = 125;
+    private static final int LEP_WITHDRAW_BUCKET_CHILD = 16;
+    private static final int LEP_STORE_GROUP = 126;
+    private static final int LEP_STORE_BUCKET_CHILD = 9;
+    private static final int LEP_STORE_SUPERCOMPOST_CHILD = 11;
+    private static final int LEP_STORE_ULTRACOMPOST_CHILD = 12;
+
+    /** Resolve the bin's live morph id (its state). Returns -1 if the bin can't be found. */
+    private int compostBinMorphId(Rs2TileObjectModel bin) {
+        var comp = Rs2GameObject.convertToObjectComposition(bin, false);
+        return comp == null ? -1 : comp.getId();
+    }
+
+    private Rs2TileObjectModel findCompostBin() {
+        return Microbot.getRs2TileObjectCache().query().withId(BIN_BASE_ID).nearest();
+    }
+
+    /**
+     * End-of-run routine: collect any ready supercompost (storing it in the leprechaun), then
+     * refill the bin with watermelons and close it so it rots before the next run. Multi-tick:
+     * returns {@code false} to be re-entered next tick, {@code true} when fully handled.
+     */
+    private boolean handleCompostBin() {
+        if (compostBinAttempts++ > 120) {
+            log("[Bin] Giving up after too many attempts");
+            return true;
+        }
+
+        // Deposit the whole herb-run inventory once up front, so we have the maximum free slots for
+        // withdrawing empty buckets and watermelons — more efficient than clearing space piecemeal.
+        if (!compostBinDepositedFirst) {
+            CustomHerbrunPlugin.status = "Depositing before compost bin";
+            if (!Rs2Bank.isOpen()) {
+                Rs2Walker.walkTo(Rs2Bank.getNearestBank().getWorldPoint(), 6);
+                if (!Rs2Bank.openBank()) return false;
+                return false;
+            }
+            Rs2Bank.depositAll();
+            Rs2Inventory.waitForInventoryChanges(3000);
+            Rs2Bank.closeBank();
+            sleepUntil(() -> !Rs2Bank.isOpen(), 3000);
+            compostBinDepositedFirst = true;
+            return false;
+        }
+
+        // Always offload collected compost (super or ultra) into the leprechaun store before anything
+        // else, so it can never be carried into the final bank step (which would bank it instead).
+        if (Rs2Inventory.hasItem(ItemID.BUCKET_SUPERCOMPOST) || Rs2Inventory.hasItem(ItemID.BUCKET_ULTRACOMPOST)) {
+            depositCollectedCompost();
+            depositEmptyBucketsToLeprechaun();
+            return false;
+        }
+
+        // The bin, leprechaun and bank are all a few tiles apart at the Farming Guild, so we never
+        // walk between them — clicking auto-approaches. Only walk when the bin isn't even in the
+        // scene yet (e.g. the run ended far away, or we just stepped away to the bank).
+        Rs2TileObjectModel bin = findCompostBin();
+        if (bin == null) {
+            CustomHerbrunPlugin.status = "Walking to compost bin";
+            Rs2Walker.walkTo(COMPOST_BIN_LOCATION, 6);
+            return false;
+        }
+
+        int id = compostBinMorphId(bin);
+        boolean hasTake = Rs2GameObject.hasAction(bin, "Take");
+        log("[Bin] state morphId=" + id + " take=" + hasTake
+                + " open=" + Rs2GameObject.hasAction(bin, "Open")
+                + " close=" + Rs2GameObject.hasAction(bin, "Close"));
+
+        // Collect whenever the bin offers "Take" (works for both super- and ultra-compost, whose
+        // collecting morph ids may differ) or its morph id is in the known supercompost range.
+        if (hasTake || (id >= BIN_COLLECT_MIN && id <= BIN_COLLECT_MAX)) {
+            // Phase 2: bin is full — add volcanic ash (while still open) if making ultracompost.
+            if (config.addVolcanicAsh() && !compostBinAshAdded) {
+                if (Rs2Inventory.hasItem(ItemID.FOSSIL_VOLCANIC_ASH)) {
+                    if (findCompostBin() == null) { Rs2Walker.walkTo(COMPOST_BIN_LOCATION, 6); return false; }
+                    if (ensureExchangeClosed()) return false;
+                    CustomHerbrunPlugin.status = "Adding volcanic ash";
+                    Rs2Inventory.use(ItemID.FOSSIL_VOLCANIC_ASH);
+                    findCompostBin().click();
+                    if (sleepUntil(() -> !Rs2Inventory.hasItem(ItemID.FOSSIL_VOLCANIC_ASH), 8000)) {
+                        compostBinAshAdded = true;
+                    }
+                    return false;
+                }
+                CustomHerbrunPlugin.status = "Banking for volcanic ash";
+                if (!Rs2Bank.isOpen()) {
+                    Rs2Walker.walkTo(Rs2Bank.getNearestBank().getWorldPoint(), 6);
+                    if (!Rs2Bank.openBank()) return false;
+                    return false;
+                }
+                if (!Rs2Bank.withdrawX(ItemID.FOSSIL_VOLCANIC_ASH, config.volcanicAshAmount())) {
+                    log("[Bin] Not enough volcanic ash in bank - cannot make ultracompost");
+                    Rs2Bank.closeBank();
+                    return true;
+                }
+                Rs2Bank.closeBank();
+                sleepUntil(() -> !Rs2Bank.isOpen(), 3000);
+                return false;
+            }
+            return collectCompost(bin);
+        }
+        if (id == BIN_READY_CLOSED) {
+            if (ensureExchangeClosed()) return false;
+            CustomHerbrunPlugin.status = "Opening compost bin";
+            bin.click("Open");
+            Rs2Player.waitForWalking();
+            sleepUntil(() -> compostBinMorphId(findCompostBin()) >= BIN_COLLECT_MIN, 5000);
+            return false;
+        }
+        if (id == BIN_ROTTING) {
+            log("[Bin] Still rotting - leaving it to finish for next run");
+            return true;
+        }
+        if (id == BIN_EMPTY || (id >= BIN_FILL_MIN && id <= BIN_FILL_MAX)) {
+            return fillAndCloseCompostBin(bin);
+        }
+
+        log("[Bin] Unexpected morphId=" + id + ", skipping");
+        return true;
+    }
+
+    /** Withdraw empty buckets from the leprechaun, then use the bin's "Take" option (which auto-fills
+     *  every empty bucket at once). (Held compost is offloaded at the top of handleCompostBin.)
+     *  Re-entered until we run out of empty buckets or the bin empties. */
+    private boolean collectCompost(Rs2TileObjectModel bin) {
+        if (!Rs2Inventory.hasItem(ItemID.BUCKET_EMPTY)) {
+            if (!withdrawEmptyBucketsFromLeprechaun()) {
+                log("[Bin] No empty buckets available at leprechaun - stopping collection");
+                return true;
+            }
+            return false;
+        }
+        // The exchange overlay must be closed before we can interact with the world object.
+        if (ensureExchangeClosed()) return false;
+
+        CustomHerbrunPlugin.status = "Collecting compost";
+        bin.click("Take");
+        // One "Take" fills the empty buckets progressively, so wait for the whole operation to
+        // finish: either every empty bucket has been filled, or the bin has been fully emptied
+        // (it held fewer loads than the buckets we carried). Generous timeout for a full inventory.
+        sleepUntil(() -> !Rs2Inventory.hasItem(ItemID.BUCKET_EMPTY) || isCompostBinEmpty(), 60000);
+        return false;
+    }
+
+    /** True when the bin holds no more collectable compost (no "Take" action and its morph id is
+     *  out of the collecting range). */
+    private boolean isCompostBinEmpty() {
+        Rs2TileObjectModel bin = findCompostBin();
+        if (bin == null) return true;
+        int id = compostBinMorphId(bin);
+        return !Rs2GameObject.hasAction(bin, "Take") && !(id >= BIN_COLLECT_MIN && id <= BIN_COLLECT_MAX);
+    }
+
+    /** Number of items currently in the bin from its morph id: 0 when empty, 1..30 while filling,
+     *  or -1 if the id isn't a fill state (e.g. rotting/ready/ash-modified). */
+    private int binFillCount(int id) {
+        if (id == BIN_EMPTY) return 0;
+        if (id >= BIN_FILL_MIN && id <= BIN_FILL_MAX) return id - BIN_FILL_MIN + 1;
+        return -1;
+    }
+
+    /**
+     * Refill the bin and close it. A full big bin needs 30 items but only 28 watermelons fit in one
+     * inventory, so filling takes two bank trips (28, then the remaining 2). When ultracompost is
+     * enabled, volcanic ash is added on top of the full bin (while still open) before closing.
+     * Re-entered each tick; returns true only once the bin is closed.
+     */
+    private boolean fillAndCloseCompostBin(Rs2TileObjectModel bin) {
+        int id = compostBinMorphId(bin);
+        int count = binFillCount(id);
+        boolean binFull = count >= BIN_CAPACITY;
+
+        // Phase 1: top the bin up to capacity with watermelons (skipped once ash has been added).
+        if (!binFull && !compostBinAshAdded) {
+            if (Rs2Inventory.hasItem(ItemID.WATERMELON)) {
+                if (findCompostBin() == null) { Rs2Walker.walkTo(COMPOST_BIN_LOCATION, 6); return false; }
+                if (ensureExchangeClosed()) return false;
+                CustomHerbrunPlugin.status = "Filling compost bin";
+                Rs2Inventory.use(ItemID.WATERMELON);
+                findCompostBin().click();
+                sleepUntil(() -> !Rs2Inventory.hasItem(ItemID.WATERMELON)
+                        || compostBinMorphId(findCompostBin()) >= BIN_FILL_MAX, 20000);
+                return false;
+            }
+            // Need more watermelons — return leftover empty buckets, then bank for just what's missing.
+            if (Rs2Inventory.hasItem(ItemID.BUCKET_EMPTY)) { depositEmptyBucketsToLeprechaun(); return false; }
+            CustomHerbrunPlugin.status = "Banking for watermelons";
+            if (!Rs2Bank.isOpen()) {
+                Rs2Walker.walkTo(Rs2Bank.getNearestBank().getWorldPoint(), 6);
+                if (!Rs2Bank.openBank()) return false;
+                return false;
+            }
+            Rs2Bank.depositAll();
+            Rs2Inventory.waitForInventoryChanges(3000);
+            int needed = BIN_CAPACITY - Math.max(count, 0);
+            int toWithdraw = Math.min(needed, MAX_FILL_PER_TRIP);
+            if (!Rs2Bank.withdrawX(ItemID.WATERMELON, toWithdraw)) {
+                log("[Bin] No watermelons in bank - cannot refill");
+                Rs2Bank.closeBank();
+                return true;
+            }
+            Rs2Bank.closeBank();
+            sleepUntil(() -> !Rs2Bank.isOpen(), 3000);
+            return false;
+        }
+
+        // Phase 2: close the bin to start rotting.
+        if (findCompostBin() == null) { Rs2Walker.walkTo(COMPOST_BIN_LOCATION, 6); return false; }
+        if (ensureExchangeClosed()) return false;
+        CustomHerbrunPlugin.status = "Closing compost bin";
+        findCompostBin().click("Close");
+        sleepUntil(() -> {
+            int cur = compostBinMorphId(findCompostBin());
+            return cur == BIN_ROTTING || cur == BIN_READY_CLOSED;
+        }, 5000);
+        return true;
+    }
+
+    /** Close the leprechaun exchange overlay if it's open. Returns true if it had to close it
+     *  (caller should return and re-tick), false if it was already closed. */
+    private boolean ensureExchangeClosed() {
+        if (Rs2Leprechaun.isExchangeOpen()) {
+            Rs2Leprechaun.closeExchange();
+            return true;
+        }
+        return false;
+    }
+
+    /** Open the leprechaun exchange and withdraw ALL empty buckets in one action (Remove-All on 125,16). */
+    private boolean withdrawEmptyBucketsFromLeprechaun() {
+        if (!Rs2Leprechaun.isExchangeOpen() && !Rs2Leprechaun.openExchange()) return false;
+        sleep(300, 600);
+        clickLeprechaunAllAction(LEP_WITHDRAW_GROUP, LEP_WITHDRAW_BUCKET_CHILD, "Remove-All");
+        sleepUntil(() -> Rs2Inventory.hasItem(ItemID.BUCKET_EMPTY), 3000);
+        return Rs2Inventory.hasItem(ItemID.BUCKET_EMPTY);
+    }
+
+    /** Deposit collected compost into the leprechaun via the exchange's store side: supercompost on
+     *  126,11 and ultracompost on 126,12 (Store-All). Handles whichever the bin produced. */
+    private boolean depositCollectedCompost() {
+        boolean done = true;
+        if (Rs2Inventory.hasItem(ItemID.BUCKET_SUPERCOMPOST)) {
+            done &= storeAtLeprechaun(LEP_STORE_SUPERCOMPOST_CHILD, ItemID.BUCKET_SUPERCOMPOST, "supercompost");
+        }
+        if (Rs2Inventory.hasItem(ItemID.BUCKET_ULTRACOMPOST)) {
+            done &= storeAtLeprechaun(LEP_STORE_ULTRACOMPOST_CHILD, ItemID.BUCKET_ULTRACOMPOST, "ultracompost");
+        }
+        return done;
+    }
+
+    /** Return leftover empty buckets to the leprechaun store (Store-All on 126,9). */
+    private boolean depositEmptyBucketsToLeprechaun() {
+        return storeAtLeprechaun(LEP_STORE_BUCKET_CHILD, ItemID.BUCKET_EMPTY, "empty buckets");
+    }
+
+    private boolean storeAtLeprechaun(int storeChild, int itemId, String label) {
+        if (!Rs2Inventory.hasItem(itemId)) return true;
+        if (!Rs2Leprechaun.isExchangeOpen() && !Rs2Leprechaun.openExchange()) return false;
+        sleep(300, 600);
+        CustomHerbrunPlugin.status = "Storing " + label;
+        clickLeprechaunAllAction(LEP_STORE_GROUP, storeChild, "Store-All");
+        sleepUntil(() -> !Rs2Inventory.hasItem(itemId), 3000);
+        return !Rs2Inventory.hasItem(itemId);
+    }
+
+    /** Invoke the "-All" menu op on a leprechaun exchange item widget. The action-list order isn't
+     *  stable (verified live), so locate the label and invoke its 1-based CC_OP op. Builds the menu
+     *  entry directly with param0 = -1: clickWidgetFast can't be used here because it substitutes
+     *  widget.getType() for a -1 param0, which these component widgets reject (verified live). */
+    private boolean clickLeprechaunAllAction(int group, int child, String actionLabel) {
+        Widget w = Rs2Widget.getWidget(group, child);
+        if (w == null || w.getActions() == null) {
+            log("[Bin] Leprechaun widget " + group + "," + child + " not available");
+            return false;
+        }
+        String[] actions = w.getActions();
+        for (int i = 0; i < actions.length; i++) {
+            if (actionLabel.equalsIgnoreCase(actions[i])) {
+                Microbot.doInvoke(new NewMenuEntry()
+                        .param0(-1)
+                        .param1(w.getId())
+                        .opcode(MenuAction.CC_OP.getId())
+                        .identifier(i + 1)
+                        .itemId(w.getItemId())
+                        .target(""), w.getBounds());
+                return true;
+            }
+        }
+        log("[Bin] '" + actionLabel + "' not found on widget " + group + "," + child);
+        return false;
+    }
+
     @Override
     public void shutdown() {
         super.shutdown();
@@ -1021,5 +1390,9 @@ public class CustomHerbrunScript extends Script {
         currentAllotmentId = -1;
         timerWaiting = false;
         resumeAtMillis = 0L;
+        compostBinHandled = false;
+        compostBinDepositedFirst = false;
+        compostBinAshAdded = false;
+        compostBinAttempts = 0;
     }
 }
