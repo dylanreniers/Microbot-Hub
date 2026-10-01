@@ -2,8 +2,11 @@ package net.runelite.client.plugins.custom.tormenteddemons;
 
 import net.runelite.api.HeadIcon;
 import net.runelite.api.NPC;
+import net.runelite.api.Player;
 import net.runelite.api.Skill;
+import net.runelite.api.TileItem;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.client.plugins.grounditems.GroundItem;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
@@ -12,7 +15,7 @@ import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.equipment.JewelleryLocationEnum;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
-import net.runelite.client.plugins.microbot.util.grounditem.LootingParameters;
+import net.runelite.client.plugins.microbot.util.models.RS2Item;
 import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
@@ -55,7 +58,7 @@ public class CustomTormentedDemonScript extends Script {
      *  dual-style pick isn't re-rolled every tick; re-picked as soon as it's no longer valid. */
     private Rs2InventorySetup intendedGearSetup = null;
 
-    private static final int LOOT_RANGE = 10;
+    private static final int LOOT_RANGE = 15;
     /**
      * Demon drops consumed on the ground for their reward instead of being picked up, each with its own menu
      * action: the pile of flesh is "Eat-from", the gland is "Crush". (The smouldering heart is a normal
@@ -117,7 +120,7 @@ public class CustomTormentedDemonScript extends Script {
 
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
-                if (!Microbot.isLoggedIn() || !super.run()) return;
+                if (!Microbot.isLoggedIn() || !super.run() || CustomTormentedDemonPlugin.isDodgeActive()) return;
 
                 resolveSetupsOnce(config);
 
@@ -187,6 +190,9 @@ public class CustomTormentedDemonScript extends Script {
             case TELE_HOUSE_TO_FEROX:
                 Microbot.status = "Teleporting to house...";
                 if (teleportToHouse()) {
+                    if (bankingSetup != null && !bankingSetup.doesEquipmentMatch()) {
+                        bankingSetup.wearEquipment();
+                    }
                     bankingStep = BankingStep.JEWELLERY_TO_FEROX;
                 }
                 break;
@@ -262,7 +268,7 @@ public class CustomTormentedDemonScript extends Script {
         return false;
     }
 
-    /** Opens the Ferox bank, deposits everything and reloads the banking inventory setup. */
+    /** Opens the Ferox bank, ensures the banking equipment is worn, deposits only inventory, and reloads inventory. */
     private boolean resupplyAtBank() {
         if (!Rs2Bank.isOpen()) {
             Rs2Bank.openBank();
@@ -270,10 +276,28 @@ public class CustomTormentedDemonScript extends Script {
                 return false;
             }
         }
+
+        // Switch to the banking setup's equipment BEFORE depositing inventory so swap gear is in inventory
+        if (!bankingSetup.doesEquipmentMatch()) {
+            bankingSetup.wearEquipment();
+            sleepUntil(bankingSetup::doesEquipmentMatch, 3000);
+            if (!bankingSetup.doesEquipmentMatch()) {
+                bankingSetup.loadEquipment();
+                sleepUntil(bankingSetup::doesEquipmentMatch, 5000);
+            }
+        }
+
+        if (!bankingSetup.doesEquipmentMatch()) {
+            logOnceToChat("Could not equip banking gear setup.");
+            return false;
+        }
+
+        // ONLY deposit inventory
         Rs2Bank.depositAll();
-        boolean equipmentLoaded = bankingSetup.loadEquipment();
+        sleepUntil(Rs2Inventory::isEmpty, 2000);
+
         boolean inventoryLoaded = bankingSetup.loadInventory();
-        if (equipmentLoaded && inventoryLoaded) {
+        if (inventoryLoaded) {
             Rs2Bank.closeBank();
             return true;
         }
@@ -411,26 +435,33 @@ public class CustomTormentedDemonScript extends Script {
     }
 
     private void handleFighting(CustomTormentedDemonConfig config) {
+        if (CustomTormentedDemonPlugin.isDodgeActive()) {
+            return;
+        }
+
         if (currentTarget == null || currentTarget.isDead()) {
             disableAllPrayers();
 
             if (!lootAttempted) {
-                Microbot.pauseAllScripts.compareAndSet(false, true);
-                sleep(5000);
+                if (CustomTormentedDemonPlugin.isDodgeActive()) return;
+                sleep(2500);
+                if (CustomTormentedDemonPlugin.isDodgeActive()) return;
                 attemptLooting(config);
                 lootAttempted = true;
-                Microbot.pauseAllScripts.compareAndSet(true, false);
                 killCount++;
             }
 
+            if (CustomTormentedDemonPlugin.isDodgeActive()) return;
+
             currentTarget = findNewTarget(config);
-            if (currentTarget.getInteracting() != Microbot.getClient().getLocalPlayer()) {
-                currentTarget = findNewTarget(config);
+            if (currentTarget != null && currentTarget.getInteracting() != Microbot.getClient().getLocalPlayer()) {
+                int anim = Microbot.getClientThread().invoke(() -> currentTarget.getAnimation());
+                if (anim != -1) {
+                    currentTarget = null;
+                }
             }
             if (currentTarget != null) {
-                // We don't yet know the demon's attack style, so default to Protect from Melee — a 1/3 chance
-                // of being right on the opening attack. The plugin's onAnimationChanged corrects it the moment
-                // the demon actually attacks.
+                if (CustomTormentedDemonPlugin.isDodgeActive()) return;
                 prayDefaultDefensivePrayer(config);
                 currentOverheadIcon = Microbot.getClientThread().invoke(() -> currentTarget.getHeadIcon());
                 Microbot.log("Acquired target overhead: " + currentOverheadIcon);
@@ -438,6 +469,7 @@ public class CustomTormentedDemonScript extends Script {
                     logOnceToChat("Failed to retrieve HeadIcon for target.");
                     return;
                 }
+                if (CustomTormentedDemonPlugin.isDodgeActive()) return;
                 switchGear(config, currentOverheadIcon);
                 lootAttempted = false;
             } else {
@@ -446,7 +478,11 @@ public class CustomTormentedDemonScript extends Script {
             }
         }
 
+        if (CustomTormentedDemonPlugin.isDodgeActive()) return;
+
         evaluateAndConsumePotions(config);
+
+        if (CustomTormentedDemonPlugin.isDodgeActive()) return;
 
         if (config.mode() == CustomTormentedDemonConfig.MODE.FULL_AUTO && shouldRetreat(config)) {
             currentTarget = null;
@@ -460,9 +496,12 @@ public class CustomTormentedDemonScript extends Script {
         }
 
         if (currentTarget != null && !currentTarget.isDead()) {
+            if (CustomTormentedDemonPlugin.isDodgeActive()) return;
 
             Rs2Player.eatAt(config.minEatPercent());
             Rs2Player.drinkPrayerPotionAt(config.minPrayerPercent());
+
+            if (CustomTormentedDemonPlugin.isDodgeActive()) return;
 
             var interactingActor = Rs2Player.getInteracting();
             int interactingIndex = (interactingActor instanceof NPC) ? ((NPC) interactingActor).getIndex() : -1;
@@ -470,6 +509,17 @@ public class CustomTormentedDemonScript extends Script {
             if (currentTarget == null) return;
 
             if (interactingActor == null || interactingIndex != currentTarget.getIndex()) {
+                if (CustomTormentedDemonPlugin.isDodgeActive()) return;
+
+                if (currentTarget.getInteracting() != Microbot.getClient().getLocalPlayer()) {
+                    int anim = Microbot.getClientThread().invoke(() -> currentTarget.getAnimation());
+                    if (anim != -1) {
+                        return;
+                    }
+                }
+
+                if (CustomTormentedDemonPlugin.isDodgeActive()) return;
+
                 boolean attackSuccessful = currentTarget.click("attack");
 
                 if (attackSuccessful) {
@@ -478,6 +528,7 @@ public class CustomTormentedDemonScript extends Script {
                     // for it to finish, stalling the loop for many seconds — which delays prayer/gear/re-attack
                     // and is why attacks were being dropped. The loop re-checks and re-attacks each tick anyway.
                     sleepUntil(() -> {
+                        if (CustomTormentedDemonPlugin.isDodgeActive()) return true;
                         var a = Rs2Player.getInteracting();
                         return a instanceof NPC && ((NPC) a).getIndex() == currentTarget.getIndex();
                     }, 1200);
@@ -489,7 +540,7 @@ public class CustomTormentedDemonScript extends Script {
             }
         }
 
-        if (currentTarget == null) return;
+        if (currentTarget == null || CustomTormentedDemonPlugin.isDodgeActive()) return;
 
         // Read the overhead + current animation on the client thread. NOTE: the demon's overhead is its
         // PROTECTION prayer (drives our gear), which is independent of the style it ATTACKS with (drives our
@@ -516,14 +567,15 @@ public class CustomTormentedDemonScript extends Script {
             // Enforce a valid counter-style every tick: re-picks when the overhead changed or the current
             // style is no longer allowed (e.g. that style was just toggled off in config), and re-applies
             // the gear if a previous swap couldn't complete.
-            switchGear(config, currentOverheadIcon);
+            if (!CustomTormentedDemonPlugin.isDodgeActive()) {
+                switchGear(config, currentOverheadIcon);
+            }
         }
 
-        if (config.enableOffensivePrayer()) {
+        if (config.enableOffensivePrayer() && !CustomTormentedDemonPlugin.isDodgeActive()) {
             activateOffensivePrayer(config);
         }
     }
-
 
     private void activateOffensivePrayer(CustomTormentedDemonConfig config) {
         // Base the offensive prayer on the style we actually decided to attack with (intendedGearSetup),
@@ -557,10 +609,34 @@ public class CustomTormentedDemonScript extends Script {
     }
 
     private Rs2NpcModel findNewTarget(CustomTormentedDemonConfig config) {
+        Player localPlayer = Microbot.getClient().getLocalPlayer();
+
+        // Prefer any demon already interacting with us
+        Rs2NpcModel engagingTarget = Microbot.getRs2NpcCache().query()
+                .withName("Tormented Demon")
+                .where(npc -> !npc.isDead())
+                .where(npc -> npc.getInteracting() == localPlayer)
+                .where(npc -> {
+                    HeadIcon demonHeadIcon = npc.getHeadIcon();
+                    if (demonHeadIcon != null) {
+                        switchGear(config, demonHeadIcon);
+                        return true;
+                    }
+                    logOnceToChat("Null HeadIcon for NPC " + npc.getName());
+                    return false;
+                })
+                .firstOnClientThread();
+
+        if (engagingTarget != null) {
+            return engagingTarget;
+        }
+
+        // When attacking a demon for the first time, ensure it is not animating (e.g. spawn animation 11395)
         return Microbot.getRs2NpcCache().query()
                 .withName("Tormented Demon")
                 .where(npc -> !npc.isDead())
-                .where(npc -> npc.getInteracting() == null || npc.getInteracting() == Microbot.getClient().getLocalPlayer())
+                .where(npc -> npc.getInteracting() == null)
+                .where(npc -> npc.getAnimation() == -1)
                 .where(npc -> {
                     HeadIcon demonHeadIcon = npc.getHeadIcon();
                     if (demonHeadIcon != null) {
@@ -698,13 +774,21 @@ public class CustomTormentedDemonScript extends Script {
     }
 
     private boolean shouldRetreat(CustomTormentedDemonConfig config) {
-        int currentHealth = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
+        if (CustomTormentedDemonPlugin.isDodgeActive()) {
+            return false;
+        }
+
+        double currentHealthPct = Rs2Player.getHealthPercentage();
         int currentPrayer = Microbot.getClient().getBoostedSkillLevel(Skill.PRAYER);
         boolean noFood = Rs2Inventory.getInventoryFood().isEmpty();
         boolean noPrayerPotions = Rs2Inventory.items()
                 .noneMatch(item -> item != null && item.getName() != null && item.getName().toLowerCase().contains("prayer potion"));
 
-        return (noFood || currentHealth <= config.healthThreshold()) || (noPrayerPotions && currentPrayer < 10);
+        // Only exit on low health if we are completely out of food
+        boolean lowHealthWithoutFood = noFood && (currentHealthPct <= config.healthThreshold()
+                || Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS) <= config.healthThreshold());
+
+        return lowHealthWithoutFood || (noPrayerPotions && currentPrayer < 10);
     }
 
     public void disableAllPrayers() {
@@ -729,35 +813,171 @@ public class CustomTormentedDemonScript extends Script {
 
     private void attemptLooting(CustomTormentedDemonConfig config) {
         Microbot.log("Checking loot..");
-        // Consume smouldering drops in place (Crush / Eat-from) instead of taking them. Done first because
-        // consuming removes the ground item, which also stops the "loot everything" untradeable pass below
-        // from picking them up.
         consumeSmoulderingDrops();
 
-        // antiLureProtection == "only items owned by me" (OWNERSHIP_SELF). Off = loot regardless of owner.
-        boolean mine = config.lootMyLootOnly();
+        long startTime = System.currentTimeMillis();
+        long deadline = startTime + 12_000;
 
-        // Always honor the explicit name list (additive to "loot everything").
-        List<String> lootItems = parseLootItems(config.lootItems());
-        if (!lootItems.isEmpty()) {
-            Rs2GroundItem.lootItemsBasedOnNames(
-                    new LootingParameters(10, 1, 1, 0, false, mine, lootItems.toArray(new String[0])));
-        }
+        while (System.currentTimeMillis() < deadline) {
+            if (CustomTormentedDemonPlugin.isDodgeActive()) {
+                return;
+            }
 
-        if (config.lootEverything()) {
-            // Everything tradeable worth > 0 gp in one pass...
-            Rs2GroundItem.lootItemBasedOnValue(
-                    new LootingParameters(0, Integer.MAX_VALUE, 10, 1, 0, false, mine));
-            // ...plus untradeables (clues, ashes, etc.) and coins, which carry no GE value.
-            Rs2GroundItem.lootUntradables(
-                    new LootingParameters(0, Integer.MAX_VALUE, 10, 1, 0, false, mine));
-            Rs2GroundItem.lootCoins(
-                    new LootingParameters(0, Integer.MAX_VALUE, 10, 1, 0, false, mine));
+            boolean looted = lootNextDrop(config);
+
+            if (looted) {
+                deadline = Math.min(startTime + 20_000, System.currentTimeMillis() + 3_000);
+            } else {
+                if (!hasLootableDrops(config)) {
+                    break;
+                }
+                sleep(600);
+            }
         }
 
         if (config.scatterAshes()) {
-            lootAndScatterInfernalAshes(config);
+            scatterCarriedAshes();
         }
+    }
+
+    private boolean lootNextDrop(CustomTormentedDemonConfig config) {
+        RS2Item[] groundItems = Microbot.getClientThread()
+                .runOnClientThreadOptional(() -> Rs2GroundItem.getAll(LOOT_RANGE))
+                .orElse(new RS2Item[]{});
+
+        boolean mine = config.lootMyLootOnly();
+        List<String> lootItems = parseLootItems(config.lootItems());
+
+        for (RS2Item item : groundItems) {
+            if (item == null || item.getItem() == null) {
+                continue;
+            }
+
+            if (mine && item.getTileItem() != null
+                    && item.getTileItem().getOwnership() != TileItem.OWNERSHIP_SELF
+                    && item.getTileItem().getOwnership() != TileItem.OWNERSHIP_NONE) {
+                continue;
+            }
+
+            String name = item.getItem().getName();
+            if (name == null || name.isEmpty() || isSmoulderingDrop(name)) {
+                continue;
+            }
+
+            boolean shouldLoot = false;
+            String lowerName = name.toLowerCase();
+
+            for (String needle : lootItems) {
+                if (!needle.isEmpty() && lowerName.contains(needle)) {
+                    shouldLoot = true;
+                    break;
+                }
+            }
+
+            if (!shouldLoot && config.lootEverything()) {
+                shouldLoot = true;
+            }
+
+            if (!shouldLoot) {
+                continue;
+            }
+
+            if (needsInventorySpace(item)) {
+                if (!makeSpaceForLoot()) {
+                    continue;
+                }
+            }
+
+            if (Rs2GroundItem.interact(item)) {
+                Rs2Inventory.waitForInventoryChanges(2400);
+                if (config.scatterAshes() && Rs2Inventory.hasItem("Infernal ashes")) {
+                    scatterCarriedAshes();
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean needsInventorySpace(RS2Item item) {
+        if (!Rs2Inventory.isFull()) {
+            return false;
+        }
+        if (item != null && item.getItem() != null) {
+            if (item.getItem().isStackable() && Rs2Inventory.hasItem(item.getItem().getId())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean makeSpaceForLoot() {
+        if (!Rs2Inventory.isFull()) {
+            return true;
+        }
+
+        if (Rs2Player.eatAt(100, true)) {
+            logOnceToChat("Inventory full — eating to make space for loot");
+            sleep(600, 1000);
+            if (!Rs2Inventory.isFull()) {
+                return true;
+            }
+        }
+
+        List<Rs2ItemModel> foods = Rs2Inventory.getInventoryFood();
+        if (foods.isEmpty()) {
+            return false;
+        }
+
+        Rs2ItemModel food = foods.get(0);
+        if (food != null) {
+            logOnceToChat("Inventory full — eating " + food.getName() + " to make space for loot");
+            Rs2Inventory.interact(food, "Eat");
+            return sleepUntil(() -> !Rs2Inventory.isFull(), 1800);
+        }
+        return false;
+    }
+
+    private boolean hasLootableDrops(CustomTormentedDemonConfig config) {
+        RS2Item[] groundItems = Microbot.getClientThread()
+                .runOnClientThreadOptional(() -> Rs2GroundItem.getAll(LOOT_RANGE))
+                .orElse(new RS2Item[]{});
+
+        boolean mine = config.lootMyLootOnly();
+        List<String> lootItems = parseLootItems(config.lootItems());
+
+        for (RS2Item item : groundItems) {
+            if (item == null || item.getItem() == null) continue;
+
+            if (mine && item.getTileItem() != null
+                    && item.getTileItem().getOwnership() != TileItem.OWNERSHIP_SELF
+                    && item.getTileItem().getOwnership() != TileItem.OWNERSHIP_NONE) {
+                continue;
+            }
+
+            String name = item.getItem().getName();
+            if (name == null || name.isEmpty() || isSmoulderingDrop(name)) continue;
+
+            String lowerName = name.toLowerCase();
+
+            for (String needle : lootItems) {
+                if (!needle.isEmpty() && lowerName.contains(needle)) {
+                    return true;
+                }
+            }
+
+            if (config.lootEverything()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isSmoulderingDrop(String name) {
+        for (String[] drop : SMOULDERING_DROPS) {
+            if (drop[0].equalsIgnoreCase(name)) return true;
+        }
+        return false;
     }
 
     /**
@@ -780,20 +1000,11 @@ public class CustomTormentedDemonScript extends Script {
         }
     }
 
-    private void lootAndScatterInfernalAshes(CustomTormentedDemonConfig config) {
+    private void scatterCarriedAshes() {
         String ashesName = "Infernal ashes";
-
-        // Ashes may already be in the inventory if "Loot Everything" grabbed them as an untradeable;
-        // otherwise pick them up here. Either way, scatter whatever ashes we're now holding.
-        if (!Rs2Inventory.isFull()) {
-            Rs2GroundItem.lootItemsBasedOnNames(
-                    new LootingParameters(10, 1, 1, 0, false, config.lootMyLootOnly(), ashesName));
-            sleepUntil(() -> Rs2Inventory.contains(ashesName), 2000);
-        }
-
-        if (Rs2Inventory.contains(ashesName)) {
+        while (Rs2Inventory.hasItem(ashesName)) {
             Rs2Inventory.interact(ashesName, "Scatter");
-            sleep(600); // Wait briefly for scattering action
+            sleep(600, 1000);
         }
     }
 

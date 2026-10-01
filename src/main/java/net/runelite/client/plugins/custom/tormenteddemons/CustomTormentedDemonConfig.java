@@ -85,14 +85,13 @@ public interface CustomTormentedDemonConfig extends Config {
     @ConfigItem(
             keyName = "dodgeDelay",
             name = "Dodging delay(ms)",
-            description = "Delay before dodging the special. Just a short window to collect all the special's tiles "
-                    + "(they all spawn on the same tick), NOT a full game tick — keep it small so the dodge is fast. "
-                    + "Raise it only if the dodge picks a tile that still gets hit.",
+            description = "Delay between dodge clicks (ms). The dodge randomly clicks 2-4 times "
+                    + "spaced between 100 ms and this delay.",
             section = tormentedDemonSection,
             position = 5
     )
     default int dodgeDelay() {
-        return 50;
+        return 200;
     }
 
 

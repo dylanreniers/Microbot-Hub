@@ -25,7 +25,7 @@ import java.awt.*;
 )
 @Slf4j
 public class CustomHerbrunPlugin extends Plugin {
-    public static final String version = "1.5.0";
+    public static final String version = "1.5.2";
     @Inject
     private CustomHerbrunConfig config;
 

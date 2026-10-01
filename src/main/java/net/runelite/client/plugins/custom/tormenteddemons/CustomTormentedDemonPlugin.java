@@ -32,6 +32,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import net.runelite.client.plugins.microbot.util.math.Rs2Random;
+
 import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 
 @PluginDescriptor(
@@ -48,7 +50,7 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 @Slf4j
 public class CustomTormentedDemonPlugin extends Plugin {
 
-    public static final String version = "1.0.1";
+    public static final String version = "1.0.2";
 
     // Tormented Demon (LUC2_UNDEAD_DEMON) per-attack animations — each is set the tick the demon launches
     // that attack, so they tell us the style of the incoming hit.
@@ -65,9 +67,16 @@ public class CustomTormentedDemonPlugin extends Plugin {
     private static final int DODGE_LAND_TIMEOUT_MS = 3000;
 
     /** Tiles flagged dangerous by the vengeance-special graphics objects for the current batch (instanced world coords). */
-    private final Set<WorldPoint> dangerousTiles = ConcurrentHashMap.newKeySet();
+    private static final Set<WorldPoint> dangerousTiles = ConcurrentHashMap.newKeySet();
+    /** Flag indicating that a special attack dodge is actively scheduled or in progress. */
+    public static final AtomicBoolean isDodging = new AtomicBoolean(false);
     /** Ensures a single dodge is scheduled per special-attack batch, no matter how many graphics objects spawn. */
     private final AtomicBoolean dodgeScheduled = new AtomicBoolean(false);
+
+    /** True if a special-attack dodge is scheduled, in progress, or dangerous tiles are present. */
+    public static boolean isDodgeActive() {
+        return isDodging.get() || !dangerousTiles.isEmpty();
+    }
 
     private ScheduledExecutorService scheduledExecutorService;
 
@@ -106,7 +115,8 @@ public class CustomTormentedDemonPlugin extends Plugin {
         overlayManager.remove(tormentedDemonOverlay);
         dangerousTiles.clear();
         dodgeScheduled.set(false);
-        Microbot.pauseAllScripts.compareAndSet(true, false);
+        isDodging.set(false);
+        Microbot.pauseAllScripts.set(false);
         if (scheduledExecutorService != null && !scheduledExecutorService.isShutdown()) {
             scheduledExecutorService.shutdown();
         }
@@ -131,16 +141,18 @@ public class CustomTormentedDemonPlugin extends Plugin {
         // Schedule the dodge exactly once per batch. More graphics objects may still spawn this tick;
         // they just add tiles to the set. On the next tick (dodgeDelay) we pick the nearest safe tile.
         if (dodgeScheduled.compareAndSet(false, true)) {
-            Microbot.pauseAllScripts.compareAndSet(false, true);
+            isDodging.set(true);
+            Microbot.pauseAllScripts.set(true);
             // The demon always changes attack style after this special, so pre-switch our overhead to a
             // guess now. If the guess is wrong, onAnimationChanged corrects it on the demon's next attack.
             preGuessProtectionPrayerAfterSpecial();
             try {
-                scheduledExecutorService.schedule(this::dodgeToSafeTile, config.dodgeDelay(), TimeUnit.MILLISECONDS);
+                scheduledExecutorService.schedule(this::dodgeToSafeTile, Math.min(50, config.dodgeDelay()), TimeUnit.MILLISECONDS);
             } catch (Exception e) {
                 dodgeScheduled.set(false);
+                isDodging.set(false);
                 dangerousTiles.clear();
-                Microbot.pauseAllScripts.compareAndSet(true, false);
+                Microbot.pauseAllScripts.set(false);
                 tormentedDemonScript.logOnceToChat("Error scheduling dodge: " + e.getMessage());
             }
         }
@@ -173,18 +185,50 @@ public class CustomTormentedDemonPlugin extends Plugin {
     }
 
     /**
-     * Runs one tick after the special's graphics objects spawned. Finds the nearest walkable tile that is
-     * not covered by a special-attack graphics object and walks there, waiting until we actually land on it.
+     * Runs shortly after the special's graphics objects spawned. Finds the nearest walkable tile that is
+     * not covered by a special-attack graphics object and walks there, continuously clicking towards the
+     * safe tile until the player reaches it or timeout occurs.
      */
     private void dodgeToSafeTile() {
+        isDodging.set(true);
+        Microbot.pauseAllScripts.set(true);
         try {
-            WorldPoint safeTile = findNearestSafeTile();
-            if (safeTile == null) {
+            WorldPoint playerLocation = Rs2Player.getWorldLocation();
+            if (playerLocation == null || !dangerousTiles.contains(playerLocation)) {
                 tormentedDemonScript.logOnceToChat("Dodge: already on a safe tile (or none found).");
                 return;
             }
-            Rs2Walker.walkFastCanvas(safeTile);
-            boolean landed = sleepUntil(() -> safeTile.equals(Rs2Player.getWorldLocation()), DODGE_LAND_TIMEOUT_MS);
+
+            WorldPoint safeTile = findNearestSafeTile();
+            if (safeTile == null) {
+                tormentedDemonScript.logOnceToChat("Dodge: no safe tile found.");
+                return;
+            }
+
+            long startTime = System.currentTimeMillis();
+            long deadline = startTime + DODGE_LAND_TIMEOUT_MS;
+
+            int minDelay = Math.min(100, config.dodgeDelay());
+            int maxDelay = Math.max(100, config.dodgeDelay());
+
+            while (!safeTile.equals(Rs2Player.getWorldLocation()) && System.currentTimeMillis() < deadline) {
+                if (dangerousTiles.contains(safeTile)) {
+                    WorldPoint newSafe = findNearestSafeTile();
+                    if (newSafe != null) {
+                        safeTile = newSafe;
+                    }
+                }
+
+                Rs2Walker.walkFastCanvas(safeTile, false);
+
+                final WorldPoint target = safeTile;
+                int delay = Rs2Random.betweenInclusive(minDelay, maxDelay);
+                if (sleepUntil(() -> target.equals(Rs2Player.getWorldLocation()), delay)) {
+                    break;
+                }
+            }
+
+            boolean landed = safeTile.equals(Rs2Player.getWorldLocation());
             if (landed) {
                 tormentedDemonScript.logOnceToChat("Successfully dodged Tormented Demon special attack.");
             } else {
@@ -195,22 +239,19 @@ public class CustomTormentedDemonPlugin extends Plugin {
         } finally {
             dangerousTiles.clear();
             dodgeScheduled.set(false);
-            Microbot.pauseAllScripts.compareAndSet(true, false);
+            isDodging.set(false);
+            Microbot.pauseAllScripts.set(false);
         }
     }
 
     /**
      * Nearest walkable tile around the player that is not covered by a special-attack graphics object.
-     * Returns null when the player's current tile is already safe (no need to move) or nothing suitable
-     * is in range. {@link Rs2Tile#getWalkableTilesAroundPlayer(int)} excludes the player's own tile.
+     * Returns null when no suitable safe tile is in range. {@link Rs2Tile#getWalkableTilesAroundPlayer(int)}
+     * excludes the player's own tile.
      */
     private WorldPoint findNearestSafeTile() {
         WorldPoint playerLocation = Rs2Player.getWorldLocation();
         if (playerLocation == null) {
-            return null;
-        }
-        // If we're not standing in the AoE, staying put is the safe move.
-        if (!dangerousTiles.contains(playerLocation)) {
             return null;
         }
         List<WorldPoint> walkable = Rs2Tile.getWalkableTilesAroundPlayer(DODGE_SEARCH_RADIUS);
