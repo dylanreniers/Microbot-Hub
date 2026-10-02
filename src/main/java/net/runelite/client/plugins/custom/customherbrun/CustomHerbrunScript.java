@@ -95,6 +95,8 @@ public class CustomHerbrunScript extends Script {
     }
     private boolean compostBinHandled = false;
     private CompostBinStep compostBinStep = CompostBinStep.TRAVEL_TO_GUILD;
+    private boolean compostBinAshWithdrawn = false;
+    private boolean compostBinAshAdded = false;
     private int compostBinAttempts = 0;
 
     public boolean run() {
@@ -164,23 +166,17 @@ public class CustomHerbrunScript extends Script {
                     compostBinHandled = true;
                 }
 
-                if (!config.goToBank()) {
-                    // Bank After Run disabled: the whole cycle is fully ended.
-                    CustomHerbrunPlugin.status = "Finished";
-                    if (!config.enableRepeatTimer()) {
-                        Microbot.stopPlugin(plugin);
-                    }
-                    return;
+                // Bank After Run: deposit everything and re-stock the chosen inventory setup, so the
+                // character ends geared and ready for the next run.
+                if (config.goToBank()) {
+                    CustomHerbrunPlugin.status = "Banking & re-stocking setup";
+                    if (!loadRunInventory()) return;
                 }
 
-                // Bank After Run enabled: deposit everything and re-stock the chosen inventory setup,
-                // so the character ends geared and ready for the next run.
-                CustomHerbrunPlugin.status = "Banking & re-stocking setup";
-                if (!loadRunInventory()) return;
-
+                // Repeat Timer (independent of Bank After Run): log out now and resume after the
+                // interval, so the character logs back in once the timer has passed.
                 if (config.enableRepeatTimer()) {
-                    // Start the between-runs wait: log out now, resume after the configured interval
-                    // plus a random offset (0..range minutes) so we never log in on the exact minute.
+                    // Interval plus a random offset (0..range minutes) so we never log in on the exact minute.
                     long baseMs = config.runIntervalMinutes() * 60_000L;
                     long randomCapMs = Math.max(0, config.runIntervalRandomMinutes()) * 60_000L;
                     long randomMs = randomCapMs > 0 ? ThreadLocalRandom.current().nextLong(randomCapMs + 1) : 0L;
@@ -195,10 +191,9 @@ public class CustomHerbrunScript extends Script {
                     return;
                 }
 
+                // No repeat timer: the whole cycle is fully ended.
                 CustomHerbrunPlugin.status = "Finished";
-                if (!config.enableRepeatTimer()) {
-                    Microbot.stopPlugin(plugin);
-                }
+                Microbot.stopPlugin(plugin);
                 return;
             }
 
@@ -303,6 +298,8 @@ public class CustomHerbrunScript extends Script {
         currentAllotmentId = -1;
         compostBinHandled = false;
         compostBinStep = CompostBinStep.TRAVEL_TO_GUILD;
+        compostBinAshWithdrawn = false;
+        compostBinAshAdded = false;
         compostBinAttempts = 0;
     }
 
@@ -1171,11 +1168,27 @@ public class CustomHerbrunScript extends Script {
                     return false;
                 }
                 if (ensureExchangeClosed()) return false;
-                if (Rs2GameObject.hasAction(bin, "Take")) {
-                    compostBinStep = CompostBinStep.COLLECT_COMPOST;
+
+                // Route by the bin's live morph id (deterministic), not by menu actions: an empty
+                // open bin (33762) has no Take/Open/Close action, so action-only routing wrongly
+                // treats it as "rotting" and never refills. Actions are kept as secondary signals.
+                int id = compostBinMorphId(bin);
+                int count = binFillCount(id);
+                boolean hasTake = Rs2GameObject.hasAction(bin, "Take");
+                boolean hasOpen = Rs2GameObject.hasAction(bin, "Open");
+                boolean hasClose = Rs2GameObject.hasAction(bin, "Close");
+                log("[Bin] CHECK morphId=" + id + " count=" + count
+                        + " take=" + hasTake + " open=" + hasOpen + " close=" + hasClose);
+
+                // Open bin holding rotted compost -> add ash first (converts super->ultra) if enabled,
+                // then collect. Ash can ONLY go on a rotted, opened, ready bin, never on fresh melons.
+                if (hasTake || (id >= BIN_COLLECT_MIN && id <= BIN_COLLECT_MAX)) {
+                    compostBinStep = (config.addVolcanicAsh() && !compostBinAshAdded)
+                            ? CompostBinStep.ADD_ASH : CompostBinStep.COLLECT_COMPOST;
                     return false;
                 }
-                if (Rs2GameObject.hasAction(bin, "Open")) {
+                // Rotted and ready but closed -> open to expose "Take".
+                if (id == BIN_READY_CLOSED || (hasOpen && count < 0)) {
                     CustomHerbrunPlugin.status = "Opening compost bin";
                     bin.click("Open");
                     Rs2Player.waitForWalking();
@@ -1185,11 +1198,18 @@ public class CustomHerbrunScript extends Script {
                     }, 5000);
                     return false;
                 }
-                if (Rs2GameObject.hasAction(bin, "Close")) {
-                    int id = compostBinMorphId(bin);
-                    int count = binFillCount(id);
+                // Still rotting -> not ready, leave it for next cycle.
+                if (id == BIN_ROTTING) {
+                    log("[Bin] Bin is rotting - leaving it to finish for next run");
+                    compostBinStep = CompostBinStep.DONE;
+                    return false;
+                }
+                // Empty or partially filled (and open) -> refill with watermelons.
+                if (id == BIN_EMPTY || (id >= BIN_FILL_MIN && id <= BIN_FILL_MAX)) {
                     if (count >= BIN_CAPACITY) {
-                        compostBinStep = config.addVolcanicAsh() ? CompostBinStep.ADD_ASH : CompostBinStep.CLOSE_BIN;
+                        // Fresh watermelon fill rots into supercompost; ash is only added later, at
+                        // collection, once it has rotted. So a full fresh bin just gets closed.
+                        compostBinStep = CompostBinStep.CLOSE_BIN;
                     } else if (count >= MAX_FILL_PER_TRIP) {
                         compostBinStep = CompostBinStep.FILL_TRIP_2;
                     } else {
@@ -1197,7 +1217,8 @@ public class CustomHerbrunScript extends Script {
                     }
                     return false;
                 }
-                log("[Bin] Bin is rotting - leaving it to finish for next run");
+
+                log("[Bin] Unexpected bin state morphId=" + id + " - stopping");
                 compostBinStep = CompostBinStep.DONE;
                 return false;
             }
@@ -1296,7 +1317,7 @@ public class CustomHerbrunScript extends Script {
                     bin.click();
                     sleepUntil(() -> !Rs2Inventory.hasItem(ItemID.WATERMELON), 30000);
                     if (!Rs2Inventory.hasItem(ItemID.WATERMELON)) {
-                        compostBinStep = config.addVolcanicAsh() ? CompostBinStep.ADD_ASH : CompostBinStep.CLOSE_BIN;
+                        compostBinStep = CompostBinStep.CLOSE_BIN;
                     }
                     return false;
                 }
@@ -1310,7 +1331,7 @@ public class CustomHerbrunScript extends Script {
                 if (!Rs2Bank.withdrawX(ItemID.WATERMELON, 2)) {
                     log("[Bin] Not enough watermelons in bank for trip 2");
                     Rs2Bank.closeBank();
-                    compostBinStep = config.addVolcanicAsh() ? CompostBinStep.ADD_ASH : CompostBinStep.CLOSE_BIN;
+                    compostBinStep = CompostBinStep.CLOSE_BIN;
                     return false;
                 }
                 Rs2Bank.closeBank();
@@ -1320,18 +1341,47 @@ public class CustomHerbrunScript extends Script {
             }
 
             case ADD_ASH: {
+                // Add volcanic ash to the rotted, opened, ready bin (converts its supercompost to
+                // ultracompost) BEFORE collecting. Afterwards collection yields ultracompost.
+                if (compostBinAshAdded) {
+                    compostBinStep = CompostBinStep.COLLECT_COMPOST;
+                    return false;
+                }
+
+                Rs2TileObjectModel bin = findCompostBin();
+                if (bin == null) {
+                    Rs2Walker.walkTo(COMPOST_BIN_LOCATION, 6);
+                    return false;
+                }
+                // Ash can only go on a ready (rotted, open) bin — i.e. one offering "Take".
+                if (!Rs2GameObject.hasAction(bin, "Take")) {
+                    compostBinAshAdded = true;
+                    compostBinStep = CompostBinStep.COLLECT_COMPOST;
+                    return false;
+                }
+
                 if (Rs2Inventory.hasItem(ItemID.FOSSIL_VOLCANIC_ASH)) {
-                    Rs2TileObjectModel bin = findCompostBin();
-                    if (bin == null) {
-                        Rs2Walker.walkTo(COMPOST_BIN_LOCATION, 6);
-                        return false;
-                    }
                     if (ensureExchangeClosed()) return false;
                     CustomHerbrunPlugin.status = "Adding volcanic ash";
+                    int before = Rs2Inventory.count(ItemID.FOSSIL_VOLCANIC_ASH);
                     Rs2Inventory.use(ItemID.FOSSIL_VOLCANIC_ASH);
                     bin.click();
-                    sleepUntil(() -> !Rs2Inventory.hasItem(ItemID.FOSSIL_VOLCANIC_ASH), 8000);
-                    compostBinStep = CompostBinStep.CLOSE_BIN;
+                    // Ash is added progressively; keep using until the bin accepts no more (conversion
+                    // complete) or the stack is exhausted.
+                    boolean consumedSome = sleepUntil(
+                            () -> Rs2Inventory.count(ItemID.FOSSIL_VOLCANIC_ASH) < before, 10000);
+                    if (!consumedSome) {
+                        compostBinAshAdded = true;
+                        compostBinStep = CompostBinStep.COLLECT_COMPOST;
+                    }
+                    return false;
+                }
+
+                // No ash in inventory: withdraw it once from the bank.
+                if (compostBinAshWithdrawn) {
+                    // Already withdrew a stack and it's all been added -> conversion done.
+                    compostBinAshAdded = true;
+                    compostBinStep = CompostBinStep.COLLECT_COMPOST;
                     return false;
                 }
                 CustomHerbrunPlugin.status = "Banking for volcanic ash";
@@ -1339,14 +1389,14 @@ public class CustomHerbrunScript extends Script {
                     Rs2Bank.walkToBankAndUseBank(BankLocation.FARMING_GUILD);
                     return false;
                 }
-                Rs2Bank.depositAll();
-                Rs2Inventory.waitForInventoryChanges(3000);
                 if (!Rs2Bank.withdrawX(ItemID.FOSSIL_VOLCANIC_ASH, config.volcanicAshAmount())) {
-                    log("[Bin] Not enough volcanic ash in bank - closing as supercompost instead");
+                    log("[Bin] Not enough volcanic ash in bank - collecting as supercompost instead");
                     Rs2Bank.closeBank();
-                    compostBinStep = CompostBinStep.CLOSE_BIN;
+                    compostBinAshAdded = true;
+                    compostBinStep = CompostBinStep.COLLECT_COMPOST;
                     return false;
                 }
+                compostBinAshWithdrawn = true;
                 Rs2Bank.closeBank();
                 sleepUntil(() -> !Rs2Bank.isOpen(), 3000);
                 Rs2Walker.walkTo(COMPOST_BIN_LOCATION, 6);
@@ -1465,6 +1515,8 @@ public class CustomHerbrunScript extends Script {
         resumeAtMillis = 0L;
         compostBinHandled = false;
         compostBinStep = CompostBinStep.TRAVEL_TO_GUILD;
+        compostBinAshWithdrawn = false;
+        compostBinAshAdded = false;
         compostBinAttempts = 0;
     }
 }
