@@ -13,8 +13,10 @@ import net.runelite.api.gameval.ItemID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.UnderDevelopment;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
 import net.runelite.client.plugins.microbot.globval.enums.InterfaceTab;
@@ -51,7 +53,7 @@ import static net.runelite.client.plugins.microbot.Microbot.log;
         enabledByDefault = PluginConstants.DEFAULT_ENABLED,
         isExternal = PluginConstants.IS_EXTERNAL
 )
-
+@UnderDevelopment
 public class CustomGauntletPlugin extends Plugin {
     public static final String version = "1.1.1";
 
@@ -120,6 +122,16 @@ public class CustomGauntletPlugin extends Plugin {
     @Subscribe
     public void onGameTick(GameTick event){
         script.eventGameTick();
+    }
+
+    @Subscribe
+    public void onConfigChanged(ConfigChanged event) {
+        if (!"CustomGauntlet".equals(event.getGroup())) {
+            return;
+        }
+        // Config values are read live each loop, so most changes adapt on their own; this lets the
+        // script react immediately (e.g. clear in-progress tornado dodging the moment it's disabled).
+        script.onConfigChanged(event.getKey(), event.getNewValue());
     }
 
 

@@ -140,6 +140,12 @@ tasks.register('runDebug', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'net.runelite.client.Microbot'
 
+    // Hot-reload auto-deploy (UnderDevelopmentAutoDeployer) needs the plugin
+    // source root to compile @UnderDevelopment plugins from. Pin it to this
+    // project's main sources so it works regardless of the JVM working dir.
+    systemProperty 'microbot.hotreload.sourceRoot',
+            file('src/main/java').absolutePath
+
     // macOS + JDK 11 needs these opened for the Aqua/full-screen adapters,
     // mirroring what the Microbot Launcher passes when launching the client jar.
     if (org.gradle.internal.os.OperatingSystem.current().isMacOsX()) {

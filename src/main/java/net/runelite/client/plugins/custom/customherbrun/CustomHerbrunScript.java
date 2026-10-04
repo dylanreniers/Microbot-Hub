@@ -133,20 +133,16 @@ public class CustomHerbrunScript extends Script {
             }
 
             if (!initialized) {
-                initialized = true;
                 CustomHerbrunPlugin.status = "Gearing up";
                 populatePatches();
 
-                if (!sleepUntil(() -> !herbPatches.isEmpty(), 1000)) {
-                    if (herbPatches.isEmpty()) {
-                        return;
-                    }
-                }
+                sleepUntil(() -> !herbPatches.isEmpty() || !allotmentsByRegion.isEmpty() || !flowerByRegion.isEmpty(), 2000);
 
                 if (!loadRunInventory()) {
                     return;
                 }
 
+                initialized = true;
                 int allotmentRegions = allotmentsByRegion.size();
                 int flowerCount = flowerByRegion.size();
                 log("Will visit " + herbPatches.size() + " herb patches, " + allotmentRegions + " allotment locations, " + flowerCount + " flower patches");
@@ -854,27 +850,39 @@ public class CustomHerbrunScript extends Script {
         if (config.useInventorySetup()) {
             var inventorySetup = new Rs2InventorySetup(config.inventorySetup(), mainScheduledFuture);
             if (!inventorySetup.doesInventoryMatch() || !inventorySetup.doesEquipmentMatch()) {
-                Rs2Walker.walkTo(Rs2Bank.getNearestBank().getWorldPoint(), 20);
+                CustomHerbrunPlugin.status = "Banking & gearing up";
+                if (!Rs2Bank.isOpen()) {
+                    if (isAtFarmingGuild()) {
+                        Rs2Bank.walkToBankAndUseBank(BankLocation.FARMING_GUILD);
+                    } else {
+                        Rs2Bank.walkToBankAndUseBank();
+                    }
+                    if (!sleepUntil(Rs2Bank::isOpen, 5000)) {
+                        return false;
+                    }
+                }
                 if (!inventorySetup.loadEquipment() || !inventorySetup.loadInventory()) {
                     return false;
                 }
                 Rs2Bank.closeBank();
+                sleepUntil(() -> !Rs2Bank.isOpen(), 3000);
             }
-            return true;
+            return inventorySetup.doesInventoryMatch() && inventorySetup.doesEquipmentMatch();
         }
         return setupAutoInventory();
     }
 
     private boolean setupAutoInventory() {
-        Rs2Walker.walkTo(Rs2Bank.getNearestBank().getWorldPoint(), 20);
-
-        if (!Rs2Bank.openBank()) {
-            log("Failed to open bank");
-            return false;
-        }
-        if (!sleepUntil(Rs2Bank::isOpen, 10000)) {
-            log("Timeout waiting for bank to open after 10 seconds");
-            return false;
+        if (!Rs2Bank.isOpen()) {
+            if (isAtFarmingGuild()) {
+                Rs2Bank.walkToBankAndUseBank(BankLocation.FARMING_GUILD);
+            } else {
+                Rs2Bank.walkToBankAndUseBank();
+            }
+            if (!sleepUntil(Rs2Bank::isOpen, 5000)) {
+                log("Failed to open bank");
+                return false;
+            }
         }
 
         Rs2Bank.depositAll();

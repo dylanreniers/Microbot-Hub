@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
 public class CustomGauntletScript extends Script {
 
     private static final int CG_TORNADO = 9039;
-    private static final int REGULAR_HUNLEFF_TORNADO = 9039;
+    private static final int REGULAR_HUNLEFF_TORNADO = 9025;
     private static final int PADDLEFISH_HEAL_VALUE = 20;
 
     private static final int CD_NPC = 450;
@@ -49,9 +49,33 @@ public class CustomGauntletScript extends Script {
     private static final int BUFFER_MAGICBLAST = 400;
     private static final int LOOPS_PER_TICK = 5;
 
-    private static final int SAFE_TILE_GROUND_ID = 36149; // CG floor tile that is safe to stand on (but present across the whole gauntlet, not just the arena)
+    // --- Tornado dodging ---
+    private static final int TORNADO_TRIGGER_DIST = 4;  // start kiting once a tornado is this close (tiles)
+    // Re-evaluate/issue the dodge walk at most once per game tick (~600ms). Clicking faster than this
+    // restarts the client's pathfinder every loop, so the player stutters ~1-2 tiles and never commits
+    // to a run — which gets it caught by the tornadoes.
+    private static final int CD_TORNADO_DODGE = 600;
+    private static final int CD_DODGE_LOG = 400;        // steady-state dodge log cadence (ms); transitions log instantly
+    private static final int DODGE_BOSS_MARGIN = 1;     // keep dodge tiles/routes this many tiles clear of the Hunllef (melee range)
+    private static final int WEAPON_SPEED_MS = 3000;    // Gauntlet weapon speed: 5 ticks
+    private static final int ATTACK_WEAVE_RANGE = 9;    // only weave an attack mid-dodge if the boss is this close (so we shoot, not walk)
+    private static final int ATTACK_SUPPRESS_TORNADO_DIST = 3; // don't weave an attack if a tornado is this close — focus on the dodge
+
     private static final int HUNLLEF_RADIUS = 2; // 5x5 footprint -> 2 tiles from its centre to each edge
-    private static final int BARRIER_ID = 37339; // the 4 barriers that sit just outside the 12x12 Hunllef arena
+    // Barrier objects enclosing the Hunllef arena (4 of them). The id differs between normal and
+    // corrupted, and the same id is scattered across the maze — so we also filter by distance to the boss.
+    private static final Set<Integer> BARRIER_IDS = Set.of(
+            37339, // normal Gauntlet
+            37337 // Corrupted Gauntlet
+    );
+    // Only barriers within this many tiles of the Hunllef belong to its arena. 37339 is a generic maze
+    // barrier, so after roaming to gather resources the loaded scene contains other 37339s; without this
+    // proximity filter they pollute (or block) the derived arena bounds and inArena() reads false.
+    private static final int ARENA_BARRIER_RADIUS = 11;
+    // A real in-fight Hunllef is always within the 12x12 arena (<~12 tiles). After we leave the room the
+    // NPC cache can keep a stale reference hundreds of tiles away; treat anything beyond this range as
+    // absent so the fight actually ends and the arena bounds get re-derived for the next fight.
+    private static final int HUNLLEF_PRESENCE_RANGE = 20;
 
     private static final int STAT_HP = -1;
     private static final int STAT_PRAYER = -1;
@@ -98,13 +122,11 @@ public class CustomGauntletScript extends Script {
     private Rs2PrayerEnum nextPrayer = Rs2PrayerEnum.PROTECT_RANGE;
     private HeadIcon bossHeadIcon = null;
     private Rs2NpcModel hunllef = null;
-    private Rs2NpcModel tornado = null;
+    private List<Rs2NpcModel> tornado = null;
     private final AtomicBoolean attackNeeded = new AtomicBoolean(false);
 
     private int loopCount = 0;
 
-    private boolean hpWentUp = false;
-    private boolean prayWentUp = false;
     private boolean shutdownRequested = false;
 
     private long startTime = -1;
@@ -119,22 +141,39 @@ public class CustomGauntletScript extends Script {
     private long timeSteel = -1;
     private long timeHunllefLog = -1;
     private long timeSafespot = -1;
+    private long timeTornadoDodge = -1;
     private long magicBlastEnd = -1;
+
+    // Tornado dodge state: the safe tile we're currently kiting to (scene coords).
+    private boolean dodgeActive = false;
+    private boolean dodgeTargetSet = false;
+    private boolean dodgeEnRoute = false; // true while walking to the target; drives the re-attack on arrival
+    // True while a tornado is within trigger range (we're actively kiting). Suppresses attacking, which
+    // would otherwise path us toward the Hunllef and drag us back into the tornadoes.
+    private volatile boolean tornadoThreat = false;
+    private int dodgeTargetX = -1, dodgeTargetY = -1;
+    private long lastHazardSnapshot = 0; // hash of the arena's damaging tiles when the destination was picked
+    private int barriersTotal = -1; // barrier tiles matched anywhere in the scene (diagnostic)
+    private int barriersNear = -1;  // barrier tiles within ARENA_BARRIER_RADIUS of the Hunllef (diagnostic)
+    // Dodge diagnostics: built on the client thread inside handleTornadoDodge, emitted on the script
+    // thread by emitDodgeLog() (logging on the client thread can deadlock via the GameChatAppender).
+    private String dodgeDebug = null;
+    private String dodgeLogKey = null;      // action+target key; a change forces an immediate log line
+    private String lastDodgeLogKey = null;
+    private long timeDodgeLog = -1;
 
     // Arena bounds in scene coords, derived once per fight from the 4 barriers. The floor tile id is
     // not unique to the arena, so these bounds are what actually keep retreats inside the room.
-    private boolean arenaBoundsKnown = false;
+    private volatile boolean arenaBoundsKnown = false;
     private int arenaMinX, arenaMaxX, arenaMinY, arenaMaxY;
 
     private final AtomicBoolean tickHappened = new AtomicBoolean(false);
 
     private CustomGauntletConfig config;
-    private CustomGauntletPlugin plugin;
 
     @Inject
     public CustomGauntletScript(CustomGauntletPlugin plugin, CustomGauntletConfig config) {
         this.config = config;
-        this.plugin = plugin;
     }
 
     public boolean run() {
@@ -178,9 +217,10 @@ public class CustomGauntletScript extends Script {
                         if (now - timeNpc > CD_NPC) {
                             checkNpc();
                         }
-                        checkVitalsStart();
+
                         if (now - timeHunllefLog > CD_HUNLLEF_LOG) {
                             logHunllefLocation();
+                            logArenaInfo();
                         }
 
                         //Fast Section
@@ -194,14 +234,18 @@ public class CustomGauntletScript extends Script {
                             break; //Prayers changed, return simulates small sleep
 
                         //Slow Section
+                        // Tornado dodging has TOP priority: issue the kite walk BEFORE eating, otherwise a
+                        // low-HP eat breaks out of the loop before the dodge runs, leaving us standing still
+                        // to get stacked. Eating/drinking don't stop movement, so we still do them on the run.
+                        boolean dodging = config.dodgeTornadoes() && tornado != null && !tornado.isEmpty()
+                                && handleTornadoDodge();
+
                         if (now - timeEatAttempted > CD_EAT) checkFood();
-                        if (now - timeEatAttempted < CD_RECENTLY) {
-                            checkPrayerPotions();
-                            break;
-                        } //Eating action occurred, return simulates sleep. Combo drink attempted
                         if (now - timeDrink > CD_DRINK) checkPrayerPotions(); //Non-Blocking
 
-                        if (config.runToSafespot() && tornado == null && handleSafespot())
+                        if (dodging) break; //kited (and ate/prayed on the run) this tick; skip gear/attack
+
+                        if (config.runToSafespot() && (tornado == null || tornado.isEmpty()) && handleSafespot())
                             break; //running to safety takes priority over gear/attack this loop
 
                         if (now - timeWeapon > CD_WEAPON) checkWeapon();
@@ -234,6 +278,7 @@ public class CustomGauntletScript extends Script {
                 .orElse(null);
         if (boss == null) return;
         if (!boss.isInteractingWithPlayer()) return;
+        if (tileDistanceToPlayer(boss) > HUNLLEF_PRESENCE_RANGE) return; // stale/other-instance reference, not a real engagement
 
         hunllef = boss;
         bossHeadIcon = boss.getHeadIcon();
@@ -254,12 +299,35 @@ public class CustomGauntletScript extends Script {
             Microbot.log("Hunllef not found");
             return;
         }
-        // getDistanceFromPlayer() is instance-safe: it compares LocalPoint-vs-LocalPoint (same scene
-        // space) and returns tiles. Do NOT use getWorldLocation().distanceTo(Rs2Player.getWorldLocation())
-        // here - that mixes raw-scene (NPC) with template (player) and returns a bogus constant.
-        Microbot.log("Hunllef " + hunllef.getDistanceFromPlayer() + " tiles to center"
+        // tileDistanceToPlayer() uses scene coords (instance-safe, real tiles). NOTE: the NPC model's
+        // getDistanceFromPlayer() returns LOCAL units (128 per tile), not tiles - don't use it here.
+        Microbot.log("Hunllef " + tileDistanceToPlayer(hunllef) + " tiles to center"
                 + " | under=" + isPlayerUnderHunllef(0)
                 + " | underOrAdjacent=" + isPlayerUnderHunllef(1));
+    }
+
+    /**
+     * Periodic debug log of the derived arena bounds (scene coords) and whether the player is inside
+     * them, so the barrier-based detection can be validated in-game. Computed on the client thread;
+     * the actual logging happens on this thread to avoid the GameChatAppender client-thread deadlock.
+     */
+    private void logArenaInfo() {
+        String msg = Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            computeArenaBounds();
+            String barriers = " barriers near/total=" + barriersNear + "/" + barriersTotal;
+            if (!arenaBoundsKnown) {
+                return "Arena bounds unknown (need 4 barriers near the Hunllef)" + barriers;
+            }
+            String bounds = "Arena scene x[" + arenaMinX + "," + arenaMaxX + "] y[" + arenaMinY + "," + arenaMaxY + "]" + barriers;
+            Player local = Microbot.getClient().getLocalPlayer();
+            if (local == null || local.getLocalLocation() == null) {
+                return bounds + " | player loc unknown";
+            }
+            int px = local.getLocalLocation().getSceneX();
+            int py = local.getLocalLocation().getSceneY();
+            return bounds + " | player scene=" + px + "," + py + " | inArena=" + inArena(px, py);
+        }).orElse("Arena info unavailable");
+        Microbot.log(msg);
     }
 
     /**
@@ -280,6 +348,27 @@ public class CustomGauntletScript extends Script {
             return isUnderBoss(meLp.getSceneX(), meLp.getSceneY(),
                     bossLp.getSceneX(), bossLp.getSceneY(), Math.max(0, margin));
         }).orElse(false);
+    }
+
+    /**
+     * Chebyshev tile distance from the player to the given NPC, in scene/LocalPoint space so it is
+     * correct inside the instance. NOTE: Rs2NpcModel.getDistanceFromPlayer() and LocalPoint.distanceTo()
+     * return LOCAL units (128 per tile), and MAX_VALUE across world views - never use those for a tile
+     * threshold.
+     *
+     * @return distance in tiles, or Integer.MAX_VALUE if it can't be determined
+     */
+    private int tileDistanceToPlayer(Rs2NpcModel npc) {
+        if (npc == null) return Integer.MAX_VALUE;
+        return Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            Player local = Microbot.getClient().getLocalPlayer();
+            LocalPoint npcLp = npc.getLocalLocation();
+            if (local == null || npcLp == null) return Integer.MAX_VALUE;
+            LocalPoint meLp = local.getLocalLocation();
+            if (meLp == null) return Integer.MAX_VALUE;
+            return Math.max(Math.abs(meLp.getSceneX() - npcLp.getSceneX()),
+                    Math.abs(meLp.getSceneY() - npcLp.getSceneY()));
+        }).orElse(Integer.MAX_VALUE);
     }
 
     /**
@@ -314,9 +403,7 @@ public class CustomGauntletScript extends Script {
                 return false;
             }
 
-            if (!arenaBoundsKnown) {
-                computeArenaBounds();
-            }
+            computeArenaBounds();
             if (!arenaBoundsKnown) {
                 return false; // can't guarantee staying in the room without the barriers; do nothing
             }
@@ -334,8 +421,8 @@ public class CustomGauntletScript extends Script {
             int bestDistance = Integer.MAX_VALUE;
             for (Tile tile : Rs2GameObject.getTiles()) {
                 GroundObject ground = tile.getGroundObject();
-                if (ground == null || ground.getId() != SAFE_TILE_GROUND_ID) {
-                    continue;
+                if (ground == null || !FLOOR_TILES.contains(ground.getId())) {
+                    continue; // accept both normal (36149) and corrupted (36046) arena floor
                 }
                 LocalPoint lp = tile.getLocalLocation();
                 if (lp == null) {
@@ -358,9 +445,332 @@ public class CustomGauntletScript extends Script {
                 return false;
             }
             Rs2Walker.walkFastLocal(best);
-            logVerbose("Running to safespot at scene " + best.getSceneX() + "," + best.getSceneY());
             return true;
         }).orElse(false);
+    }
+
+    // ------------------------------------------------------------------
+    // --- Tornado dodging
+    // ------------------------------------------------------------------
+
+    /**
+     * While tornadoes are active, kite to the reachable safe tile that is furthest from every tornado.
+     * A flood-fill from the player over safe tiles (arena floor, not a damaging tile, not under the
+     * Hunllef) yields the tiles reachable WITHOUT crossing anything unsafe; among those we pick the one
+     * maximising the distance to the nearest tornado, then step along that safe path (as far as a
+     * straight safe line reaches, so we actually run) and re-evaluate every loop so the kite tracks the
+     * tornadoes as they chase. Light hysteresis keeps the current target unless a tornado has closed back
+     * in, the target became unreachable, or a clearly-better tile opened up. Must run on the client thread.
+     *
+     * @return true if a dodge move was issued this loop (caller skips gear/attack)
+     */
+    private boolean handleTornadoDodge() {
+        if (now - timeTornadoDodge < CD_TORNADO_DODGE) {
+            return dodgeActive && Rs2Player.isMoving();
+        }
+        timeTornadoDodge = now;
+
+        boolean result = Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            Player local = Microbot.getClient().getLocalPlayer();
+            if (local == null || hunllef == null) { clearDodge(); setDodgeLog("IDLE", "no player/boss"); return false; }
+            LocalPoint playerLp = local.getLocalLocation();
+            LocalPoint bossLp = hunllef.getLocalLocation();
+            if (playerLp == null || bossLp == null) { clearDodge(); setDodgeLog("IDLE", "no local point"); return false; }
+
+            computeArenaBounds();
+            if (!arenaBoundsKnown) { tornadoThreat = false; setDodgeLog("WAIT", "arena bounds unknown"); return false; }
+
+            List<int[]> tornadoes = tornadoSceneCoords();
+            if (tornadoes.isEmpty()) { clearDodge(); setDodgeLog("CLEAR", "no tornadoes"); return false; }
+
+            int px = playerLp.getSceneX(), py = playerLp.getSceneY();
+            int bossX = bossLp.getSceneX(), bossY = bossLp.getSceneY();
+
+            int nearest = minTornadoDistance(px, py, tornadoes);
+            boolean tornadoClose = nearest <= TORNADO_TRIGGER_DIST;
+            // While a tornado is within trigger range we're kiting — suppress attacks (checkAttack) so we
+            // don't path toward the Hunllef and get dragged back into the tornadoes.
+            tornadoThreat = tornadoClose;
+            String base = "p=(" + px + "," + py + ") moving=" + Rs2Player.isMoving()
+                    + " near=" + nearest + " close=" + tornadoClose + " torn=" + formatTornadoes(tornadoes);
+
+            int plane = Microbot.getClient().getPlane();
+            Tile[][] tiles = Microbot.getClient().getScene().getTiles()[plane];
+            boolean onUnsafeTile = !isStandableSafe(tiles, px, py, bossX, bossY);
+
+            // "Wait until at least one is close" — don't start kiting until a tornado reaches us. BUT if a
+            // damaging tile has appeared under us, fall through and move off it even with no tornado near.
+            if (!dodgeActive && !tornadoClose && !onUnsafeTile) {
+                setDodgeLog("WAIT", base + " act=WAIT");
+                return false;
+            }
+
+            dodgeActive = true;
+
+            // Weave an attack into the kite: if our weapon is off cooldown and the boss is in ranged/magic
+            // range (so clicking it shoots rather than walks), fire this tick, then resume running next tick.
+            // Only for bow/staff — meleeing would path us into the boss, which we never want mid-tornado.
+            boolean canWeave = (now - timeAttack >= WEAPON_SPEED_MS)
+                    && nearest > ATTACK_SUPPRESS_TORNADO_DIST // a tornado is too close — focus purely on the dodge
+                    && !isAttackingBoss() // already attacking — let the auto-attack continue, keep kiting
+                    && (isBowEquipped() || isStaffEquipped())
+                    && Math.max(Math.abs(px - bossX), Math.abs(py - bossY)) <= ATTACK_WEAVE_RANGE;
+
+            // Commit to a destination and keep running to it UNTIL: we've arrived, the arena's unsafe
+            // (damaging) tiles change, or the Hunllef steps onto our straight-line route. This avoids
+            // re-targeting every tick as the tornadoes jitter — the end position stays fixed per the run.
+            long hazard = hazardSnapshot(tiles);
+            boolean reached = dodgeTargetSet && px == dodgeTargetX && py == dodgeTargetY;
+            boolean hazardsChanged = dodgeTargetSet && hazard != lastHazardSnapshot;
+            boolean routeBlocked = dodgeTargetSet
+                    && !lineIsSafe(tiles, px, py, dodgeTargetX, dodgeTargetY, bossX, bossY);
+
+            if (dodgeTargetSet && !reached && !hazardsChanged && !routeBlocked) {
+                // Fit an attack in mid-run if off cooldown; next tick the stalled-walk check below resumes
+                // the run to the (still-committed) destination.
+                if (canWeave) {
+                    hunllef.click("attack");
+                    timeAttack = now;
+                    setDodgeLog("ATK:" + dodgeTargetX + "," + dodgeTargetY,
+                            base + " target=(" + dodgeTargetX + "," + dodgeTargetY + ") act=ATTACK-WEAVE");
+                    return true;
+                }
+                // Still en route to the committed destination — only re-issue the click if we've stalled.
+                if (!Rs2Player.isMoving()) {
+                    Rs2Walker.walkFastLocal(LocalPoint.fromScene(dodgeTargetX, dodgeTargetY));
+                }
+                setDodgeLog("RUN:" + dodgeTargetX + "," + dodgeTargetY,
+                        base + " target=(" + dodgeTargetX + "," + dodgeTargetY + ") act=RUN");
+                return true;
+            }
+
+            // (Re)calculate the destination. If we just arrived and no tornado is within trigger, re-attack
+            // the Hunllef (the run broke our interaction) before parking.
+            if (reached && dodgeEnRoute && !tornadoClose) {
+                attackNeeded.set(true);
+            }
+            dodgeEnRoute = false;
+
+            // Furthest-from-tornado tile reachable in a straight line over only safe tiles. Exclude our own
+            // tile while a tornado is close so we always move rather than camp it.
+            int[] best = chooseFurthestLineTile(tiles, px, py, bossX, bossY, tornadoes, tornadoClose);
+            if (best == null) {
+                // No safe straight line to flee along (boxed in). Do NOT attack (would path toward the boss);
+                // hold and re-evaluate next tick as the tornadoes drift.
+                setDodgeLog("STUCK", base + " act=STUCK-hold");
+                return true;
+            }
+
+            lastHazardSnapshot = hazard;
+            dodgeTargetX = best[0];
+            dodgeTargetY = best[1];
+            dodgeTargetSet = true;
+
+            int targetScore = minTornadoDistance(best[0], best[1], tornadoes);
+            String why = reached ? "reached" : hazardsChanged ? "hazard" : routeBlocked ? "blocked" : "new";
+            String tgt = " target=(" + best[0] + "," + best[1] + ") tScore=" + targetScore + " why=" + why;
+
+            // Already standing on the chosen tile and safe -> park and let the fight loop attack.
+            if (px == best[0] && py == best[1]) {
+                setDodgeLog("PARK:" + best[0] + "," + best[1], base + tgt + " act=PARK");
+                return false;
+            }
+
+            // Fit an attack in before committing to the new run if off cooldown; the run resumes next tick.
+            if (canWeave) {
+                hunllef.click("attack");
+                timeAttack = now;
+                setDodgeLog("ATK:" + best[0] + "," + best[1], base + tgt + " act=ATTACK-WEAVE");
+                return true;
+            }
+
+            // The entire straight line to best is safe, so commit: walk directly to it (full run distance).
+            dodgeEnRoute = true;
+            Rs2Walker.walkFastLocal(LocalPoint.fromScene(best[0], best[1]));
+            setDodgeLog("MOVE:" + best[0] + "," + best[1], base + tgt + " act=MOVE");
+            return true;
+        }).orElse(false);
+
+        emitDodgeLog();
+        return result;
+    }
+
+    /** Stash a dodge diagnostic (called on the client thread); emitDodgeLog() logs it on the script thread. */
+    private void setDodgeLog(String key, String msg) {
+        dodgeLogKey = key;
+        dodgeDebug = "[Dodge] " + msg;
+    }
+
+    /** Emit the stashed dodge log (script thread). Logs on every action/target change, else every CD_DODGE_LOG. */
+    private void emitDodgeLog() {
+        if (dodgeDebug == null) return;
+        boolean keyChanged = dodgeLogKey != null && !dodgeLogKey.equals(lastDodgeLogKey);
+        if (keyChanged || now - timeDodgeLog > CD_DODGE_LOG) {
+            logVerbose(dodgeDebug);
+            timeDodgeLog = now;
+            lastDodgeLogKey = dodgeLogKey;
+        }
+        dodgeDebug = null;
+        dodgeLogKey = null;
+    }
+
+    private String formatTornadoes(List<int[]> tornadoes) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < tornadoes.size(); i++) {
+            if (i > 0) sb.append(" ");
+            sb.append("(").append(tornadoes.get(i)[0]).append(",").append(tornadoes.get(i)[1]).append(")");
+        }
+        return sb.append("]").toString();
+    }
+
+    /** Live scene coords of every tornado in range (queried fresh — the throttled list lags the kite). */
+    private List<int[]> tornadoSceneCoords() {
+        List<int[]> coords = new ArrayList<>();
+        List<Rs2NpcModel> list = Microbot.getRs2NpcCache().query()
+                .where(npc -> TORNADO_IDS.contains(npc.getId())).within(50).toList();
+        for (Rs2NpcModel t : list) {
+            if (t == null) continue;
+            LocalPoint lp = t.getLocalLocation();
+            if (lp != null) coords.add(new int[]{lp.getSceneX(), lp.getSceneY()});
+        }
+        return coords;
+    }
+
+    /** Minimum Chebyshev (tile) distance from a scene tile to the nearest tornado. */
+    private int minTornadoDistance(int x, int y, List<int[]> tornadoes) {
+        int min = Integer.MAX_VALUE;
+        for (int[] t : tornadoes) {
+            min = Math.min(min, Math.max(Math.abs(x - t[0]), Math.abs(y - t[1])));
+        }
+        return min;
+    }
+
+    /**
+     * A scene tile we may stand on / path through: inside the arena, on arena floor, not a damaging
+     * ground/game object, and not under the Hunllef footprint. Must run on the client thread.
+     */
+    private boolean isStandableSafe(Tile[][] tiles, int x, int y, int bossX, int bossY) {
+        if (!inArena(x, y)) return false;
+        if (x < 0 || y < 0 || x >= tiles.length || y >= tiles[x].length) return false;
+        Tile tile = tiles[x][y];
+        if (tile == null) return false;
+        GroundObject ground = tile.getGroundObject();
+        if (ground == null || !FLOOR_TILES.contains(ground.getId())) return false;
+        if (DANGEROUS_TILES.contains(ground.getId())) return false;
+        GameObject[] gameObjects = tile.getGameObjects();
+        if (gameObjects != null) {
+            for (GameObject go : gameObjects) {
+                if (go != null && DANGEROUS_TILES.contains(go.getId())) return false;
+            }
+        }
+        // Margin of 1 past the footprint: the ring immediately outside the Hunllef is still within melee
+        // range, so keep dodge targets AND straight-line routes a tile clear of it or we run under the boss.
+        return !isUnderBoss(x, y, bossX, bossY, DODGE_BOSS_MARGIN);
+    }
+
+    /**
+     * The tile FURTHEST from the nearest tornado that the player can reach in a straight line crossing
+     * only safe tiles (arena floor, no damaging tiles, not under the Hunllef) — so we commit to the long
+     * clear run across the room instead of short hops. Tie-breaks: prefer the more central/open tile (off
+     * the walls), then the longer run. {@code excludeCurrent} drops the player's own tile so a close
+     * tornado always forces a move. Must run on the client thread.
+     */
+    private int[] chooseFurthestLineTile(Tile[][] tiles, int px, int py, int bossX, int bossY,
+                                         List<int[]> tornadoes, boolean excludeCurrent) {
+        int[] best = null;
+        int bestDist = -1, bestEdge = -1, bestTravel = -1;
+        for (int x = arenaMinX; x <= arenaMaxX; x++) {
+            for (int y = arenaMinY; y <= arenaMaxY; y++) {
+                if (excludeCurrent && x == px && y == py) continue;
+                // The tile itself must be safe. lineIsSafe() short-circuits a zero-length line (our own
+                // tile) as "safe", so without this we'd re-pick the current tile after it turned dangerous.
+                if (!isStandableSafe(tiles, x, y, bossX, bossY)) continue;
+                if (!lineIsSafe(tiles, px, py, x, y, bossX, bossY)) continue; // only straight, clear runs
+                int dist = minTornadoDistance(x, y, tornadoes);
+                int edge = Math.min(Math.min(x - arenaMinX, arenaMaxX - x),
+                                    Math.min(y - arenaMinY, arenaMaxY - y));
+                int travel = Math.max(Math.abs(x - px), Math.abs(y - py));
+                boolean better = dist > bestDist
+                        || (dist == bestDist && edge > bestEdge)
+                        || (dist == bestDist && edge == bestEdge && travel > bestTravel);
+                if (better) {
+                    bestDist = dist;
+                    bestEdge = edge;
+                    bestTravel = travel;
+                    best = new int[]{x, y};
+                }
+            }
+        }
+        return best;
+    }
+
+    /** True if every tile stepped through from (x0,y0) to (x1,y1) is safe to stand on (endpoint included). */
+    private boolean lineIsSafe(Tile[][] tiles, int x0, int y0, int x1, int y1, int bossX, int bossY) {
+        int dx = x1 - x0, dy = y1 - y0;
+        int steps = Math.max(Math.abs(dx), Math.abs(dy));
+        if (steps == 0) return true;
+        for (int i = 1; i <= steps; i++) {
+            int x = x0 + (int) Math.round((double) dx * i / steps);
+            int y = y0 + (int) Math.round((double) dy * i / steps);
+            if (!isStandableSafe(tiles, x, y, bossX, bossY)) return false;
+        }
+        return true;
+    }
+
+    private void clearDodge() {
+        dodgeActive = false;
+        dodgeTargetSet = false;
+        dodgeEnRoute = false;
+        tornadoThreat = false;
+        dodgeTargetX = -1;
+        dodgeTargetY = -1;
+        lastHazardSnapshot = 0;
+    }
+
+    /** True if the scene tile carries a damaging ground/game object (an "unsafe" tile). */
+    private boolean isDangerousTile(Tile[][] tiles, int x, int y) {
+        if (x < 0 || y < 0 || x >= tiles.length || y >= tiles[x].length) return false;
+        Tile tile = tiles[x][y];
+        if (tile == null) return false;
+        GroundObject ground = tile.getGroundObject();
+        if (ground != null && DANGEROUS_TILES.contains(ground.getId())) return true;
+        GameObject[] gameObjects = tile.getGameObjects();
+        if (gameObjects != null) {
+            for (GameObject go : gameObjects) {
+                if (go != null && DANGEROUS_TILES.contains(go.getId())) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Order-independent hash of the damaging tiles inside the arena. Changes when a damaging tile appears
+     * or clears, which triggers a dodge re-calculation. Deliberately excludes the Hunllef footprint (it
+     * moves every tick — the committed route's own line-of-sight check handles the boss stepping onto it).
+     */
+    private long hazardSnapshot(Tile[][] tiles) {
+        long h = 1469598103934665603L; // FNV-1a basis
+        for (int x = arenaMinX; x <= arenaMaxX; x++) {
+            for (int y = arenaMinY; y <= arenaMaxY; y++) {
+                if (isDangerousTile(tiles, x, y)) {
+                    h = (h ^ ((long) x * 131 + y)) * 1099511628211L;
+                }
+            }
+        }
+        return h;
+    }
+
+    /**
+     * Reacts to a live config change (wired from the plugin's ConfigChanged subscriber). Config is read
+     * live each loop, so most options adapt on their own; this just drops any in-progress tornado kite
+     * the instant dodging is switched off.
+     */
+    public void onConfigChanged(String key, String newValue) {
+        // Runs on the client thread (ConfigChanged is posted there) — do NOT log here: Microbot.log on
+        // the client thread can deadlock via the GameChatAppender. Just flip transient state.
+        if ("dodgeTornadoes".equals(key) && "false".equalsIgnoreCase(newValue)) {
+            clearDodge();
+        }
     }
 
     /** True if the scene tile carries the safe floor ground object. Must run on the client thread. */
@@ -369,45 +779,69 @@ public class CustomGauntletScript extends Script {
         Tile tile = Microbot.getClient().getScene().getTiles()[plane][sceneX][sceneY];
         if (tile == null) return false;
         GroundObject ground = tile.getGroundObject();
-        return ground != null && ground.getId() == SAFE_TILE_GROUND_ID;
+        return ground != null && FLOOR_TILES.contains(ground.getId());
     }
 
     /**
-     * Derives the 12x12 arena from the 4 barriers (id {@link #BARRIER_ID}) that sit just outside it:
-     * the arena is their scene bounding box shrunk by one tile on every side. Cached once per fight
-     * since the barriers never move. Must run on the client thread.
+     * True if the tile carries an arena-barrier object of any type. The normal barrier (37339) is a
+     * GameObject, but the Corrupted one is a GroundObject — so we must check every object layer, not just
+     * getGameObjects().
+     */
+    private boolean tileHasBarrier(Tile tile) {
+        if (tile == null) return false;
+        GameObject[] gameObjects = tile.getGameObjects();
+        if (gameObjects != null) {
+            for (GameObject go : gameObjects) {
+                if (go != null && BARRIER_IDS.contains(go.getId())) return true;
+            }
+        }
+        GroundObject ground = tile.getGroundObject();
+        if (ground != null && BARRIER_IDS.contains(ground.getId())) return true;
+        WallObject wall = tile.getWallObject();
+        if (wall != null && BARRIER_IDS.contains(wall.getId())) return true;
+        DecorativeObject deco = tile.getDecorativeObject();
+        return deco != null && BARRIER_IDS.contains(deco.getId());
+    }
+
+    /**
+     * Derives the 12x12 arena from the 4 barriers ({@link #BARRIER_IDS}) that sit just outside it:
+     * the arena is their scene bounding box shrunk by one tile on every side. Recomputed live each call
+     * (not cached) and anchored to the Hunllef, because 37339 is a generic maze barrier scattered across
+     * the whole gauntlet — after roaming to gather resources the scene holds other 37339s that would
+     * otherwise pollute the bounds. Must run on the client thread.
      */
     private void computeArenaBounds() {
+        arenaBoundsKnown = false;
+        if (hunllef == null) return; // the Hunllef is our anchor for which barriers belong to this arena
+        LocalPoint bossLp = hunllef.getLocalLocation();
+        if (bossLp == null) return;
+        int bossX = bossLp.getSceneX(), bossY = bossLp.getSceneY();
+
         int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
         int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
-        int found = 0;
+        int found = 0, total = 0;
         for (Tile tile : Rs2GameObject.getTiles()) {
-            GameObject[] gameObjects = tile.getGameObjects();
-            if (gameObjects == null) continue;
-            boolean barrier = false;
-            for (GameObject go : gameObjects) {
-                if (go != null && go.getId() == BARRIER_ID) {
-                    barrier = true;
-                    break;
-                }
-            }
-            if (!barrier) continue;
+            if (!tileHasBarrier(tile)) continue;
+            total++;
             LocalPoint lp = tile.getLocalLocation();
             if (lp == null) continue;
             int sx = lp.getSceneX(), sy = lp.getSceneY();
+            // Ignore maze barriers elsewhere in the instance — only the ones around this arena count.
+            if (Math.max(Math.abs(sx - bossX), Math.abs(sy - bossY)) > ARENA_BARRIER_RADIUS) continue;
             minX = Math.min(minX, sx);
             maxX = Math.max(maxX, sx);
             minY = Math.min(minY, sy);
             maxY = Math.max(maxY, sy);
             found++;
         }
-        if (found < 4) return; // need all 4 barriers loaded before we trust the bounds
+        barriersTotal = total;
+        barriersNear = found;
+        if (found < 4) return; // need all 4 arena barriers before we trust the bounds
         arenaMinX = minX + 1;
         arenaMaxX = maxX - 1;
         arenaMinY = minY + 1;
         arenaMaxY = maxY - 1;
         arenaBoundsKnown = true;
-        logVerbose("Arena bounds scene x[" + arenaMinX + "," + arenaMaxX + "] y[" + arenaMinY + "," + arenaMaxY + "]");
     }
 
     /** True if the scene tile lies within the derived arena bounds. */
@@ -420,13 +854,20 @@ public class CustomGauntletScript extends Script {
     public void checkNpc() {
         Microbot.log("Check NPC for hunleff");
         timeNpc = now;
-        tornado = Microbot.getRs2NpcCache().query().where(npc -> TORNADO_IDS.contains(npc.getId())).nearestOnClientThread();
-        hunllef = Microbot.getRs2NpcCache().query().where(npc -> HUNLLEF_IDS.contains(npc.getId())).nearestOnClientThread();
+        tornado = Microbot.getRs2NpcCache().query().where(npc -> TORNADO_IDS.contains(npc.getId())).within(50).toListOnClientThread();
+        hunllef = Microbot.getRs2NpcCache().query().where(npc -> HUNLLEF_IDS.contains(npc.getId())).within(50).nearestOnClientThread();
+
+        // A Hunllef farther than the arena can possibly be is a stale/other-instance reference, not the
+        // boss we are fighting. Drop it so the fight ends instead of us clinging to the old arena.
+        if (hunllef != null && tileDistanceToPlayer(hunllef) > HUNLLEF_PRESENCE_RANGE) {
+            hunllef = null;
+        }
 
         if (hunllef == null && ghState == State.FIGHTING) {
             ghState = State.IDLE;
             Rs2Prayer.disableAllPrayers();
             nextPrayer = null;
+            clearDodge();
             return;
         } else {
             ghState = State.FIGHTING;
@@ -481,8 +922,10 @@ public class CustomGauntletScript extends Script {
 
     private void checkWeapon() {
         if (bossHeadIcon == null) return;
-        if (Rs2Player.isMoving()) return; // don't swap gear mid-dodge; it interferes with pathing
-        if (tornado != null) return; // don't swap gear while tornados are active; keep pathing free
+        // Deliberately NOT gated on movement or tornadoes: wielding a weapon doesn't interrupt running,
+        // so swapping while moving is safe and is required to keep DPS up (and to attack the Hunllef
+        // on the move — crucial for Corrupted). The Hunllef's prayer can flip at any time, so we must
+        // always be able to switch to the counter-weapon regardless of what the player is doing.
         if (bossHeadIcon == HeadIcon.MELEE) {
             handleMeleeHeadIcon();
         }
@@ -659,37 +1102,28 @@ public class CustomGauntletScript extends Script {
         }
     }
 
-    //------------------------------------------------------------------------------------------------------------------
-    //---Stats
-
-    private void checkVitalsStart() {
-        int hp = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
-        if (hp > STAT_HP) {
-            hpWentUp = true;
-        }
-        int pray = Microbot.getClient().getBoostedSkillLevel(Skill.PRAYER);
-        if (pray > STAT_PRAYER) {
-            prayWentUp = true;
-        }
-
-    }
-
     private void checkFood() {
         int currentHp = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
         int maxHp = Microbot.getClient().getRealSkillLevel(Skill.HITPOINTS);
         int missingHp = maxHp - currentHp;
         if (currentHp <= 0) return;
-        if (missingHp < (PADDLEFISH_HEAL_VALUE - config.eatOverhealValue())) return;
-        if (config.eatFoodChain()) {
-            eatFood();
-        } //Continue eating once started
+
+        // Emergency eat: below the configured low-HP value, always eat regardless of tornadoes/movement.
         if (currentHp < config.lowHpEatValue()) {
             eatFood();
-        }
-        if (config.tornadoCheck() && (tornado == null)) {
             return;
         }
-        if (config.eatFoodMoving() && Rs2Player.isMoving()) {
+
+        // --- Top-up eating below here ---
+        // Never waste food: only top up once a paddlefish won't overheal past the allowance.
+        if (missingHp < (PADDLEFISH_HEAL_VALUE - config.eatOverhealValue())) return;
+        // Gate top-up eating to tornado phases when "Only if Tornados Active" is enabled. (This gate used
+        // to sit AFTER the chain-eat, so it ate at ~20 below max even with no tornadoes — the bug.)
+        if (config.tornadoCheck() && (tornado == null || tornado.isEmpty())) return;
+        // With "Eat if Moving" on, top up only while moving (eat-on-the-run); "Always chain eat" also
+        // lets a started top-up finish while stationary.
+        boolean movingEat = config.eatFoodMoving() && Rs2Player.isMoving();
+        if (movingEat || config.eatFoodChain()) {
             eatFood();
         }
     }
@@ -700,7 +1134,9 @@ public class CustomGauntletScript extends Script {
         Rs2Inventory.interact("Paddlefish", "Eat");
         logVerbose("Eat attempted");
         timeEatAttempted = now;
-        if (!Rs2Player.isMoving()) {
+        // Don't queue an attack off the back of eating while kiting — it would path us toward the boss
+        // and into the tornadoes (the re-attack is handled by the dodge when it parks on a safe tile).
+        if (!Rs2Player.isMoving() && !tornadoThreat) {
             attackNeeded.set(true);
         }
     }
@@ -715,17 +1151,28 @@ public class CustomGauntletScript extends Script {
         }
     }
 
+    /** True if the player is already attacking (interacting with) the Hunllef. */
+    private boolean isAttackingBoss() {
+        if (hunllef == null) return false;
+        Actor interacting = Rs2Player.getInteracting();
+        return interacting instanceof NPC && ((NPC) interacting).getIndex() == hunllef.getIndex();
+    }
+
     private void checkAttack() {
         if (!config.autoAttack()) return;
         if (hunllef == null) return;
+        if (tornadoThreat) return; // kiting a tornado — the dodge weaves attacks in instead
         if (Rs2Player.isMoving()) return;
-        if (tornado != null) return; // hold attacks while tornados are active so the re-attack flag survives for when they clear
-        if (attackNeeded.compareAndSet(true, false)) {
-            if (now - timeEatAttempted > (CD_EAT * 3)) {
-                logVerbose("Attempting attack");
-                hunllef.click("attack");
-                timeAttack = now;
-            }
+        if (isAttackingBoss()) return; // already attacking it — the client auto-continues, don't re-click
+        // Attack when we're explicitly flagged (weapon swap / dodge arrival) OR the weapon is off cooldown.
+        // The time-based path keeps DPS up on its own: once we click, the client auto-attacks the boss until
+        // we move (to dodge), and this re-initiates it each weapon cycle after a move. (Previously this only
+        // ever fired WHILE tornadoes were up, so between phases we just stood there not attacking.)
+        boolean offCooldown = now - timeAttack >= WEAPON_SPEED_MS;
+        if (attackNeeded.compareAndSet(true, false) || offCooldown) {
+            logVerbose("Attempting attack");
+            hunllef.click("attack");
+            timeAttack = now;
         }
     }
 
@@ -755,6 +1202,4 @@ public class CustomGauntletScript extends Script {
         Rs2Prayer.disableAllPrayers();
         Rs2Walker.setTarget(null);
     }
-
-
 } // End of Script

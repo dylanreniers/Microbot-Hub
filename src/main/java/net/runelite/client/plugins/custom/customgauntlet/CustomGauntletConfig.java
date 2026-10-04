@@ -190,6 +190,18 @@ public interface CustomGauntletConfig extends Config {
         return false;
     }
 
+    @ConfigItem(
+            keyName = "dodgeTornadoes",
+            name = "Dodge tornadoes",
+            description = "When tornadoes are active, kite to the reachable safe tile that is furthest from them "
+                    + "(never crossing damaging tiles or the Hunllef). Takes effect immediately when toggled.",
+            position = 4,
+            section = "featureSection"
+    )
+    default boolean dodgeTornadoes() {
+        return false;
+    }
+
 
 
     @ConfigItem(
