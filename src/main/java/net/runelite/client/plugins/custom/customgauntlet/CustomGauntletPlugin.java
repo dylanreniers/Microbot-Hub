@@ -55,7 +55,7 @@ import static net.runelite.client.plugins.microbot.Microbot.log;
 )
 @UnderDevelopment
 public class CustomGauntletPlugin extends Plugin {
-    public static final String version = "1.1.1";
+    public static final String version = "1.1.4";
 
     private static final int RANGE_PROJECTILE_MINIBOSS = 1705;
     private static final int MAGE_PROJECTILE_MINIBOSS = 1701;
@@ -84,6 +84,8 @@ public class CustomGauntletPlugin extends Plugin {
     @Inject
     private CustomGauntletOverlay overlay;
     @Inject
+    private CustomGauntletSceneOverlay sceneOverlay;
+    @Inject
     private CustomGauntletConfig config;
     @Provides
     CustomGauntletConfig provideConfig(ConfigManager configManager) {
@@ -106,6 +108,7 @@ public class CustomGauntletPlugin extends Plugin {
         script.run();
         if (overlayManager != null) {
             overlayManager.add(overlay);
+            overlayManager.add(sceneOverlay);
         }
     }
 
@@ -116,6 +119,7 @@ public class CustomGauntletPlugin extends Plugin {
             if (script != null) script.shutdown();
         } finally {
             overlayManager.remove(overlay);
+            overlayManager.remove(sceneOverlay);
         }
     }
 

@@ -56,10 +56,16 @@ public class CustomGauntletScript extends Script {
     // to a run — which gets it caught by the tornadoes.
     private static final int CD_TORNADO_DODGE = 600;
     private static final int CD_DODGE_LOG = 400;        // steady-state dodge log cadence (ms); transitions log instantly
-    private static final int DODGE_BOSS_MARGIN = 1;     // keep dodge tiles/routes this many tiles clear of the Hunllef (melee range)
+    private static final int DODGE_BOSS_MARGIN = 0;     // extra ring to keep clear of the Hunllef beyond its footprint (0 = stand right next to it for max dodge room; raise to 1 if it melees us)
     private static final int WEAPON_SPEED_MS = 3000;    // Gauntlet weapon speed: 5 ticks
     private static final int ATTACK_WEAVE_RANGE = 9;    // only weave an attack mid-dodge if the boss is this close (so we shoot, not walk)
     private static final int ATTACK_SUPPRESS_TORNADO_DIST = 3; // don't weave an attack if a tornado is this close — focus on the dodge
+    private static final int SCENE_SIZE = 104;          // RuneLite scene is 104x104 tiles (for the BFS escape)
+    private static final int MAINTAIN_GAP = 6;          // keep moving while any tornado is within this; attack only once the gap is clear
+    // --- Rim-running (circle the perimeter in a committed direction, like manual play) ---
+    private static final int RIM_LOOKAHEAD = 5;         // tiles ahead along the rim we target per commit (a run, not a teleport)
+    private static final int MIN_TARGET_CLEARANCE = 2;  // never pick a waypoint this close to a tornado
+    private static final int FLIP_HYSTERESIS = 2;       // only reverse circling direction if the other way is this much safer (stops thrashing)
 
     private static final int HUNLLEF_RADIUS = 2; // 5x5 footprint -> 2 tiles from its centre to each edge
     // Barrier objects enclosing the Hunllef arena (4 of them). The id differs between normal and
@@ -144,17 +150,37 @@ public class CustomGauntletScript extends Script {
     private long timeTornadoDodge = -1;
     private long magicBlastEnd = -1;
 
-    // Tornado dodge state: the safe tile we're currently kiting to (scene coords).
+    // Tornado dodge state.
     private boolean dodgeActive = false;
-    private boolean dodgeTargetSet = false;
-    private boolean dodgeEnRoute = false; // true while walking to the target; drives the re-attack on arrival
+    // Committed circling direction for rim-running: +1 = CCW, -1 = CW, 0 = uncommitted (pick on next dodge).
+    // Persisting it across ticks is what stops the greedy per-tick oscillation that got us caught.
+    private int dodgeRotation = 0;
+    // True on loop iterations where the dodge just issued a walk/attack click. Eating/drinking share the
+    // same synthetic-click pipeline, so clicking food in the SAME iteration clobbers the pending walk and
+    // we stutter one tile — gate eat/drink on this so they only fire on the ~2 free iterations per tick.
+    private volatile boolean dodgeClickedThisLoop = false;
     // True while a tornado is within trigger range (we're actively kiting). Suppresses attacking, which
     // would otherwise path us toward the Hunllef and drag us back into the tornadoes.
     private volatile boolean tornadoThreat = false;
-    private int dodgeTargetX = -1, dodgeTargetY = -1;
-    private long lastHazardSnapshot = 0; // hash of the arena's damaging tiles when the destination was picked
     private int barriersTotal = -1; // barrier tiles matched anywhere in the scene (diagnostic)
     private int barriersNear = -1;  // barrier tiles within ARENA_BARRIER_RADIUS of the Hunllef (diagnostic)
+    // The safe tile we're currently dodging toward, in scene coords, for the overlay marker (-1 = none).
+    // Static so the overlay reads the live value regardless of Guice instance scoping (same pattern as ghState).
+    private static volatile int renderTargetX = -1, renderTargetY = -1;
+
+    /** Current dodge destination in scene coords for the overlay, or null when not dodging anywhere. */
+    public static int[] getDodgeRenderTarget() {
+        return renderTargetX < 0 ? null : new int[]{renderTargetX, renderTargetY};
+    }
+
+    // Arena tiles the dodge considers UNSAFE, packed as (sceneX << 8 | sceneY), for the overlay to draw.
+    // Rebuilt each dodge evaluation on the client thread; static so the overlay reads it directly.
+    private static volatile int[] unsafeTiles = new int[0];
+
+    /** Packed (sceneX<<8|sceneY) unsafe arena tiles for the overlay. */
+    public static int[] getUnsafeTiles() {
+        return unsafeTiles;
+    }
     // Dodge diagnostics: built on the client thread inside handleTornadoDodge, emitted on the script
     // thread by emitDodgeLog() (logging on the client thread can deadlock via the GameChatAppender).
     private String dodgeDebug = null;
@@ -229,7 +255,6 @@ public class CustomGauntletScript extends Script {
                         if (now - magicBlastEnd < BUFFER_MAGICBLAST)
                             checkProtectPrayers(); //turbo check after magic blast happens
                         if (now - timePrayOffence > CD_PRAYOFFENCE) checkAttackPrayers();
-                        if (now - timeSteel > CD_STEEL) checkSteelSkin();
                         if ((now - timePrayProtect < CD_RECENTLY) || (now - timePrayOffence < CD_RECENTLY) || (now - timeSteel < CD_RECENTLY))
                             break; //Prayers changed, return simulates small sleep
 
@@ -240,12 +265,22 @@ public class CustomGauntletScript extends Script {
                         boolean dodging = config.dodgeTornadoes() && tornado != null && !tornado.isEmpty()
                                 && handleTornadoDodge();
 
-                        if (now - timeEatAttempted > CD_EAT) checkFood();
-                        if (now - timeDrink > CD_DRINK) checkPrayerPotions(); //Non-Blocking
+                        // Eating/drinking share the dodge's synthetic-click pipeline: issuing a food click in
+                        // the same iteration as a fresh walk click clobbers the walk and we stutter one tile.
+                        // The dodge only walks once per ~600ms tick, so skip eat/drink only on that iteration;
+                        // the other ~2 loops per tick still eat/drink on the run.
+                        if (!dodgeClickedThisLoop) {
+                            if (now - timeEatAttempted > CD_EAT) checkFood();
+                            if (now - timeDrink > CD_DRINK) checkPrayerPotions(); //Non-Blocking
+                        }
 
                         if (dodging) break; //kited (and ate/prayed on the run) this tick; skip gear/attack
 
-                        if (config.runToSafespot() && (tornado == null || tornado.isEmpty()) && handleSafespot())
+                        // When no tornado is up the dodge is dormant, so this is our only line of defence
+                        // against a damage field. handleSafespot ALWAYS flees a damaging tile (standing in
+                        // fire is fatal regardless of the runToSafespot opt-out); it only does optional
+                        // repositioning when runToSafespot is enabled.
+                        if ((tornado == null || tornado.isEmpty()) && handleSafespot())
                             break; //running to safety takes priority over gear/attack this loop
 
                         if (now - timeWeapon > CD_WEAPON) checkWeapon();
@@ -411,8 +446,15 @@ public class CustomGauntletScript extends Script {
             int bossX = bossLp.getSceneX(), bossY = bossLp.getSceneY();
             int playerX = playerLp.getSceneX(), playerY = playerLp.getSceneY();
 
-            // already safe: inside the arena, on a floor tile and clear of the footprint
-            if (inArena(playerX, playerY) && isSafeFloor(playerX, playerY)
+            // Standing in a damage field is always fatal, so flee it regardless of the runToSafespot opt-out.
+            // When NOT in fire, only do the optional repositioning for users who enabled safespotting.
+            boolean onDanger = isOnDangerousTile(playerX, playerY);
+            if (!onDanger && !config.runToSafespot()) {
+                return false;
+            }
+
+            // already safe: inside the arena, on a (non-damaging) floor tile and clear of the footprint
+            if (inArena(playerX, playerY) && isSafeFloor(playerX, playerY) && !onDanger
                     && !isUnderBoss(playerX, playerY, bossX, bossY, 0)) {
                 return false;
             }
@@ -466,9 +508,11 @@ public class CustomGauntletScript extends Script {
      */
     private boolean handleTornadoDodge() {
         if (now - timeTornadoDodge < CD_TORNADO_DODGE) {
+            dodgeClickedThisLoop = false; // between dodge ticks — no fresh click, so eating is safe this loop
             return dodgeActive && Rs2Player.isMoving();
         }
         timeTornadoDodge = now;
+        dodgeClickedThisLoop = false; // set true below only where we actually issue a walk/attack click
 
         boolean result = Microbot.getClientThread().runOnClientThreadOptional(() -> {
             Player local = Microbot.getClient().getLocalPlayer();
@@ -478,7 +522,7 @@ public class CustomGauntletScript extends Script {
             if (playerLp == null || bossLp == null) { clearDodge(); setDodgeLog("IDLE", "no local point"); return false; }
 
             computeArenaBounds();
-            if (!arenaBoundsKnown) { tornadoThreat = false; setDodgeLog("WAIT", "arena bounds unknown"); return false; }
+            if (!arenaBoundsKnown) { tornadoThreat = false; renderTargetX = -1; setDodgeLog("WAIT", "arena bounds unknown"); return false; }
 
             List<int[]> tornadoes = tornadoSceneCoords();
             if (tornadoes.isEmpty()) { clearDodge(); setDodgeLog("CLEAR", "no tornadoes"); return false; }
@@ -497,14 +541,17 @@ public class CustomGauntletScript extends Script {
             int plane = Microbot.getClient().getPlane();
             Tile[][] tiles = Microbot.getClient().getScene().getTiles()[plane];
             boolean onUnsafeTile = !isStandableSafe(tiles, px, py, bossX, bossY);
+            unsafeTiles = buildUnsafeSnapshot(tiles, bossX, bossY); // publish for the overlay
 
-            // "Wait until at least one is close" — don't start kiting until a tornado reaches us. BUT if a
-            // damaging tile has appeared under us, fall through and move off it even with no tornado near.
-            if (!dodgeActive && !tornadoClose && !onUnsafeTile) {
-                setDodgeLog("WAIT", base + " act=WAIT");
+            // Keep a MOVING safety gap: dodge whenever any tornado is within MAINTAIN_GAP, or we're on a
+            // damaging tile. Otherwise the gap is comfortable — stop and let the fight loop attack.
+            boolean needToMove = nearest <= MAINTAIN_GAP || onUnsafeTile;
+            if (!needToMove) {
+                dodgeActive = false;
+                renderTargetX = -1;
+                setDodgeLog("GAP", base + " act=GAP-OK");
                 return false;
             }
-
             dodgeActive = true;
 
             // Weave an attack into the kite: if our weapon is off cooldown and the boss is in ranged/magic
@@ -516,78 +563,86 @@ public class CustomGauntletScript extends Script {
                     && (isBowEquipped() || isStaffEquipped())
                     && Math.max(Math.abs(px - bossX), Math.abs(py - bossY)) <= ATTACK_WEAVE_RANGE;
 
-            // Commit to a destination and keep running to it UNTIL: we've arrived, the arena's unsafe
-            // (damaging) tiles change, or the Hunllef steps onto our straight-line route. This avoids
-            // re-targeting every tick as the tornadoes jitter — the end position stays fixed per the run.
-            long hazard = hazardSnapshot(tiles);
-            boolean reached = dodgeTargetSet && px == dodgeTargetX && py == dodgeTargetY;
-            boolean hazardsChanged = dodgeTargetSet && hazard != lastHazardSnapshot;
-            boolean routeBlocked = dodgeTargetSet
-                    && !lineIsSafe(tiles, px, py, dodgeTargetX, dodgeTargetY, bossX, bossY);
+            // 1) BFS the tiles reachable from the player over SAFE tiles only (floor, not damaging, clear
+            //    of the boss's melee range). This routes AROUND the boss and never through danger.
+            int[][] prev = bfsReachable(tiles, px, py, bossX, bossY, false);
 
-            if (dodgeTargetSet && !reached && !hazardsChanged && !routeBlocked) {
-                // Fit an attack in mid-run if off cooldown; next tick the stalled-walk check below resumes
-                // the run to the (still-committed) destination.
-                if (canWeave) {
-                    hunllef.click("attack");
-                    timeAttack = now;
-                    setDodgeLog("ATK:" + dodgeTargetX + "," + dodgeTargetY,
-                            base + " target=(" + dodgeTargetX + "," + dodgeTargetY + ") act=ATTACK-WEAVE");
+            // Arena centre (scene coords) — the pivot we circle. Rim targets are chosen by angular progress
+            // around this point, not raw distance-from-tornado (which flips side each tick and oscillates).
+            double cx = (arenaMinX + arenaMaxX) / 2.0;
+            double cy = (arenaMinY + arenaMaxY) / 2.0;
+
+            // 2) Rim-running: commit to a rotational direction and keep circling the perimeter so the
+            //    tornadoes trail behind in a line. Pick/flip the direction to run AWAY from the trailing
+            //    tornado; crossing the middle is a fallback, only when both ways round are blocked.
+            int[] targetCCW = chooseRimTarget(prev, px, py, cx, cy, tornadoes, tiles, bossX, bossY, +1);
+            int[] targetCW  = chooseRimTarget(prev, px, py, cx, cy, tornadoes, tiles, bossX, bossY, -1);
+
+            if (dodgeRotation == 0) {
+                dodgeRotation = pickInitialRotation(targetCCW, targetCW, tornadoes);
+            }
+            int[] curTarget = dodgeRotation > 0 ? targetCCW : targetCW;
+            int[] altTarget = dodgeRotation > 0 ? targetCW : targetCCW;
+            // Flip when the committed way is blocked, or the other way is clearly safer (the trailing
+            // tornado has come around in front of us). Hysteresis stops per-tick direction thrashing.
+            if (curTarget == null && altTarget != null) {
+                dodgeRotation = -dodgeRotation;
+            } else if (curTarget != null && altTarget != null
+                    && clearanceOf(altTarget, tornadoes) > clearanceOf(curTarget, tornadoes) + FLIP_HYSTERESIS) {
+                dodgeRotation = -dodgeRotation;
+            }
+            int[] dest = dodgeRotation > 0 ? targetCCW : targetCW;
+
+            if (dest == null) {
+                // Rim blocked both ways — cross the room to the best reachable safe tile anywhere (still
+                // over safe ground). farthestSafeStep keeps the actual walk on safe tiles even if it clips short.
+                dest = chooseBestReachableBfs(prev, px, py, tornadoes, tiles, bossX, bossY);
+            }
+            if (dest == null) {
+                // No safe tile reachable over safe ground — boxed by danger. Punch through the damage ring
+                // to the nearest safe tile (taking a hit or two) rather than standing and tanking it all.
+                int[][] prevD = bfsReachable(tiles, px, py, bossX, bossY, true);
+                int[] escape = chooseBestReachableBfs(prevD, px, py, tornadoes, tiles, bossX, bossY);
+                if (escape == null) {
+                    renderTargetX = -1;
+                    setDodgeLog("STUCK", base + " rot=" + dodgeRotation + " act=STUCK-hold");
                     return true;
                 }
-                // Still en route to the committed destination — only re-issue the click if we've stalled.
-                if (!Rs2Player.isMoving()) {
-                    Rs2Walker.walkFastLocal(LocalPoint.fromScene(dodgeTargetX, dodgeTargetY));
-                }
-                setDodgeLog("RUN:" + dodgeTargetX + "," + dodgeTargetY,
-                        base + " target=(" + dodgeTargetX + "," + dodgeTargetY + ") act=RUN");
+                // Commit a full run STRAIGHT to the safe tile — do NOT straight-line truncate (farthestSafeStep
+                // would stop after 1 tile here, since every tile out of the field is danger), which crawls us
+                // through the fire and gets us killed. We've accepted a hit or two; the client's shortest path
+                // out of the field is the least damage taken.
+                renderTargetX = escape[0];
+                renderTargetY = escape[1];
+                dodgeClickedThisLoop = true;
+                Rs2Walker.walkFastLocal(LocalPoint.fromScene(escape[0], escape[1]));
+                setDodgeLog("ESCAPE:" + escape[0] + "," + escape[1],
+                        base + " escape=(" + escape[0] + "," + escape[1] + ") act=ESCAPE-run");
                 return true;
             }
 
-            // (Re)calculate the destination. If we just arrived and no tornado is within trigger, re-attack
-            // the Hunllef (the run broke our interaction) before parking.
-            if (reached && dodgeEnRoute && !tornadoClose) {
-                attackNeeded.set(true);
-            }
-            dodgeEnRoute = false;
+            renderTargetX = dest[0];
+            renderTargetY = dest[1];
+            int tScore = clearanceOf(dest, tornadoes);
 
-            // Furthest-from-tornado tile reachable in a straight line over only safe tiles. Exclude our own
-            // tile while a tornado is close so we always move rather than camp it.
-            int[] best = chooseFurthestLineTile(tiles, px, py, bossX, bossY, tornadoes, tornadoClose);
-            if (best == null) {
-                // No safe straight line to flee along (boxed in). Do NOT attack (would path toward the boss);
-                // hold and re-evaluate next tick as the tornadoes drift.
-                setDodgeLog("STUCK", base + " act=STUCK-hold");
-                return true;
-            }
-
-            lastHazardSnapshot = hazard;
-            dodgeTargetX = best[0];
-            dodgeTargetY = best[1];
-            dodgeTargetSet = true;
-
-            int targetScore = minTornadoDistance(best[0], best[1], tornadoes);
-            String why = reached ? "reached" : hazardsChanged ? "hazard" : routeBlocked ? "blocked" : "new";
-            String tgt = " target=(" + best[0] + "," + best[1] + ") tScore=" + targetScore + " why=" + why;
-
-            // Already standing on the chosen tile and safe -> park and let the fight loop attack.
-            if (px == best[0] && py == best[1]) {
-                setDodgeLog("PARK:" + best[0] + "," + best[1], base + tgt + " act=PARK");
-                return false;
-            }
-
-            // Fit an attack in before committing to the new run if off cooldown; the run resumes next tick.
+            // Weave a shot if off cooldown; next tick resumes the run.
             if (canWeave) {
+                dodgeClickedThisLoop = true;
                 hunllef.click("attack");
                 timeAttack = now;
-                setDodgeLog("ATK:" + best[0] + "," + best[1], base + tgt + " act=ATTACK-WEAVE");
+                setDodgeLog("ATK:" + dest[0] + "," + dest[1],
+                        base + " target=(" + dest[0] + "," + dest[1] + ") act=ATTACK-WEAVE");
                 return true;
             }
 
-            // The entire straight line to best is safe, so commit: walk directly to it (full run distance).
-            dodgeEnRoute = true;
-            Rs2Walker.walkFastLocal(LocalPoint.fromScene(best[0], best[1]));
-            setDodgeLog("MOVE:" + best[0] + "," + best[1], base + tgt + " act=MOVE");
+            // 3) Walk toward dest. Because rim targets sit on a clear straight line that hugs the wall,
+            //    farthestSafeStep reaches them in one committed multi-tile move (no centre/boss clip).
+            int[] wp = farthestSafeStep(tiles, prev, px, py, dest, bossX, bossY);
+            dodgeClickedThisLoop = true;
+            Rs2Walker.walkFastLocal(LocalPoint.fromScene(wp[0], wp[1]));
+            setDodgeLog("MOVE:" + dest[0] + "," + dest[1],
+                    base + " rot=" + dodgeRotation + " target=(" + dest[0] + "," + dest[1] + ") clr=" + tScore
+                            + " wp=(" + wp[0] + "," + wp[1] + ") act=MOVE");
             return true;
         }).orElse(false);
 
@@ -668,42 +723,6 @@ public class CustomGauntletScript extends Script {
         return !isUnderBoss(x, y, bossX, bossY, DODGE_BOSS_MARGIN);
     }
 
-    /**
-     * The tile FURTHEST from the nearest tornado that the player can reach in a straight line crossing
-     * only safe tiles (arena floor, no damaging tiles, not under the Hunllef) — so we commit to the long
-     * clear run across the room instead of short hops. Tie-breaks: prefer the more central/open tile (off
-     * the walls), then the longer run. {@code excludeCurrent} drops the player's own tile so a close
-     * tornado always forces a move. Must run on the client thread.
-     */
-    private int[] chooseFurthestLineTile(Tile[][] tiles, int px, int py, int bossX, int bossY,
-                                         List<int[]> tornadoes, boolean excludeCurrent) {
-        int[] best = null;
-        int bestDist = -1, bestEdge = -1, bestTravel = -1;
-        for (int x = arenaMinX; x <= arenaMaxX; x++) {
-            for (int y = arenaMinY; y <= arenaMaxY; y++) {
-                if (excludeCurrent && x == px && y == py) continue;
-                // The tile itself must be safe. lineIsSafe() short-circuits a zero-length line (our own
-                // tile) as "safe", so without this we'd re-pick the current tile after it turned dangerous.
-                if (!isStandableSafe(tiles, x, y, bossX, bossY)) continue;
-                if (!lineIsSafe(tiles, px, py, x, y, bossX, bossY)) continue; // only straight, clear runs
-                int dist = minTornadoDistance(x, y, tornadoes);
-                int edge = Math.min(Math.min(x - arenaMinX, arenaMaxX - x),
-                                    Math.min(y - arenaMinY, arenaMaxY - y));
-                int travel = Math.max(Math.abs(x - px), Math.abs(y - py));
-                boolean better = dist > bestDist
-                        || (dist == bestDist && edge > bestEdge)
-                        || (dist == bestDist && edge == bestEdge && travel > bestTravel);
-                if (better) {
-                    bestDist = dist;
-                    bestEdge = edge;
-                    bestTravel = travel;
-                    best = new int[]{x, y};
-                }
-            }
-        }
-        return best;
-    }
-
     /** True if every tile stepped through from (x0,y0) to (x1,y1) is safe to stand on (endpoint included). */
     private boolean lineIsSafe(Tile[][] tiles, int x0, int y0, int x1, int y1, int bossX, int bossY) {
         int dx = x1 - x0, dy = y1 - y0;
@@ -717,47 +736,196 @@ public class CustomGauntletScript extends Script {
         return true;
     }
 
-    private void clearDodge() {
-        dodgeActive = false;
-        dodgeTargetSet = false;
-        dodgeEnRoute = false;
-        tornadoThreat = false;
-        dodgeTargetX = -1;
-        dodgeTargetY = -1;
-        lastHazardSnapshot = 0;
-    }
-
-    /** True if the scene tile carries a damaging ground/game object (an "unsafe" tile). */
-    private boolean isDangerousTile(Tile[][] tiles, int x, int y) {
+    /** A tile we can walk ACROSS during an escape: arena floor, whether safe or damaging (we accept a hit
+     *  or two to punch through a ring of danger), but never a wall or the Hunllef's own footprint. */
+    private boolean isFloorTraversable(Tile[][] tiles, int x, int y, int bossX, int bossY) {
+        if (!inArena(x, y)) return false;
         if (x < 0 || y < 0 || x >= tiles.length || y >= tiles[x].length) return false;
         Tile tile = tiles[x][y];
         if (tile == null) return false;
         GroundObject ground = tile.getGroundObject();
-        if (ground != null && DANGEROUS_TILES.contains(ground.getId())) return true;
-        GameObject[] gameObjects = tile.getGameObjects();
-        if (gameObjects != null) {
-            for (GameObject go : gameObjects) {
-                if (go != null && DANGEROUS_TILES.contains(go.getId())) return true;
-            }
-        }
-        return false;
+        if (ground == null) return false;
+        int gid = ground.getId();
+        if (!FLOOR_TILES.contains(gid) && !DANGEROUS_TILES.contains(gid)) return false; // wall / non-floor
+        return !isUnderBoss(x, y, bossX, bossY, 0); // can't walk through the boss itself (margin 0)
+    }
+
+    /** A tile is traversable for the BFS: when {@code allowDanger} is false only truly safe tiles count
+     *  (normal kiting — never route through danger); when true, damaging floor tiles are also walkable
+     *  (boxed-in escape, accepting a hit or two to punch out). Walls and the boss always block. */
+    private boolean canTraverse(Tile[][] tiles, int x, int y, int bossX, int bossY, boolean allowDanger) {
+        return allowDanger ? isFloorTraversable(tiles, x, y, bossX, bossY)
+                           : isStandableSafe(tiles, x, y, bossX, bossY);
     }
 
     /**
-     * Order-independent hash of the damaging tiles inside the arena. Changes when a damaging tile appears
-     * or clears, which triggers a dodge re-calculation. Deliberately excludes the Hunllef footprint (it
-     * moves every tick — the committed route's own line-of-sight check handles the boss stepping onto it).
+     * Breadth-first flood-fill of tiles reachable from (sx,sy), 8-directional, never cutting a diagonal
+     * across a blocked corner. {@code allowDanger} selects the traversal rule (see {@link #canTraverse}).
+     * Returns a predecessor grid ({@code -1} = unvisited, otherwise the encoded parent {@code x*SCENE_SIZE+y};
+     * the start stores {@link Integer#MAX_VALUE}).
      */
-    private long hazardSnapshot(Tile[][] tiles) {
-        long h = 1469598103934665603L; // FNV-1a basis
+    private int[][] bfsReachable(Tile[][] tiles, int sx, int sy, int bossX, int bossY, boolean allowDanger) {
+        int[][] prev = new int[SCENE_SIZE][SCENE_SIZE];
+        for (int[] row : prev) Arrays.fill(row, -1);
+        ArrayDeque<int[]> queue = new ArrayDeque<>();
+        prev[sx][sy] = Integer.MAX_VALUE;
+        queue.add(new int[]{sx, sy});
+        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+        while (!queue.isEmpty()) {
+            int[] c = queue.poll();
+            int cx = c[0], cy = c[1];
+            for (int[] d : dirs) {
+                int nx = cx + d[0], ny = cy + d[1];
+                if (nx < 0 || ny < 0 || nx >= SCENE_SIZE || ny >= SCENE_SIZE) continue;
+                if (prev[nx][ny] != -1) continue;
+                if (!canTraverse(tiles, nx, ny, bossX, bossY, allowDanger)) continue;
+                if (d[0] != 0 && d[1] != 0
+                        && (!canTraverse(tiles, cx + d[0], cy, bossX, bossY, allowDanger)
+                        || !canTraverse(tiles, cx, cy + d[1], bossX, bossY, allowDanger))) {
+                    continue; // no diagonal corner-cut past a blocked corner
+                }
+                prev[nx][ny] = cx * SCENE_SIZE + cy;
+                queue.add(new int[]{nx, ny});
+            }
+        }
+        return prev;
+    }
+
+    /** Min Chebyshev distance from a candidate tile to the nearest tornado (the binding threat). */
+    private int clearanceOf(int[] tile, List<int[]> tornadoes) {
+        return minTornadoDistance(tile[0], tile[1], tornadoes);
+    }
+
+    /**
+     * Pick the rotational direction (+1 = CCW, -1 = CW) to start circling when uncommitted: whichever
+     * way's rim target keeps us further from the tornadoes. Defaults to +1 if neither side has a target.
+     */
+    private int pickInitialRotation(int[] targetCCW, int[] targetCW, List<int[]> tornadoes) {
+        if (targetCCW == null && targetCW == null) return 1;
+        if (targetCCW == null) return -1;
+        if (targetCW == null) return 1;
+        return clearanceOf(targetCCW, tornadoes) >= clearanceOf(targetCW, tornadoes) ? 1 : -1;
+    }
+
+    /**
+     * Next waypoint when circling the perimeter in rotational direction {@code rot} (+1 = CCW, -1 = CW
+     * around the arena centre (cx,cy)). Among safe tiles reachable by a CLEAR straight safe line from the
+     * player — so the walk hugs the wall and commits the full multi-tile run instead of clipping the boss
+     * in the middle — that angularly ADVANCE in {@code rot} and stay clear of every tornado, pick the
+     * farthest (longest committed run), then the most tornado clearance, then the tile nearest the wall.
+     * Returns null if nothing ahead qualifies (caller flips direction or crosses the room).
+     */
+    private int[] chooseRimTarget(int[][] prev, int px, int py, double cx, double cy,
+                                  List<int[]> tornadoes, Tile[][] tiles, int bossX, int bossY, int rot) {
+        int[] best = null;
+        int bestTravel = -1, bestClear = -1, bestEdge = Integer.MAX_VALUE;
         for (int x = arenaMinX; x <= arenaMaxX; x++) {
             for (int y = arenaMinY; y <= arenaMaxY; y++) {
-                if (isDangerousTile(tiles, x, y)) {
-                    h = (h ^ ((long) x * 131 + y)) * 1099511628211L;
+                if (prev[x][y] == -1) continue;             // not reachable over safe ground
+                if (x == px && y == py) continue;           // must move
+                int travel = Math.max(Math.abs(x - px), Math.abs(y - py));
+                if (travel > RIM_LOOKAHEAD) continue;       // a few tiles per commit, not a teleport
+                // Angular progress around the centre: cross-product sign is the rotation direction.
+                double cross = (px - cx) * (y - cy) - (py - cy) * (x - cx);
+                if (cross * rot <= 0) continue;             // not advancing the way we're circling
+                if (!lineIsSafe(tiles, px, py, x, y, bossX, bossY)) continue; // wall-hugging clear line only
+                int clear = minTornadoDistance(x, y, tornadoes);
+                if (clear < MIN_TARGET_CLEARANCE) continue; // don't stop right next to a tornado
+                int edge = Math.min(Math.min(x - arenaMinX, arenaMaxX - x),
+                                    Math.min(y - arenaMinY, arenaMaxY - y));
+                boolean better = travel > bestTravel
+                        || (travel == bestTravel && clear > bestClear)              // longer run first
+                        || (travel == bestTravel && clear == bestClear && edge < bestEdge); // then hug the wall
+                if (better) {
+                    bestTravel = travel;
+                    bestClear = clear;
+                    bestEdge = edge;
+                    best = new int[]{x, y};
                 }
             }
         }
-        return h;
+        return best;
+    }
+
+    /** Among reachable tiles, the furthest-from-tornado SAFE tile, preferring the rim/corner (so we make a
+     *  big committed move to open space), then the longer run. Only genuinely safe tiles are destinations. */
+    private int[] chooseBestReachableBfs(int[][] prev, int px, int py, List<int[]> tornadoes,
+                                         Tile[][] tiles, int bossX, int bossY) {
+        int[] best = null;
+        int bestDist = -1, bestEdge = Integer.MAX_VALUE, bestTravel = -1;
+        for (int x = 0; x < SCENE_SIZE; x++) {
+            for (int y = 0; y < SCENE_SIZE; y++) {
+                if (prev[x][y] == -1) continue;
+                if (x == px && y == py) continue; // must move off our tile
+                if (!isStandableSafe(tiles, x, y, bossX, bossY)) continue; // only flee to a truly safe tile
+                int dist = minTornadoDistance(x, y, tornadoes);
+                int edge = Math.min(Math.min(x - arenaMinX, arenaMaxX - x),
+                                    Math.min(y - arenaMinY, arenaMaxY - y));
+                int travel = Math.max(Math.abs(x - px), Math.abs(y - py));
+                boolean better = dist > bestDist
+                        || (dist == bestDist && edge < bestEdge)               // prefer the rim/corner
+                        || (dist == bestDist && edge == bestEdge && travel > bestTravel); // then the longer run
+                if (better) {
+                    bestDist = dist;
+                    bestEdge = edge;
+                    bestTravel = travel;
+                    best = new int[]{x, y};
+                }
+            }
+        }
+        return best;
+    }
+
+    /** Rebuild the BFS path from the player (exclusive) to {@code target} (inclusive), first step first. */
+    private List<int[]> reconstructPath(int[][] prev, int px, int py, int[] target) {
+        java.util.LinkedList<int[]> path = new java.util.LinkedList<>();
+        int cx = target[0], cy = target[1];
+        int guard = 0;
+        while (!(cx == px && cy == py) && guard++ < SCENE_SIZE * SCENE_SIZE) {
+            path.addFirst(new int[]{cx, cy});
+            int p = prev[cx][cy];
+            if (p == Integer.MAX_VALUE || p < 0) break;
+            cx = p / SCENE_SIZE;
+            cy = p % SCENE_SIZE;
+        }
+        return path;
+    }
+
+    /** Farthest node along the BFS path reachable from the player by a straight safe line, so we still run. */
+    private int[] farthestSafeStep(Tile[][] tiles, int[][] prev, int px, int py, int[] target, int bossX, int bossY) {
+        List<int[]> path = reconstructPath(prev, px, py, target);
+        if (path.isEmpty()) return target;
+        int[] chosen = path.get(0);
+        for (int[] node : path) {
+            if (!lineIsSafe(tiles, px, py, node[0], node[1], bossX, bossY)) break;
+            chosen = node;
+        }
+        return chosen;
+    }
+
+    private void clearDodge() {
+        dodgeActive = false;
+        tornadoThreat = false;
+        dodgeRotation = 0;
+        renderTargetX = -1;
+        renderTargetY = -1;
+        unsafeTiles = new int[0];
+    }
+
+    /** Snapshot of every in-arena tile the dodge treats as UNSAFE to stand on (damaging tile, boss
+     *  footprint, etc.), packed as (sceneX<<8|sceneY) for the overlay. Must run on the client thread. */
+    private int[] buildUnsafeSnapshot(Tile[][] tiles, int bossX, int bossY) {
+        List<Integer> unsafe = new ArrayList<>();
+        for (int x = arenaMinX; x <= arenaMaxX; x++) {
+            for (int y = arenaMinY; y <= arenaMaxY; y++) {
+                if (!isStandableSafe(tiles, x, y, bossX, bossY)) {
+                    unsafe.add((x << 8) | y);
+                }
+            }
+        }
+        int[] out = new int[unsafe.size()];
+        for (int i = 0; i < out.length; i++) out[i] = unsafe.get(i);
+        return out;
     }
 
     /**
@@ -780,6 +948,23 @@ public class CustomGauntletScript extends Script {
         if (tile == null) return false;
         GroundObject ground = tile.getGroundObject();
         return ground != null && FLOOR_TILES.contains(ground.getId());
+    }
+
+    /** True if the scene tile carries a damaging ground/game object (the Hunllef's floor attack). Client thread. */
+    private boolean isOnDangerousTile(int sceneX, int sceneY) {
+        int plane = Microbot.getClient().getPlane();
+        if (sceneX < 0 || sceneY < 0 || sceneX >= SCENE_SIZE || sceneY >= SCENE_SIZE) return false;
+        Tile tile = Microbot.getClient().getScene().getTiles()[plane][sceneX][sceneY];
+        if (tile == null) return false;
+        GroundObject ground = tile.getGroundObject();
+        if (ground != null && DANGEROUS_TILES.contains(ground.getId())) return true;
+        GameObject[] gameObjects = tile.getGameObjects();
+        if (gameObjects != null) {
+            for (GameObject go : gameObjects) {
+                if (go != null && DANGEROUS_TILES.contains(go.getId())) return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1051,16 +1236,6 @@ public class CustomGauntletScript extends Script {
         }
         if ((isHalberdEquipped()) && (!Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PIETY)) && !(Rs2Prayer.isPrayerActive(Rs2PrayerEnum.INCREDIBLE_REFLEXES) && Rs2Prayer.isPrayerActive(Rs2PrayerEnum.ULTIMATE_STRENGTH))) {
             toggleMeleeAttackPrayer();
-        }
-    }
-
-    private void checkSteelSkin() {
-        if (config.higherPrayers()) {
-            return;
-        }
-        if (!Rs2Prayer.isPrayerActive(Rs2PrayerEnum.STEEL_SKIN) && !Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PIETY)) {
-            sendPrayerToggle(Rs2PrayerEnum.STEEL_SKIN, true);
-            timeSteel = now;
         }
     }
 
