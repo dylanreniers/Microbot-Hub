@@ -223,4 +223,17 @@ public interface CustomGauntletConfig extends Config {
     default boolean verboseLog() {
         return true;
     }
+
+    @ConfigItem(
+            keyName = "captureManualDodge",
+            name = "Capture manual dodge",
+            description = "Observe-only: during tornado phases the bot does NOT move you (you dodge by hand) "
+                    + "and logs a [Capture] line each tick with your click target vs the live tornado/danger/boss "
+                    + "tiles, so the human path can be analysed. Turn off for normal auto-play.",
+            position = 2,
+            section = debugSection
+    )
+    default boolean captureManualDodge() {
+        return false;
+    }
 }

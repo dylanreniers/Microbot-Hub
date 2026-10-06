@@ -22,10 +22,12 @@ import java.awt.Polygon;
  */
 public class CustomGauntletSceneOverlay extends Overlay {
 
-    private static final Color FILL = new Color(0, 255, 0, 80);
+    private static final Color FILL = new Color(0, 255, 0, 80);        // final safe target (green)
     private static final Color OUTLINE = new Color(0, 255, 0, 230);
-    private static final Color UNSAFE_FILL = new Color(255, 0, 0, 55);
-    private static final Color UNSAFE_OUTLINE = new Color(255, 0, 0, 120);
+    private static final Color PATH_FILL = new Color(0, 110, 255, 70);  // regular path tiles (blue)
+    private static final Color PATH_OUTLINE = new Color(0, 110, 255, 150);
+    private static final Color HOP_FILL = new Color(255, 215, 0, 90);   // intermediate hop waypoints (yellow)
+    private static final Color HOP_OUTLINE = new Color(255, 215, 0, 220);
 
     private final CustomGauntletConfig config;
     private final CustomGauntletScript script;
@@ -45,17 +47,14 @@ public class CustomGauntletSceneOverlay extends Overlay {
             Client client = Microbot.getClient();
             graphics.setStroke(new BasicStroke(2f));
 
-            // Unsafe tiles the dodge is avoiding (damaging tiles, boss footprint, ...) — translucent red.
-            int[] unsafe = CustomGauntletScript.getUnsafeTiles();
-            for (int packed : unsafe) {
-                LocalPoint ulp = LocalPoint.fromScene(packed >> 8, packed & 0xFF);
-                if (ulp == null) continue;
-                Polygon upoly = Perspective.getCanvasTilePoly(client, ulp);
-                if (upoly == null) continue;
-                graphics.setColor(UNSAFE_FILL);
-                graphics.fill(upoly);
-                graphics.setColor(UNSAFE_OUTLINE);
-                graphics.draw(upoly);
+            // Planned run path (blue) — every tile along the safe route to the target.
+            for (int packed : CustomGauntletScript.getPathTiles()) {
+                drawTile(client, graphics, packed, PATH_FILL, PATH_OUTLINE);
+            }
+
+            // Intermediate hop waypoints we'd click on the way (yellow), drawn over the blue path.
+            for (int packed : CustomGauntletScript.getHopTiles()) {
+                drawTile(client, graphics, packed, HOP_FILL, HOP_OUTLINE);
             }
 
             // The tile we're dodging to — green, drawn on top.
@@ -79,5 +78,17 @@ public class CustomGauntletSceneOverlay extends Overlay {
             // Overlay must never throw into the render loop.
         }
         return null;
+    }
+
+    /** Fill + outline the scene tile packed as (sceneX<<8|sceneY). No-op if off-screen. */
+    private void drawTile(Client client, Graphics2D graphics, int packed, Color fill, Color outline) {
+        LocalPoint lp = LocalPoint.fromScene(packed >> 8, packed & 0xFF);
+        if (lp == null) return;
+        Polygon poly = Perspective.getCanvasTilePoly(client, lp);
+        if (poly == null) return;
+        graphics.setColor(fill);
+        graphics.fill(poly);
+        graphics.setColor(outline);
+        graphics.draw(poly);
     }
 }
