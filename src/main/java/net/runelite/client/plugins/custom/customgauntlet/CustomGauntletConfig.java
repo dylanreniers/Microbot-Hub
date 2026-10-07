@@ -83,64 +83,16 @@ public interface CustomGauntletConfig extends Config {
 
     @ConfigItem(
             keyName = "eatFood",
-            name = "Eat at low HP value:",
-            description = "Script will always eat at this value, for emergencies",
+            name = "Eat below HP:",
+            description = "Eats food whenever hitpoints fall below this value",
             position = 1,
             section = "foodSection"
     )
     @Range(
-            min = 20,
-            max = 79
+            min = 1,
+            max = 99
     )
-    default int lowHpEatValue(){return 39;}
-
-    @ConfigItem(
-            keyName = "overheal",
-            name = "Allow Overhealing by:",
-            description = "Allow overhealing by this value",
-            position = 2,
-            section = "foodSection"
-    )
-    @Range(
-            min = 0,
-            max = 5
-    )
-    default int eatOverhealValue() {return 3;}
-
-    @ConfigItem(
-            keyName = "eatFoodchain",
-            name = "Always chain eat till healthy",
-            description = "Once eating has started, always continue eating till healthy. Will not overeat and waste food.",
-            position = 3,
-            section = "foodSection"
-    )
-    default boolean eatFoodChain() {
-        return true;
-    }
-
-
-    @ConfigItem(
-            keyName = "eatMoving",
-            name = "Eat if Moving",
-            description = "Eat food autoamtically if Tornados are active and player is moving, wont interupt movement",
-            position = 4,
-            section = "foodSection"
-    )
-    default boolean eatFoodMoving() {
-        return true;
-    }
-
-
-    @ConfigItem(
-            keyName = "Tornadocheck",
-            name = "  -> Only if Tornados Active",
-            description = "Eat food automatically if Tornados are active and player is moving",
-            position = 5,
-            section = "foodSection"
-    )
-    default boolean tornadoCheck() {
-        return true;
-    }
+    default int lowHpEatValue() { return 65; }
 
 
 
