@@ -8,6 +8,8 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.coords.WorldArea;
 import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.GroundObjectDespawned;
+import net.runelite.api.events.GroundObjectSpawned;
 import net.runelite.api.events.ProjectileMoved;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.client.callback.ClientThread;
@@ -55,7 +57,7 @@ import static net.runelite.client.plugins.microbot.Microbot.log;
 )
 @UnderDevelopment
 public class CustomGauntletPlugin extends Plugin {
-    public static final String version = "1.5.5";
+    public static final String version = "1.7.4";
 
     private static final int RANGE_PROJECTILE_MINIBOSS = 1705;
     private static final int MAGE_PROJECTILE_MINIBOSS = 1701;
@@ -126,6 +128,16 @@ public class CustomGauntletPlugin extends Plugin {
     @Subscribe
     public void onGameTick(GameTick event){
         script.eventGameTick();
+    }
+
+    @Subscribe
+    public void onGroundObjectSpawned(GroundObjectSpawned event) {
+        script.onGroundObjectSpawned(event);
+    }
+
+    @Subscribe
+    public void onGroundObjectDespawned(GroundObjectDespawned event) {
+        script.onGroundObjectDespawned(event);
     }
 
     @Subscribe

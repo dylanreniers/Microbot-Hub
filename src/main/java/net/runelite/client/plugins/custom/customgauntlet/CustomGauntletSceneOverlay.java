@@ -14,20 +14,22 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.Polygon;
+import java.util.List;
 
 /**
- * Draws a marker on the tile the tornado-dodge is currently trying to reach, so the intended destination
- * can be eyeballed in-game (like the Mad Angel scene markers, but just the one safe target). The tile is
- * reported by {@link CustomGauntletScript#getDodgeRenderTarget()} in scene coords.
+ * Draws the 12-tile safe shuttle lane, endpoints, and current target on screen at all times during combat,
+ * so the safe lane and pathing can be visually verified in real time before and during tornado phases.
  */
 public class CustomGauntletSceneOverlay extends Overlay {
 
-    private static final Color FILL = new Color(0, 255, 0, 80);        // final safe target (green)
-    private static final Color OUTLINE = new Color(0, 255, 0, 230);
-    private static final Color PATH_FILL = new Color(0, 110, 255, 70);  // regular path tiles (blue)
-    private static final Color PATH_OUTLINE = new Color(0, 110, 255, 150);
-    private static final Color HOP_FILL = new Color(255, 215, 0, 90);   // intermediate hop waypoints (yellow)
-    private static final Color HOP_OUTLINE = new Color(255, 215, 0, 220);
+    private static final Color LANE_FILL = new Color(0, 255, 255, 30);      // 12-tile corridor (translucent cyan)
+    private static final Color LANE_OUTLINE = new Color(0, 255, 255, 100);
+    private static final Color SAFE_A_FILL = new Color(0, 200, 255, 70);     // Endpoint A (cyan)
+    private static final Color SAFE_A_OUTLINE = new Color(0, 200, 255, 240);
+    private static final Color SAFE_B_FILL = new Color(0, 200, 255, 70);     // Endpoint B (cyan)
+    private static final Color SAFE_B_OUTLINE = new Color(0, 200, 255, 240);
+    private static final Color TARGET_FILL = new Color(0, 255, 0, 100);       // Current destination (green)
+    private static final Color TARGET_OUTLINE = new Color(0, 255, 0, 255);
 
     private final CustomGauntletConfig config;
     private final CustomGauntletScript script;
@@ -47,32 +49,30 @@ public class CustomGauntletSceneOverlay extends Overlay {
             Client client = Microbot.getClient();
             graphics.setStroke(new BasicStroke(2f));
 
-            // Planned run path (blue) — every tile along the safe route to the target.
-            for (int packed : CustomGauntletScript.getPathTiles()) {
-                drawTile(client, graphics, packed, PATH_FILL, PATH_OUTLINE);
-            }
-
-            // Intermediate hop waypoints we'd click on the way (yellow), drawn over the blue path.
-            for (int packed : CustomGauntletScript.getHopTiles()) {
-                drawTile(client, graphics, packed, HOP_FILL, HOP_OUTLINE);
-            }
-
-            // The tile we're dodging to — green, drawn on top.
-            int[] target = CustomGauntletScript.getDodgeRenderTarget();
-            if (target != null) {
-                LocalPoint lp = LocalPoint.fromScene(target[0], target[1]);
-                Polygon poly = lp == null ? null : Perspective.getCanvasTilePoly(client, lp);
-                if (poly != null) {
-                    graphics.setColor(FILL);
-                    graphics.fill(poly);
-                    graphics.setColor(OUTLINE);
-                    graphics.draw(poly);
-                    net.runelite.api.Point txt = Perspective.getCanvasTextLocation(client, graphics, lp, "dodge", 0);
-                    if (txt != null) {
-                        graphics.setColor(Color.WHITE);
-                        graphics.drawString("dodge", txt.getX(), txt.getY());
-                    }
+            // 1. Draw all 12 tiles of the current safe lane corridor
+            List<int[]> lane = CustomGauntletScript.getActiveLaneTiles();
+            if (lane != null) {
+                for (int[] t : lane) {
+                    drawTile(client, graphics, (t[0] << 8) | t[1], LANE_FILL, LANE_OUTLINE);
                 }
+            }
+
+            // 2. Draw Safe Endpoint A
+            int[] safeA = CustomGauntletScript.getSafeLaneTileA();
+            if (safeA != null) {
+                drawTileWithText(client, graphics, safeA, SAFE_A_FILL, SAFE_A_OUTLINE, "Safe A");
+            }
+
+            // 3. Draw Safe Endpoint B
+            int[] safeB = CustomGauntletScript.getSafeLaneTileB();
+            if (safeB != null) {
+                drawTileWithText(client, graphics, safeB, SAFE_B_FILL, SAFE_B_OUTLINE, "Safe B");
+            }
+
+            // 4. Highlight the active target in bright green
+            int[] target = CustomGauntletScript.getCurrentShuttleTarget();
+            if (target != null) {
+                drawTileWithText(client, graphics, target, TARGET_FILL, TARGET_OUTLINE, "Target");
             }
         } catch (Exception ignored) {
             // Overlay must never throw into the render loop.
@@ -90,5 +90,23 @@ public class CustomGauntletSceneOverlay extends Overlay {
         graphics.fill(poly);
         graphics.setColor(outline);
         graphics.draw(poly);
+    }
+
+    private void drawTileWithText(Client client, Graphics2D graphics, int[] sceneTile, Color fill, Color outline, String text) {
+        LocalPoint lp = LocalPoint.fromScene(sceneTile[0], sceneTile[1]);
+        if (lp == null) return;
+        Polygon poly = Perspective.getCanvasTilePoly(client, lp);
+        if (poly == null) return;
+        graphics.setColor(fill);
+        graphics.fill(poly);
+        graphics.setColor(outline);
+        graphics.draw(poly);
+        if (text != null && !text.isEmpty()) {
+            net.runelite.api.Point txt = Perspective.getCanvasTextLocation(client, graphics, lp, text, 0);
+            if (txt != null) {
+                graphics.setColor(Color.WHITE);
+                graphics.drawString(text, txt.getX(), txt.getY());
+            }
+        }
     }
 }

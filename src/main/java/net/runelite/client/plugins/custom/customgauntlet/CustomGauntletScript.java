@@ -9,6 +9,8 @@ import java.util.function.Function;
 
 import lombok.Getter;
 import net.runelite.api.*;
+import net.runelite.api.events.GroundObjectDespawned;
+import net.runelite.api.events.GroundObjectSpawned;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.ObjectID;
@@ -52,30 +54,8 @@ public class CustomGauntletScript extends Script {
     private static final int LOOPS_PER_TICK = 5;
 
     // --- Tornado dodging ---
-    private static final int TORNADO_TRIGGER_DIST = 4;  // start kiting once a tornado is this close (tiles)
-    // Re-evaluate/issue the dodge walk at most once per game tick (~600ms). Clicking faster than this
-    // restarts the client's pathfinder every loop, so the player stutters ~1-2 tiles and never commits
-    // to a run — which gets it caught by the tornadoes.
-    private static final int CD_TORNADO_DODGE = 600;
-    private static final int CD_DODGE_LOG = 400;        // steady-state dodge log cadence (ms); transitions log instantly
     private static final int CD_CAPTURE = 150;          // capture-mode sampling cadence (ms); de-duped to one line per decision
-    private static final int DODGE_BOSS_MARGIN = 0;     // extra ring to keep clear of the Hunllef beyond its footprint (0 = stand right next to it for max dodge room; raise to 1 if it melees us)
-    private static final int WEAPON_SPEED_MS = 3000;    // Gauntlet weapon speed: 5 ticks
-    private static final int ATTACK_WEAVE_RANGE = 9;    // only weave an attack mid-dodge if the boss is this close (so we shoot, not walk)
-    private static final int ATTACK_SUPPRESS_TORNADO_DIST = 2; // don't weave an attack if a tornado is this close — focus on the dodge
-    private static final int SCENE_SIZE = 104;          // RuneLite scene is 104x104 tiles (for the BFS escape)
-    private static final int MAINTAIN_GAP = 6;          // keep moving while any tornado is within this; attack only once the gap is clear
-    private static final int SIP_SAFE_GAP = 3;          // only yield a movement tick to drink/eat when the nearest tornado is at least this far (safe to stand one tick)
-    private static final int STUCK_TICKS = 2;           // require this many re-plan ticks of no movement before forcing an UNSTUCK step (a fresh walk needs ~1 tick to start)
-    // --- Rim-running (circle the perimeter in a committed direction, like manual play) ---
-    // Commit to the far corner: manual-play capture showed clicks running the FULL wall (up to ~11 tiles),
-    // which keeps the tornadoes trailing in a line instead of re-planning every few tiles and oscillating.
-    private static final int RIM_LOOKAHEAD = 12;        // tiles ahead along the rim we target per commit (~full arena span)
-    private static final int MIN_TARGET_CLEARANCE = 2;  // keep circling with at least 2 tiles clearance from any tornado
-    private static final int MIN_DODGE_TRAVEL = 3;      // never pick a dodge destination closer than 3 tiles (never adjacent)
-    private static final int FLIP_HYSTERESIS = 2;       // only reverse circling direction if the other way is this much safer (stops thrashing)
-    private static final int DANGER_FLIP_MARGIN = 4;    // reverse toward the open side if the other way is this much farther from the danger field
-
+    private static final int SCENE_SIZE = 104;          // RuneLite scene is 104x104 tiles
     private static final int HUNLLEF_RADIUS = 2; // 5x5 footprint -> 2 tiles from its centre to each edge
     // Barrier objects enclosing the Hunllef arena (4 of them). The id differs between normal and
     // corrupted, and the same id is scattered across the maze — so we also filter by distance to the boss.
@@ -92,9 +72,6 @@ public class CustomGauntletScript extends Script {
     // absent so the fight actually ends and the arena bounds get re-derived for the next fight.
     private static final int HUNLLEF_PRESENCE_RANGE = 20;
 
-    private static final int STAT_HP = -1;
-    private static final int STAT_PRAYER = -1;
-
     private static final Set<Integer> TORNADO_IDS = Set.of(
             CG_TORNADO,
             REGULAR_HUNLEFF_TORNADO
@@ -106,13 +83,45 @@ public class CustomGauntletScript extends Script {
     );
 
     private static final Set<Integer> DANGEROUS_TILES = Set.of(
-            36047, 36048, // Corrupted tiles (Ground object)
-            36150, 36151 // Gauntlet tiles (Ground object)
+            36047, 36048, 36049, 36050, 36051, // Corrupted tiles
+            36150, 36151, 36152, 36153, 36154  // Gauntlet tiles
+    );
+
+    private static final Set<Integer> WARNING_TILES = Set.of(
+            36047, 36150 // Corrupted & Gauntlet warning floor tiles (3 ticks before damage)
+    );
+
+    private static final Set<Integer> DAMAGING_TILES = Set.of(
+            36048, 36049, 36050, 36051,
+            36151, 36152, 36153, 36154 // Active damage floor tiles
     );
 
     private static final Set<Integer> FLOOR_TILES = Set.of(
-            36149, 36046 // CG, G Floor Tiles
+            36149, 36046 // CG, G Safe Floor Tiles
     );
+
+    // --- 12-Tile Safe Lane Shuttle System ---
+    private static volatile int[] safeLaneTileA = null;
+    private static volatile int[] safeLaneTileB = null;
+    private static volatile int[] currentShuttleTarget = null;
+    private static volatile List<int[]> currentLaneTiles = new ArrayList<>();
+    private volatile int floorWarningStartTick = -1;
+
+    public static int[] getSafeLaneTileA() {
+        return safeLaneTileA;
+    }
+
+    public static int[] getSafeLaneTileB() {
+        return safeLaneTileB;
+    }
+
+    public static int[] getCurrentShuttleTarget() {
+        return currentShuttleTarget;
+    }
+
+    public static List<int[]> getActiveLaneTiles() {
+        return currentLaneTiles;
+    }
 
     private static final int[] BOW_IDS = {
             ItemID.GAUNTLET_RANGED_T3_HM, ItemID.GAUNTLET_RANGED_T3,
@@ -166,65 +175,9 @@ public class CustomGauntletScript extends Script {
 
     // Tornado dodge state.
     private boolean dodgeActive = false;
-    // Committed circling direction for rim-running: +1 = CCW, -1 = CW, 0 = uncommitted (pick on next dodge).
-    // Persisting it across ticks is what stops the greedy per-tick oscillation that got us caught.
-    private int dodgeRotation = 0;
-    // True on loop iterations where the dodge just issued a walk/attack click. Eating/drinking share the
-    // same synthetic-click pipeline, so clicking food in the SAME iteration clobbers the pending walk and
-    // we stutter one tile — gate eat/drink on this so they only fire on the ~2 free iterations per tick.
-    private volatile boolean dodgeClickedThisLoop = false;
-    // Player scene pos when we last ISSUED a dodge walk. If the next re-plan finds us on the same tile, the
-    // walk didn't execute (target unreachable in practice — the boss body blocks the route, or our path
-    // model disagrees with the game's collision), so we unstick with a guaranteed 1-tile step. -1 = none.
-    private int lastWalkPx = -1, lastWalkPy = -1;
-    // Consecutive re-plan ticks with no position change since the last walk. A fresh walk click needs ~1
-    // tick to register before the player moves, so we only treat it as a real pin (fire UNSTUCK) after
-    // STUCK_TICKS of no movement — otherwise we'd cancel every committed run on its startup tick and oscillate.
-    private int dodgeStuckTicks = 0;
-    // The destination we're committed to running to. Re-picking a fresh target every tick makes it flip
-    // between sides (rotation changes), reversing us into the trailing tornadoes and restarting the walk
-    // (1-tick startup delay) every tick — so we never build a gap. We hold this dest until it's reached or
-    // becomes invalid (unreachable / unsafe / a tornado closed on it). -1 = none committed.
-    private int committedDestX = -1, committedDestY = -1;
-    // Waypoint scene pos last clicked by the dodge walk. Only re-click if our destination/waypoint
-    // changes or we stop moving, allowing committed runs to continue without per-tick click spam.
-    private int lastWpX = -1, lastWpY = -1;
-    // True while a tornado is within trigger range (we're actively kiting). Suppresses attacking, which
-    // would otherwise path us toward the Hunllef and drag us back into the tornadoes.
     private volatile boolean tornadoThreat = false;
     private int barriersTotal = -1; // barrier tiles matched anywhere in the scene (diagnostic)
     private int barriersNear = -1;  // barrier tiles within ARENA_BARRIER_RADIUS of the Hunllef (diagnostic)
-    // The safe tile we're currently dodging toward, in scene coords, for the overlay marker (-1 = none).
-    // Static so the overlay reads the live value regardless of Guice instance scoping (same pattern as ghState).
-    private static volatile int renderTargetX = -1, renderTargetY = -1;
-
-    /** Current dodge destination in scene coords for the overlay, or null when not dodging anywhere. */
-    public static int[] getDodgeRenderTarget() {
-        return renderTargetX < 0 ? null : new int[]{renderTargetX, renderTargetY};
-    }
-
-    // Planned route to the dodge target, for the overlay, packed as (sceneX << 8 | sceneY). Rebuilt each
-    // dodge evaluation on the client thread; static so the overlay reads it directly.
-    //   pathTiles = every tile along the safe route we'd run (blue),
-    //   hopTiles  = the intermediate waypoints we'd click on the way (yellow); the final target is green.
-    private static volatile int[] pathTiles = new int[0];
-    private static volatile int[] hopTiles = new int[0];
-
-    /** Packed (sceneX<<8|sceneY) tiles of the planned run path for the overlay (blue). */
-    public static int[] getPathTiles() {
-        return pathTiles;
-    }
-
-    /** Packed (sceneX<<8|sceneY) intermediate hop/waypoint tiles for the overlay (yellow). */
-    public static int[] getHopTiles() {
-        return hopTiles;
-    }
-    // Dodge diagnostics: built on the client thread inside handleTornadoDodge, emitted on the script
-    // thread by emitDodgeLog() (logging on the client thread can deadlock via the GameChatAppender).
-    private String dodgeDebug = null;
-    private String dodgeLogKey = null;      // action+target key; a change forces an immediate log line
-    private String lastDodgeLogKey = null;
-    private long timeDodgeLog = -1;
 
     // Arena bounds in scene coords, derived once per fight from the 4 barriers. The floor tile id is
     // not unique to the arena, so these bounds are what actually keep retreats inside the room.
@@ -232,14 +185,9 @@ public class CustomGauntletScript extends Script {
     private int arenaMinX, arenaMaxX, arenaMinY, arenaMaxY;
 
     private final AtomicBoolean tickHappened = new AtomicBoolean(false);
-    // Monotonic game-tick counter (bumped in eventGameTick on the client thread, read on the script thread).
-    // The tornado dodge re-plans once per NEW tick rather than on a wall-clock timer, so planning stays in
-    // phase with when tornadoes actually move. lastDodgeTick is the tick we last planned on.
     private volatile int gameTickCount = 0;
     private int lastDodgeTick = -1;
-    private int[] currentDodgeWp = null;
-    private long timeLastWalkLog = -1;
-    private int lastDodgeWalkTick = -2;
+    private int lastAttackTick = -5;
     private int lastWalkTargetX = -1;
     private int lastWalkTargetY = -1;
 
@@ -330,11 +278,15 @@ public class CustomGauntletScript extends Script {
 
                         //Slow Section
 
-                        // Tornado phase over? Drop the kite state NOW. tornadoThreat is cleared only inside
-                        // handleTornadoDodge, which the loop stops calling once tornadoes are gone — so without
-                        // this it stays stuck true between phases and checkAttack refuses to re-engage the boss.
+                        // Tornado phase over? Drop the kite state NOW.
                         if (!tornadoesActive && (tornadoThreat || dodgeActive)) {
                             clearDodge();
+                            if (isPlayerOnSafeTile()) {
+                                lastWalkTargetX = -1;
+                                lastWalkTargetY = -1;
+                                attackNeeded.set(true);
+                                Microbot.log("[Action] Tornadoes despawned and player is on a safe tile - re-engaging Hunllef immediately!");
+                            }
                         }
 
                         // Capture mode: during a tornado phase the bot stays hands-off so YOU dodge manually,
@@ -485,10 +437,26 @@ public class CustomGauntletScript extends Script {
     }
 
     /**
-     * A scene tile (bossSceneX/Y is the Hunllef's centre) is "under" the boss when it falls within its
-     * 5x5 footprint (HUNLLEF_RADIUS from the centre), optionally expanded by {@code margin}.
+     * A scene tile is "under" the boss when it falls within its 5x5 footprint, optionally expanded by {@code margin}.
+     * Uses the NPC's WorldArea in scene space for exact tile boundaries when available, with LocalPoint center fallback.
      */
     private boolean isUnderBoss(int sceneX, int sceneY, int bossSceneX, int bossSceneY, int margin) {
+        if (hunllef != null) {
+            WorldArea area = hunllef.getWorldArea();
+            if (area != null) {
+                WorldView wv = Microbot.getClient().getTopLevelWorldView();
+                LocalPoint lp = LocalPoint.fromWorld(wv, area.getX(), area.getY());
+                if (lp != null) {
+                    int swX = lp.getSceneX();
+                    int swY = lp.getSceneY();
+                    int minX = swX - margin;
+                    int maxX = swX + area.getWidth() - 1 + margin;
+                    int minY = swY - margin;
+                    int maxY = swY + area.getHeight() - 1 + margin;
+                    return sceneX >= minX && sceneX <= maxX && sceneY >= minY && sceneY <= maxY;
+                }
+            }
+        }
         int reach = HUNLLEF_RADIUS + margin;
         return Math.abs(sceneX - bossSceneX) <= reach && Math.abs(sceneY - bossSceneY) <= reach;
     }
@@ -644,178 +612,305 @@ public class CustomGauntletScript extends Script {
      *
      * @return true if a dodge move was issued this loop (caller skips gear/attack)
      */
+    /**
+     * 12-Tile Safe Lane Shuttle System:
+     * - Shuttles back and forth between two safe endpoints of a full-length 12-tile lane (outer rim prioritized).
+     * - Only initiates movement when tornadoes close to gap <= 3.
+     * - Otherwise stands still at the endpoint attacking Hunllef, eating food, drinking potions, and switching prayers.
+     * - If the floor pattern changes mid-sprint: continues if distance <= 6 (arrives in <= 3 ticks before damage),
+     *   or adapts to the new safe lane if farther away.
+     *
+     * @return true if a dodge move was issued this loop (caller skips gear/attack)
+     */
     private boolean handleTornadoDodge() {
-        // Re-plan once per GAME TICK (right after tornadoes move), not on a wall-clock timer. A wall-clock
-        // 600ms throttle drifts out of phase with the tick and, with the loop's execution time, actually
-        // spaced re-plans ~1.25 ticks apart — leaving a window where we ran on a stale plan while the
-        // tornadoes had already moved. Keying off the tick count keeps planning in lockstep with the tick.
         int tick = gameTickCount;
-        if (tick == lastDodgeTick && currentDodgeWp != null) {
-            // Intra-tick iteration: spam-click the active waypoint so the character NEVER stalls or pauses
-            Rs2Walker.walkFastLocal(LocalPoint.fromScene(currentDodgeWp[0], currentDodgeWp[1]));
-            return true;
-        }
         lastDodgeTick = tick;
         timeTornadoDodge = now;
-        dodgeClickedThisLoop = false;
 
         boolean result = Microbot.getClientThread().runOnClientThreadOptional(() -> {
             Player local = Microbot.getClient().getLocalPlayer();
-            if (local == null || hunllef == null) { clearDodge(); setDodgeLog("IDLE", "no player/boss"); return false; }
+            if (local == null || hunllef == null) { clearDodge(); return false; }
             LocalPoint playerLp = local.getLocalLocation();
             LocalPoint bossLp = hunllef.getLocalLocation();
-            if (playerLp == null || bossLp == null) { clearDodge(); setDodgeLog("IDLE", "no local point"); return false; }
+            if (playerLp == null || bossLp == null) { clearDodge(); return false; }
 
             computeArenaBounds();
-            if (!arenaBoundsKnown) { tornadoThreat = false; renderTargetX = -1; clearPathViz(); setDodgeLog("WAIT", "arena bounds unknown"); return false; }
+            if (!arenaBoundsKnown) { tornadoThreat = false; return false; }
 
             List<int[]> tornadoes = tornadoSceneCoords();
-            if (tornadoes.isEmpty()) { clearDodge(); setDodgeLog("CLEAR", "no tornadoes"); return false; }
+            if (tornadoes.isEmpty()) { clearDodge(); return false; }
 
             int px = playerLp.getSceneX(), py = playerLp.getSceneY();
             int bossX = bossLp.getSceneX(), bossY = bossLp.getSceneY();
 
-            int nearest = minTornadoDistance(px, py, tornadoes);
-            tornadoThreat = true; // Constantly kiting while tornadoes exist - never drop threat to stop and attack
-            String base = "p=(" + px + "," + py + ") moving=" + Rs2Player.isMoving()
-                    + " near=" + nearest + " torn=" + formatTornadoes(tornadoes);
+            tornadoThreat = true;
+            dodgeActive = true;
 
             if (!Rs2Player.isRunEnabled()) {
                 Rs2Player.toggleRunEnergy(true);
             }
 
-            int plane = Microbot.getClient().getPlane();
-            Tile[][] tiles = Microbot.getClient().getScene().getTiles()[plane];
-
-            // Constantly on the move while tornadoes are active — never stop or wait for tornadoes to get closer.
-            dodgeActive = true;
-            clearPathViz(); // only the MOVE branch republishes a path; escape/stuck/unstuck show none
-
-            // Stuck detection: we issued a walk last tick but we're on the exact same tile, so that target is
-            // unreachable in practice. If genuinely stuck for 3 ticks, flip circling rotation and re-plan
-            // in the opposite direction to find open space rather than stepping to an adjacent dead-end tile.
-            if (lastWalkPx == px && lastWalkPy == py) {
-                dodgeStuckTicks++;
-            } else {
-                dodgeStuckTicks = 0;
-            }
-            if (dodgeStuckTicks >= 3) {
-                dodgeRotation = -dodgeRotation;
-                committedDestX = -1;
-                committedDestY = -1;
-                lastWpX = -1;
-                lastWpY = -1;
-                dodgeStuckTicks = 0;
-                setDodgeLog("FLIP", base + " stuck for 3 ticks, flipping rotation to " + dodgeRotation);
+            // Continuously update/verify the 12-tile safe lane
+            updateSafeLaneContinuous();
+            if (safeLaneTileA == null || safeLaneTileB == null) {
+                return false;
             }
 
-            // 1) BFS the tiles reachable from the player over SAFE tiles only (floor, not damaging, clear
-            //    of the boss's melee range). This routes AROUND the boss and never through danger.
-            int[][] prev = bfsReachable(tiles, px, py, bossX, bossY, false);
+            int nearest = minTornadoDistance(px, py, tornadoes);
 
-            // Arena centre (scene coords) — the pivot we circle. Rim targets are chosen by angular progress
-            // around this point, not raw distance-from-tornado (which flips side each tick and oscillates).
-            double cx = (arenaMinX + arenaMaxX) / 2.0;
-            double cy = (arenaMinY + arenaMaxY) / 2.0;
+            // Anchor target if not set
+            if (currentShuttleTarget == null) {
+                int distA = Math.max(Math.abs(safeLaneTileA[0] - px), Math.abs(safeLaneTileA[1] - py));
+                int distB = Math.max(Math.abs(safeLaneTileB[0] - px), Math.abs(safeLaneTileB[1] - py));
+                currentShuttleTarget = distA <= distB ? safeLaneTileA : safeLaneTileB;
+            }
 
-            // Danger-field centroid. Manual-play capture showed the human lives on the side OPPOSITE the
-            // damage field ~83% of the time, so we steer the circling toward the open side (null = no field).
-            double[] dc = dangerCentroid(tiles);
+            int distToTarget = Math.max(Math.abs(currentShuttleTarget[0] - px), Math.abs(currentShuttleTarget[1] - py));
+            boolean atTarget = (distToTarget <= 1) || hasArrived(currentShuttleTarget[0], currentShuttleTarget[1]);
 
-            // Re-evaluate safe destination:
-            // Coordinate-based arrival: we reached destination when within 1 tile!
-            int distToCommitted = (committedDestX >= 0) ? Math.max(Math.abs(committedDestX - px), Math.abs(committedDestY - py)) : -1;
-            boolean reachedCommitted = distToCommitted >= 0 && distToCommitted <= 1;
-
-            boolean committedSolid = committedDestX >= 0
-                    && !reachedCommitted
-                    && isDestinationSolid(committedDestX, committedDestY, bossX, bossY, tornadoes);
-
-            boolean keepCommitted = committedSolid
-                    && lineIsSafe(tiles, px, py, committedDestX, committedDestY, bossX, bossY)
-                    && lineClearOfTornadoes(px, py, committedDestX, committedDestY, tornadoes, 1);
-
-            int[] dest;
-            if (keepCommitted) {
-                // Safe tile is still solid and path is completely safe: keep running to it!
-                dest = new int[]{committedDestX, committedDestY};
-            } else {
-                // Reached destination, or path/tile became unsafe:
-                // Calculate a new safe destination candidate!
-                dest = chooseNewSafeTile(prev, px, py, cx, cy, dc, tornadoes, tiles, bossX, bossY);
-                if (dest != null) {
-                    committedDestX = dest[0];
-                    committedDestY = dest[1];
+            if (atTarget) {
+                // Standing at the safe lane endpoint
+                if (nearest > 3) {
+                    // Tornadoes are at gap > 3: STAND STILL AND ATTACK HUNLLEF!
+                    // Pre-hover over the opposite endpoint so the next sprint click lands instantly!
+                    int[] opposite = (currentShuttleTarget[0] == safeLaneTileA[0] && currentShuttleTarget[1] == safeLaneTileA[1])
+                            ? safeLaneTileB : safeLaneTileA;
+                    hoverSceneTile(opposite[0], opposite[1]);
+                    // Return false so checkAttack(), checkFood(), checkPrayerPotions() execute freely!
+                    return false;
+                } else {
+                    // Tornadoes reached gap <= 3: SPRINT TO THE OPPOSITE ENDPOINT!
+                    int[] opposite = (currentShuttleTarget[0] == safeLaneTileA[0] && currentShuttleTarget[1] == safeLaneTileA[1])
+                            ? safeLaneTileB : safeLaneTileA;
+                    currentShuttleTarget = opposite;
+                    lastWalkTargetX = currentShuttleTarget[0];
+                    lastWalkTargetY = currentShuttleTarget[1];
+                    Microbot.log(String.format("[Action] Tornado gap %d <= 3 - sprinting to opposite endpoint (%d,%d)",
+                            nearest, currentShuttleTarget[0], currentShuttleTarget[1]));
+                    Rs2Walker.walkFastLocal(LocalPoint.fromScene(currentShuttleTarget[0], currentShuttleTarget[1]));
+                    return true;
                 }
-            }
-
-            renderTargetX = dest[0];
-            renderTargetY = dest[1];
-            Route route = computeRoute(tiles, prev, px, py, dest, bossX, bossY, tornadoes);
-            pathTiles = route.pathTiles;
-            hopTiles = route.hopTiles;
-            int tScore = clearanceOf(dest, tornadoes);
-
-            int[] wp = route.firstStep;
-            currentDodgeWp = wp;
-            lastWalkTargetX = wp[0];
-            lastWalkTargetY = wp[1];
-            lastWalkPx = px;
-            lastWalkPy = py;
-            lastDodgeWalkTick = gameTickCount;
-            dodgeClickedThisLoop = true;
-
-            // Only spam-click once we are near/at the destination (dist <= 2), or when destination changed
-            boolean shouldClick = (wp[0] != lastWpX || wp[1] != lastWpY)
-                    || !keepCommitted
-                    || distToCommitted <= 2
-                    || (lastWalkPx == px && lastWalkPy == py);
-
-            if (shouldClick) {
-                if (wp[0] != lastWpX || wp[1] != lastWpY || now - timeLastWalkLog > 1000) {
-                    Microbot.log(String.format("[Action] Dodge walk to (%d,%d) | dest=(%d,%d) | from=(%d,%d)",
-                            wp[0], wp[1], dest[0], dest[1], px, py));
-                    timeLastWalkLog = now;
-                }
-                lastWpX = wp[0];
-                lastWpY = wp[1];
-                Rs2Walker.walkFastLocal(LocalPoint.fromScene(wp[0], wp[1]));
             } else {
-                hoverSceneTile(dest[0], dest[1]);
-            }
+                // En route toward currentShuttleTarget:
+                // Check if current segment is still fully safe
+                boolean segmentStillSafe = isSegmentFullySafe(safeLaneTileA, safeLaneTileB, bossX, bossY);
+                if (!segmentStillSafe) {
+                    // If within 6 tiles of target, we will arrive in <= 3 ticks (before damage activates)! Keep running!
+                    if (distToTarget <= 6) {
+                        Rs2Walker.walkFastLocal(LocalPoint.fromScene(currentShuttleTarget[0], currentShuttleTarget[1]));
+                        return true;
+                    } else {
+                        // More than 6 tiles away: immediately switch to new safe segment
+                        safeLaneTileA = null;
+                        safeLaneTileB = null;
+                        currentShuttleTarget = null;
+                        updateSafeLaneContinuous();
+                        if (currentShuttleTarget != null) {
+                            lastWalkTargetX = currentShuttleTarget[0];
+                            lastWalkTargetY = currentShuttleTarget[1];
+                            Rs2Walker.walkFastLocal(LocalPoint.fromScene(currentShuttleTarget[0], currentShuttleTarget[1]));
+                            return true;
+                        }
+                    }
+                }
 
-            setDodgeLog("MOVE:" + dest[0] + "," + dest[1],
-                    base + " rot=" + dodgeRotation + " target=(" + dest[0] + "," + dest[1] + ") clr=" + tScore
-                            + " wp=(" + wp[0] + "," + wp[1] + ") act=MOVE");
-            return true;
+                // Continue sprint to current target
+                lastWalkTargetX = currentShuttleTarget[0];
+                lastWalkTargetY = currentShuttleTarget[1];
+                Rs2Walker.walkFastLocal(LocalPoint.fromScene(currentShuttleTarget[0], currentShuttleTarget[1]));
+                return true;
+            }
         }).orElse(false);
 
-        emitDodgeLog();
         return result;
     }
 
-    /** Stash a dodge diagnostic (called on the client thread); emitDodgeLog() logs it on the script thread. */
-    private void setDodgeLog(String key, String msg) {
-        dodgeLogKey = key;
-        dodgeDebug = "[Dodge] " + msg;
+    private static class SafeSegment {
+        int[] p1;
+        int[] p2;
+        int dist;
+        int rimDist;
+        boolean horizontal;
+
+        SafeSegment(int[] p1, int[] p2, int rimDist, boolean horizontal) {
+            this.p1 = p1;
+            this.p2 = p2;
+            this.dist = Math.max(Math.abs(p2[0] - p1[0]), Math.abs(p2[1] - p1[1]));
+            this.rimDist = rimDist;
+            this.horizontal = horizontal;
+        }
     }
 
-    /** Emit the stashed dodge log (script thread). Logs on every action/target change, else every CD_DODGE_LOG. */
-    private void emitDodgeLog() {
-        if (dodgeDebug == null) return;
-        boolean keyChanged = dodgeLogKey != null && !dodgeLogKey.equals(lastDodgeLogKey);
-        if (keyChanged || now - timeDodgeLog > CD_DODGE_LOG) {
-            logVerbose(dodgeDebug);
-            timeDodgeLog = now;
-            lastDodgeLogKey = dodgeLogKey;
-        }
-        dodgeDebug = null;
-        dodgeLogKey = null;
+    /** True if a single tile is completely safe to stand on (in arena, floor, not fire/warning, not under boss 5x5). */
+    private boolean isTileFullySafe(int x, int y, int bossX, int bossY) {
+        if (!inArena(x, y)) return false;
+        if (!isSafeFloor(x, y)) return false;
+        if (isOnDangerousTile(x, y)) return false;
+        if (isUnderBoss(x, y, bossX, bossY, 0)) return false;
+        return true;
     }
+
+    /** True if all tiles between p1 and p2 (inclusive) are completely safe. */
+    private boolean isSegmentFullySafe(int[] p1, int[] p2, int bossX, int bossY) {
+        if (p1 == null || p2 == null) return false;
+        int dx = Integer.signum(p2[0] - p1[0]);
+        int dy = Integer.signum(p2[1] - p1[1]);
+        int cx = p1[0], cy = p1[1];
+        while (true) {
+            if (!isTileFullySafe(cx, cy, bossX, bossY)) return false;
+            if (cx == p2[0] && cy == p2[1]) break;
+            cx += dx;
+            cy += dy;
+        }
+        return true;
+    }
+
+    /**
+     * Continuously evaluates and discovers the best safe straight segment across the arena:
+     * - Every tile in the segment must be 100% safe (in arena, safe floor, not fire, not under Hunllef 5x5).
+     * - The 2 endpoints have the highest distance between them while having the same X or same Y.
+     * - Prioritizes outer rim segments when available.
+     * - Retains current segment if still 100% safe and near max distance (hysteresis).
+     */
+    public void updateSafeLaneContinuous() {
+        if (!arenaBoundsKnown || hunllef == null) return;
+        Player local = Microbot.getClient().getLocalPlayer();
+        if (local == null || local.getLocalLocation() == null) return;
+        int px = local.getLocalLocation().getSceneX();
+        int py = local.getLocalLocation().getSceneY();
+        LocalPoint bossLp = hunllef.getLocalLocation();
+        if (bossLp == null) return;
+        int bossX = bossLp.getSceneX();
+        int bossY = bossLp.getSceneY();
+
+        List<SafeSegment> segments = new ArrayList<>();
+        int maxDistFound = 0;
+
+        // 1. Scan all horizontal rows (same Y)
+        for (int y = arenaMinY; y <= arenaMaxY; y++) {
+            int rimDist = Math.min(y - arenaMinY, arenaMaxY - y);
+            int segStart = -1;
+            for (int x = arenaMinX; x <= arenaMaxX; x++) {
+                if (isTileFullySafe(x, y, bossX, bossY)) {
+                    if (segStart == -1) segStart = x;
+                } else {
+                    if (segStart != -1) {
+                        int segEnd = x - 1;
+                        if (segEnd > segStart) {
+                            SafeSegment seg = new SafeSegment(new int[]{segStart, y}, new int[]{segEnd, y}, rimDist, true);
+                            segments.add(seg);
+                            maxDistFound = Math.max(maxDistFound, seg.dist);
+                        }
+                        segStart = -1;
+                    }
+                }
+            }
+            if (segStart != -1) {
+                int segEnd = arenaMaxX;
+                if (segEnd > segStart) {
+                    SafeSegment seg = new SafeSegment(new int[]{segStart, y}, new int[]{segEnd, y}, rimDist, true);
+                    segments.add(seg);
+                    maxDistFound = Math.max(maxDistFound, seg.dist);
+                }
+            }
+        }
+
+        // 2. Scan all vertical columns (same X)
+        for (int x = arenaMinX; x <= arenaMaxX; x++) {
+            int rimDist = Math.min(x - arenaMinX, arenaMaxX - x);
+            int segStart = -1;
+            for (int y = arenaMinY; y <= arenaMaxY; y++) {
+                if (isTileFullySafe(x, y, bossX, bossY)) {
+                    if (segStart == -1) segStart = y;
+                } else {
+                    if (segStart != -1) {
+                        int segEnd = y - 1;
+                        if (segEnd > segStart) {
+                            SafeSegment seg = new SafeSegment(new int[]{x, segStart}, new int[]{x, segEnd}, rimDist, false);
+                            segments.add(seg);
+                            maxDistFound = Math.max(maxDistFound, seg.dist);
+                        }
+                        segStart = -1;
+                    }
+                }
+            }
+            if (segStart != -1) {
+                int segEnd = arenaMaxY;
+                if (segEnd > segStart) {
+                    SafeSegment seg = new SafeSegment(new int[]{x, segStart}, new int[]{x, segEnd}, rimDist, false);
+                    segments.add(seg);
+                    maxDistFound = Math.max(maxDistFound, seg.dist);
+                }
+            }
+        }
+
+        if (segments.isEmpty()) return;
+
+        // 3. Hysteresis: If current segment is still 100% safe and has the maximum distance, KEEP IT!
+        if (safeLaneTileA != null && safeLaneTileB != null) {
+            int currentDist = Math.max(Math.abs(safeLaneTileB[0] - safeLaneTileA[0]), Math.abs(safeLaneTileB[1] - safeLaneTileA[1]));
+            if (currentDist >= maxDistFound && isSegmentFullySafe(safeLaneTileA, safeLaneTileB, bossX, bossY)) {
+                return; // Keep current safe segment, no jitter!
+            }
+        }
+
+        // 4. Filter strictly to segments with the highest distance
+        int finalMaxDist = maxDistFound;
+        List<SafeSegment> bestCandidates = segments.stream()
+                .filter(s -> s.dist == finalMaxDist)
+                .collect(Collectors.toList());
+
+        // 5. Select the best segment:
+        //    High distance is paramount: seg.dist * 100
+        //    Outer rim priority: (12 - seg.rimDist) * 20
+        //    Proximity to player: -perpDist
+        SafeSegment best = null;
+        int bestScore = Integer.MIN_VALUE;
+
+        for (SafeSegment seg : bestCandidates) {
+            int perpDist = seg.horizontal ? Math.abs(py - seg.p1[1]) : Math.abs(px - seg.p1[0]);
+            int score = (seg.dist * 100) + ((12 - seg.rimDist) * 20) - perpDist;
+            if (score > bestScore) {
+                bestScore = score;
+                best = seg;
+            }
+        }
+
+        if (best != null) {
+            safeLaneTileA = best.p1;
+            safeLaneTileB = best.p2;
+
+            List<int[]> tiles = new ArrayList<>();
+            int dx = Integer.signum(safeLaneTileB[0] - safeLaneTileA[0]);
+            int dy = Integer.signum(safeLaneTileB[1] - safeLaneTileA[1]);
+            int cx = safeLaneTileA[0], cy = safeLaneTileA[1];
+            while (true) {
+                tiles.add(new int[]{cx, cy});
+                if (cx == safeLaneTileB[0] && cy == safeLaneTileB[1]) break;
+                cx += dx;
+                cy += dy;
+            }
+            currentLaneTiles = tiles;
+
+            // Anchor currentShuttleTarget to the endpoint closest to player if not set or if current target is invalid
+            if (currentShuttleTarget == null || (!Arrays.equals(currentShuttleTarget, safeLaneTileA) && !Arrays.equals(currentShuttleTarget, safeLaneTileB))) {
+                int distA = Math.max(Math.abs(safeLaneTileA[0] - px), Math.abs(safeLaneTileA[1] - py));
+                int distB = Math.max(Math.abs(safeLaneTileB[0] - px), Math.abs(safeLaneTileB[1] - py));
+                currentShuttleTarget = distA <= distB ? safeLaneTileA : safeLaneTileB;
+            }
+        }
+    }
+
+    private long lastHoverTime = -1;
+    private int lastHoverX = -1, lastHoverY = -1;
 
     /** Pre-hovers the mouse over a scene tile so the next click lands with 0 travel delay. */
     private void hoverSceneTile(int sceneX, int sceneY) {
         if (sceneX < 0 || sceneY < 0 || sceneX >= SCENE_SIZE || sceneY >= SCENE_SIZE) return;
+        if (lastHoverX == sceneX && lastHoverY == sceneY && now - lastHoverTime < 600) return;
+        lastHoverX = sceneX;
+        lastHoverY = sceneY;
+        lastHoverTime = now;
         Microbot.getClientThread().runOnClientThreadOptional(() -> {
             LocalPoint lp = LocalPoint.fromScene(sceneX, sceneY);
             if (lp == null) return null;
@@ -861,497 +956,11 @@ public class CustomGauntletScript extends Script {
         return min;
     }
 
-    /**
-     * A scene tile we may stand on / path through: inside the arena, on arena floor, not a damaging
-     * ground/game object, and not under the Hunllef footprint. Must run on the client thread.
-     */
-    private boolean isStandableSafe(Tile[][] tiles, int x, int y, int bossX, int bossY) {
-        if (!inArena(x, y)) return false;
-        if (x < 0 || y < 0 || x >= tiles.length || y >= tiles[x].length) return false;
-        Tile tile = tiles[x][y];
-        if (tile == null) return false;
-        GroundObject ground = tile.getGroundObject();
-        if (ground == null || !FLOOR_TILES.contains(ground.getId())) return false;
-        if (DANGEROUS_TILES.contains(ground.getId())) return false;
-        GameObject[] gameObjects = tile.getGameObjects();
-        if (gameObjects != null) {
-            for (GameObject go : gameObjects) {
-                if (go != null && DANGEROUS_TILES.contains(go.getId())) return false;
-            }
-        }
-        // Margin of 1 past the footprint: the ring immediately outside the Hunllef is still within melee
-        // range, so keep dodge targets AND straight-line routes a tile clear of it or we run under the boss.
-        return !isUnderBoss(x, y, bossX, bossY, DODGE_BOSS_MARGIN);
-    }
-
-    /**
-     * The exact tiles the character walks through from (x0,y0) to (x1,y1) under the game's movement model
-     * (same for players and tornadoes): each tick it closes the MAJOR axis with straight steps until the
-     * remaining major gap equals the minor gap, then moves DIAGONALLY to finish — i.e. one straight run then
-     * one diagonal run, never a staircase. Excludes the start tile, includes the endpoint.
-     */
-    private List<int[]> movementPathTiles(int x0, int y0, int x1, int y1) {
-        List<int[]> out = new ArrayList<>();
-        int cx = x0, cy = y0, guard = 0;
-        while ((cx != x1 || cy != y1) && guard++ < SCENE_SIZE * 2) {
-            int dx = x1 - cx, dy = y1 - cy;
-            int adx = Math.abs(dx), ady = Math.abs(dy);
-            if (adx > ady) {
-                cx += Integer.signum(dx);          // straight along the major (X) axis
-            } else if (ady > adx) {
-                cy += Integer.signum(dy);          // straight along the major (Y) axis
-            } else {
-                cx += Integer.signum(dx);          // gaps equal -> diagonal to finish
-                cy += Integer.signum(dy);
-            }
-            out.add(new int[]{cx, cy});
-        }
-        return out;
-    }
-
-    /**
-     * True if EVERY tile the character actually walks through from (x0,y0) to (x1,y1) is safe to stand on
-     * (endpoint included), per {@link #movementPathTiles}. This matches where walkFastLocal will actually
-     * take us, so a leg that fails here means we must stop at an intermediate waypoint (the last safe tile).
-     */
-    private boolean lineIsSafe(Tile[][] tiles, int x0, int y0, int x1, int y1, int bossX, int bossY) {
-        for (int[] t : movementPathTiles(x0, y0, x1, y1)) {
-            if (!isStandableSafe(tiles, t[0], t[1], bossX, bossY)) return false;
-        }
-        return true;
-    }
-
-    /** True if every tile stepped through from (x0,y0) to (x1,y1) maintains at least minClearance from every tornado. */
-    private boolean lineClearOfTornadoes(int x0, int y0, int x1, int y1, List<int[]> tornadoes, int minClearance) {
-        for (int[] t : movementPathTiles(x0, y0, x1, y1)) {
-            if (minTornadoDistance(t[0], t[1], tornadoes) < minClearance) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /** A tile we can walk ACROSS during an escape: arena floor, whether safe or damaging (we accept a hit
-     *  or two to punch through a ring of danger), but never a wall or the Hunllef's own footprint. */
-    private boolean isFloorTraversable(Tile[][] tiles, int x, int y, int bossX, int bossY) {
-        if (!inArena(x, y)) return false;
-        if (x < 0 || y < 0 || x >= tiles.length || y >= tiles[x].length) return false;
-        Tile tile = tiles[x][y];
-        if (tile == null) return false;
-        GroundObject ground = tile.getGroundObject();
-        if (ground == null) return false;
-        int gid = ground.getId();
-        if (!FLOOR_TILES.contains(gid) && !DANGEROUS_TILES.contains(gid)) return false; // wall / non-floor
-        return !isUnderBoss(x, y, bossX, bossY, 0); // can't walk through the boss itself (margin 0)
-    }
-
-    /** A tile is traversable for the BFS: when {@code allowDanger} is false only truly safe tiles count
-     *  (normal kiting — never route through danger); when true, damaging floor tiles are also walkable
-     *  (boxed-in escape, accepting a hit or two to punch out). Walls and the boss always block. */
-    private boolean canTraverse(Tile[][] tiles, int x, int y, int bossX, int bossY, boolean allowDanger) {
-        return allowDanger ? isFloorTraversable(tiles, x, y, bossX, bossY)
-                           : isStandableSafe(tiles, x, y, bossX, bossY);
-    }
-
-    /**
-     * Breadth-first flood-fill of tiles reachable from (sx,sy), 8-directional, never cutting a diagonal
-     * across a blocked corner. {@code allowDanger} selects the traversal rule (see {@link #canTraverse}).
-     * Returns a predecessor grid ({@code -1} = unvisited, otherwise the encoded parent {@code x*SCENE_SIZE+y};
-     * the start stores {@link Integer#MAX_VALUE}).
-     */
-    private int[][] bfsReachable(Tile[][] tiles, int sx, int sy, int bossX, int bossY, boolean allowDanger) {
-        int[][] prev = new int[SCENE_SIZE][SCENE_SIZE];
-        for (int[] row : prev) Arrays.fill(row, -1);
-        ArrayDeque<int[]> queue = new ArrayDeque<>();
-        prev[sx][sy] = Integer.MAX_VALUE;
-        queue.add(new int[]{sx, sy});
-        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
-        while (!queue.isEmpty()) {
-            int[] c = queue.poll();
-            int cx = c[0], cy = c[1];
-            for (int[] d : dirs) {
-                int nx = cx + d[0], ny = cy + d[1];
-                if (nx < 0 || ny < 0 || nx >= SCENE_SIZE || ny >= SCENE_SIZE) continue;
-                if (prev[nx][ny] != -1) continue;
-                if (!canTraverse(tiles, nx, ny, bossX, bossY, allowDanger)) continue;
-                if (d[0] != 0 && d[1] != 0
-                        && (!canTraverse(tiles, cx + d[0], cy, bossX, bossY, allowDanger)
-                        || !canTraverse(tiles, cx, cy + d[1], bossX, bossY, allowDanger))) {
-                    continue; // no diagonal corner-cut past a blocked corner
-                }
-                prev[nx][ny] = cx * SCENE_SIZE + cy;
-                queue.add(new int[]{nx, ny});
-            }
-        }
-        return prev;
-    }
-
-    /** Min Chebyshev distance from a candidate tile to the nearest tornado (the binding threat). */
-    private int clearanceOf(int[] tile, List<int[]> tornadoes) {
-        return minTornadoDistance(tile[0], tile[1], tornadoes);
-    }
-
-    /** Centroid (scene coords) of all damaging tiles in the arena, or null if there's no field. Client thread. */
-    private double[] dangerCentroid(Tile[][] tiles) {
-        long sx = 0, sy = 0;
-        int n = 0;
-        for (int x = arenaMinX; x <= arenaMaxX; x++) {
-            for (int y = arenaMinY; y <= arenaMaxY; y++) {
-                if (isOnDangerousTile(x, y)) { sx += x; sy += y; n++; }
-            }
-        }
-        return n == 0 ? null : new double[]{(double) sx / n, (double) sy / n};
-    }
-
-    /** Chebyshev distance from a tile to the danger-field centroid (bigger = farther from the fire). */
-    private int distToDanger(int[] tile, double[] dc) {
-        return (int) Math.round(Math.max(Math.abs(tile[0] - dc[0]), Math.abs(tile[1] - dc[1])));
-    }
-
-    /**
-     * Pick the rotational direction (+1 = CCW, -1 = CW) to start circling when uncommitted. Prefer the way
-     * whose rim target sits decisively farther from the danger field (manual play lives on the open side);
-     * otherwise the way that keeps us further from the tornadoes. Defaults to +1 if neither side has a target.
-     */
-    private int pickInitialRotation(int[] targetCCW, int[] targetCW, List<int[]> tornadoes, double[] dc) {
-        if (targetCCW == null && targetCW == null) return 1;
-        if (targetCCW == null) return -1;
-        if (targetCW == null) return 1;
-        if (dc != null) {
-            int dccw = distToDanger(targetCCW, dc), dcw = distToDanger(targetCW, dc);
-            if (Math.abs(dccw - dcw) >= 2) return dccw > dcw ? 1 : -1; // clearly one side is away from the fire
-        }
-        return clearanceOf(targetCCW, tornadoes) >= clearanceOf(targetCW, tornadoes) ? 1 : -1;
-    }
-
-    /**
-     * Checks if a rim route from (px, py) to (tx, ty) is 100% safe. Either directly along the same wall,
-     * or as a safe two-leg L-shape around the intermediate corner. Both legs and the corner must be safe.
-     */
-    private boolean isRimRouteSafe(Tile[][] tiles, int px, int py, int tx, int ty, int bossX, int bossY) {
-        if (lineIsSafe(tiles, px, py, tx, ty, bossX, bossY)) {
-            return true;
-        }
-        int cornerX, cornerY;
-        boolean pOnSN = Math.abs(py - arenaMinY) <= 1 || Math.abs(py - arenaMaxY) <= 1;
-        boolean tOnWE = Math.abs(tx - arenaMinX) <= 1 || Math.abs(tx - arenaMaxX) <= 1;
-        if (pOnSN && tOnWE) {
-            cornerX = tx;
-            cornerY = py;
-        } else {
-            cornerX = px;
-            cornerY = ty;
-        }
-        return isStandableSafe(tiles, cornerX, cornerY, bossX, bossY)
-                && lineIsSafe(tiles, px, py, cornerX, cornerY, bossX, bossY)
-                && lineIsSafe(tiles, cornerX, cornerY, tx, ty, bossX, bossY);
-    }
-
-    /** Find the closest standable safe tile to (px, py) to get off damaging floor immediately. */
-    private int[] findNearestSafeTile(Tile[][] tiles, int px, int py, List<int[]> tornadoes, int bossX, int bossY) {
-        int[] best = null;
-        int bestDist = Integer.MAX_VALUE;
-        int bestClearance = -1;
-        for (int x = arenaMinX; x <= arenaMaxX; x++) {
-            for (int y = arenaMinY; y <= arenaMaxY; y++) {
-                if (!isStandableSafe(tiles, x, y, bossX, bossY)) continue;
-                int dist = Math.max(Math.abs(x - px), Math.abs(y - py));
-                int clr = minTornadoDistance(x, y, tornadoes);
-                if (clr < 1) continue;
-                if (dist < bestDist || (dist == bestDist && clr > bestClearance)) {
-                    bestDist = dist;
-                    bestClearance = clr;
-                    best = new int[]{x, y};
-                }
-            }
-        }
-        return best;
-    }
-
-    /** True if a destination tile is valid and safe to stand on (in arena, safe floor, not fire, not boss, clear of tornadoes). */
-    private boolean isDestinationSolid(int destX, int destY, int bossX, int bossY, List<int[]> tornadoes) {
-        if (destX < 0 || destY < 0) return false;
-        if (!inArena(destX, destY)) return false;
-        if (!isSafeFloor(destX, destY)) return false;
-        if (isOnDangerousTile(destX, destY)) return false;
-        if (isUnderBoss(destX, destY, bossX, bossY, 0)) return false;
-        if (minTornadoDistance(destX, destY, tornadoes) < MIN_TARGET_CLEARANCE) return false;
-        return true;
-    }
-
-    /** True if the route from (px, py) to (destX, destY) is completely clear of dangerous ground and Hunllef. */
-    private boolean isRouteToDestinationSafe(Tile[][] tiles, int[][] prev, int px, int py, int destX, int destY, int bossX, int bossY, List<int[]> tornadoes) {
-        if (destX < 0 || destY < 0 || destX >= SCENE_SIZE || destY >= SCENE_SIZE) return false;
-        if (prev[destX][destY] == -1) return false; // not reachable over safe floor
-        Route route = computeRoute(tiles, prev, px, py, new int[]{destX, destY}, bossX, bossY, tornadoes);
-        if (route == null || route.firstStep == null) return false;
-        if (!lineIsSafe(tiles, px, py, route.firstStep[0], route.firstStep[1], bossX, bossY)) return false;
-        if (!lineClearOfTornadoes(px, py, route.firstStep[0], route.firstStep[1], tornadoes, 2)) return false;
-        return true;
-    }
-
-    /** Calculates a new safe destination tile candidate when the previous one is reached or unsafe. */
-    private int[] chooseNewSafeTile(int[][] prev, int px, int py, double cx, double cy, double[] dc,
-                                    List<int[]> tornadoes, Tile[][] tiles, int bossX, int bossY) {
-        int[] targetCCW = chooseRimTarget(prev, px, py, cx, cy, dc, tornadoes, tiles, bossX, bossY, +1);
-        int[] targetCW  = chooseRimTarget(prev, px, py, cx, cy, dc, tornadoes, tiles, bossX, bossY, -1);
-
-        if (dodgeRotation == 0) {
-            dodgeRotation = pickInitialRotation(targetCCW, targetCW, tornadoes, dc);
-        }
-        int[] curTarget = dodgeRotation > 0 ? targetCCW : targetCW;
-        int[] altTarget = dodgeRotation > 0 ? targetCW : targetCCW;
-
-        if (curTarget == null && altTarget != null) {
-            dodgeRotation = -dodgeRotation;
-        } else if (curTarget != null && altTarget != null
-                && clearanceOf(altTarget, tornadoes) > clearanceOf(curTarget, tornadoes) + FLIP_HYSTERESIS) {
-            dodgeRotation = -dodgeRotation;
-        } else if (dc != null && curTarget != null && altTarget != null
-                && distToDanger(altTarget, dc) > distToDanger(curTarget, dc) + DANGER_FLIP_MARGIN) {
-            dodgeRotation = -dodgeRotation;
-        }
-        int[] dest = dodgeRotation > 0 ? targetCCW : targetCW;
-
-        if (dest == null) {
-            dest = chooseBestReachableBfs(prev, px, py, tornadoes, tiles, bossX, bossY);
-        }
-        if (dest == null) {
-            dest = findNearestSafeTile(tiles, px, py, tornadoes, bossX, bossY);
-        }
-        return dest;
-    }
-
-    /**
-     * Next waypoint when circling the perimeter in rotational direction {@code rot} (+1 = CCW, -1 = CW
-     * around the arena centre (cx,cy)). Among safe tiles reachable by a CLEAR straight safe line from the
-     * player — so the walk hugs the wall and commits the full multi-tile run instead of clipping the boss
-     * in the middle — that angularly ADVANCE in {@code rot} and stay clear of every tornado, pick the
-     * farthest (longest committed run), then the most tornado clearance, then the tile nearest the wall.
-     * Returns null if nothing ahead qualifies (caller flips direction or crosses the room).
-     */
-    private int[] chooseRimTarget(int[][] prev, int px, int py, double cx, double cy, double[] dc,
-                                  List<int[]> tornadoes, Tile[][] tiles, int bossX, int bossY, int rot) {
-        int[] best = null;
-        int bestTravel = -1, bestDanger = -1, bestClear = -1, bestEdge = Integer.MAX_VALUE;
-        for (int x = arenaMinX; x <= arenaMaxX; x++) {
-            for (int y = arenaMinY; y <= arenaMaxY; y++) {
-                if (prev[x][y] == -1) continue;             // not reachable over safe ground
-                if (!isStandableSafe(tiles, x, y, bossX, bossY)) continue;
-                if (!isRimRouteSafe(tiles, px, py, x, y, bossX, bossY)) continue; // entire route (direct or around corner) must be 100% safe
-                int travel = Math.max(Math.abs(x - px), Math.abs(y - py));
-                if (travel < MIN_DODGE_TRAVEL) continue;    // NEVER pick an adjacent tile! Must be a real run!
-                if (travel > RIM_LOOKAHEAD) continue;       // a committed run, capped at ~the arena span
-
-                // Only consider tiles on the outer rim
-                int edge = Math.min(Math.min(x - arenaMinX, arenaMaxX - x),
-                                    Math.min(y - arenaMinY, arenaMaxY - y));
-                if (edge > 1) continue;
-
-                // Angular progress around the centre: cross-product sign is the rotation direction.
-                double cross = (px - cx) * (y - cy) - (py - cy) * (x - cx);
-                if (cross * rot <= 0) continue;             // not advancing the way we're circling
-
-                int clear = minTornadoDistance(x, y, tornadoes);
-                if (clear < MIN_TARGET_CLEARANCE) continue; // don't stop right next to a tornado
-
-                // Reconstruct the path and ensure the initial steps don't step into a tornado
-                List<int[]> path = reconstructPath(prev, px, py, new int[]{x, y});
-                if (path.isEmpty()) continue;
-                boolean pathSafe = true;
-                for (int i = 0; i < Math.min(3, path.size()); i++) {
-                    int[] step = path.get(i);
-                    if (minTornadoDistance(step[0], step[1], tornadoes) < 2) {
-                        pathSafe = false;
-                        break;
-                    }
-                }
-                if (!pathSafe) continue;
-
-                // Prefer the far end of the run (long commit), then — bucketed so small differences don't
-                // override the commit — the end farther from the danger field, then clearance, then the rim.
-                int dangerBucket = dc == null ? 0 : distToDanger(new int[]{x, y}, dc) / 2;
-                boolean better = travel > bestTravel
-                        || (travel == bestTravel && dangerBucket > bestDanger)       // lean to the open side
-                        || (travel == bestTravel && dangerBucket == bestDanger && clear > bestClear)
-                        || (travel == bestTravel && dangerBucket == bestDanger && clear == bestClear && edge < bestEdge);
-                if (better) {
-                    bestTravel = travel;
-                    bestDanger = dangerBucket;
-                    bestClear = clear;
-                    bestEdge = edge;
-                    best = new int[]{x, y};
-                }
-            }
-        }
-        return best;
-    }
-
-    /** Among reachable tiles, the furthest-from-tornado SAFE tile, preferring the rim/corner (so we make a
-     *  big committed move to open space), then the longer run. Only genuinely safe tiles are destinations. */
-    private int[] chooseBestReachableBfs(int[][] prev, int px, int py, List<int[]> tornadoes,
-                                         Tile[][] tiles, int bossX, int bossY) {
-        int[] best = null;
-        int bestDist = -1, bestEdge = Integer.MAX_VALUE, bestTravel = -1;
-        int[] fallback = null;
-        int fallbackDist = -1;
-        for (int x = 0; x < SCENE_SIZE; x++) {
-            for (int y = 0; y < SCENE_SIZE; y++) {
-                if (prev[x][y] == -1) continue;
-                if (!isStandableSafe(tiles, x, y, bossX, bossY)) continue; // only flee to a truly safe tile
-                int travel = Math.max(Math.abs(x - px), Math.abs(y - py));
-                if (travel <= 1) continue; // NEVER pick an adjacent tile under any circumstances!
-
-                int dist = minTornadoDistance(x, y, tornadoes);
-                int edge = Math.min(Math.min(x - arenaMinX, arenaMaxX - x),
-                                    Math.min(y - arenaMinY, arenaMaxY - y));
-
-                if (dist > fallbackDist && travel >= 2) {
-                    fallbackDist = dist;
-                    fallback = new int[]{x, y};
-                }
-
-                if (travel < MIN_DODGE_TRAVEL) continue; // Prefer at least MIN_DODGE_TRAVEL tiles away!
-
-                boolean better = dist > bestDist
-                        || (dist == bestDist && edge < bestEdge)               // prefer the rim/corner
-                        || (dist == bestDist && edge == bestEdge && travel > bestTravel); // then the longer run
-                if (better) {
-                    bestDist = dist;
-                    bestEdge = edge;
-                    bestTravel = travel;
-                    best = new int[]{x, y};
-                }
-            }
-        }
-        return best != null ? best : fallback;
-    }
-
-    /** Rebuild the BFS path from the player (exclusive) to {@code target} (inclusive), first step first. */
-    private List<int[]> reconstructPath(int[][] prev, int px, int py, int[] target) {
-        java.util.LinkedList<int[]> path = new java.util.LinkedList<>();
-        int cx = target[0], cy = target[1];
-        int guard = 0;
-        while (!(cx == px && cy == py) && guard++ < SCENE_SIZE * SCENE_SIZE) {
-            path.addFirst(new int[]{cx, cy});
-            int p = prev[cx][cy];
-            if (p == Integer.MAX_VALUE || p < 0) break;
-            cx = p / SCENE_SIZE;
-            cy = p % SCENE_SIZE;
-        }
-        return path;
-    }
-
-    /** A planned route: the tile to click THIS tick ({@code firstStep}), plus the overlay tiles (blue path
-     *  we'll actually walk, yellow intermediate hop waypoints). All three come from one computation. */
-    private static final class Route {
-        final int[] firstStep;
-        final int[] pathTiles; // packed (sceneX<<8|sceneY), blue
-        final int[] hopTiles;  // packed (sceneX<<8|sceneY), yellow
-
-        Route(int[] firstStep, int[] pathTiles, int[] hopTiles) {
-            this.firstStep = firstStep;
-            this.pathTiles = pathTiles;
-            this.hopTiles = hopTiles;
-        }
-    }
-
-    /**
-     * The single source of truth for a dodge route to {@code dest}. Decomposes the safe BFS route into the
-     * waypoints we'd actually CLICK — from each position, the farthest route node whose real movement path
-     * (straight-then-diagonal, {@link #lineIsSafe}) stays safe — and returns:
-     *   firstStep = the waypoint to click this tick (the farthest reachable by one safe leg, or an intermediate
-     *               corner when the target needs a direction change the model can't make safely in one leg),
-     *   pathTiles = the tiles actually WALKED (movement model between consecutive waypoints, not the BFS staircase),
-     *   hopTiles  = the intermediate corner waypoints (every waypoint except the final target).
-     * The walk and the overlay both consume this, so what's drawn is exactly what's walked. Client thread.
-     */
-    private Route computeRoute(Tile[][] tiles, int[][] prev, int px, int py, int[] dest, int bossX, int bossY, List<int[]> tornadoes) {
-        List<int[]> path = reconstructPath(prev, px, py, dest); // safe BFS route — only used to find the hops
-
-        List<int[]> waypoints = new ArrayList<>();
-        waypoints.add(new int[]{px, py});
-        List<Integer> hops = new ArrayList<>();
-        int ci = px, cj = py, idx = 0, guard = 0;
-        while (guard++ < path.size() + 2) {
-            int fi = -1;
-            int[] far = null;
-            for (int k = idx; k < path.size(); k++) {
-                int[] n = path.get(k);
-                if (!lineIsSafe(tiles, ci, cj, n[0], n[1], bossX, bossY)) break;
-                far = n;
-                fi = k;
-            }
-            if (far == null) break;                                   // can't progress any further
-            waypoints.add(far);
-            if (far[0] == dest[0] && far[1] == dest[1]) break;        // reached the final target (green, not a hop)
-            hops.add((far[0] << 8) | far[1]);                         // an intermediate corner (yellow)
-            ci = far[0];
-            cj = far[1];
-            idx = fi + 1;
-        }
-
-        // Blue = the tiles actually WALKED: straight-then-diagonal movement between consecutive waypoints.
-        java.util.LinkedHashSet<Integer> blue = new java.util.LinkedHashSet<>();
-        for (int i = 0; i + 1 < waypoints.size(); i++) {
-            int[] a = waypoints.get(i), b = waypoints.get(i + 1);
-            for (int[] t : movementPathTiles(a[0], a[1], b[0], b[1])) {
-                blue.add((t[0] << 8) | t[1]);
-            }
-        }
-        int[] blueArr = new int[blue.size()];
-        int bi = 0;
-        for (int v : blue) blueArr[bi++] = v;
-        int[] yellow = new int[hops.size()];
-        for (int i = 0; i < hops.size(); i++) yellow[i] = hops.get(i);
-
-        // ALWAYS ensure the clicked waypoint has a 100% safe direct line from (px, py)!
-        // Shortcut logic: If at ANY point we have a clear safe line to the final destination 'dest'
-        // or a farther waypoint, jump straight to it instead of forcing through the intermediate hops!
-        int[] firstStep = null;
-        if (lineIsSafe(tiles, px, py, dest[0], dest[1], bossX, bossY)
-                && (tornadoes == null || lineClearOfTornadoes(px, py, dest[0], dest[1], tornadoes, 1))) {
-            firstStep = dest;
-        } else if (waypoints.size() > 1) {
-            // Scan waypoints backwards from farthest to nearest to take the biggest safe leap towards dest
-            for (int i = waypoints.size() - 1; i >= 1; i--) {
-                int[] wp = waypoints.get(i);
-                if (lineIsSafe(tiles, px, py, wp[0], wp[1], bossX, bossY)
-                        && (tornadoes == null || lineClearOfTornadoes(px, py, wp[0], wp[1], tornadoes, 1))) {
-                    firstStep = wp;
-                    break;
-                }
-            }
-        }
-        if (firstStep == null) {
-            firstStep = waypoints.size() > 1 ? waypoints.get(1) : dest;
-        }
-        return new Route(firstStep, blueArr, yellow);
-    }
-
     private void clearDodge() {
         dodgeActive = false;
         tornadoThreat = false;
-        dodgeRotation = 0;
-        currentDodgeWp = null;
-        lastDodgeTick = -1; // next tornado phase re-plans on its first tick instead of waiting for a tick change
-        lastWalkPx = -1;
-        lastWalkPy = -1;
-        lastWpX = -1;
-        lastWpY = -1;
-        lastDodgeWalkTick = -2;
-        dodgeStuckTicks = 0;
-        committedDestX = -1;
-        committedDestY = -1;
-        renderTargetX = -1;
-        renderTargetY = -1;
-        clearPathViz();
-    }
-
-    /** Drop the overlay's planned-path tiles (blue) and hop waypoints (yellow). */
-    private void clearPathViz() {
-        pathTiles = new int[0];
-        hopTiles = new int[0];
+        lastDodgeTick = -1;
+        currentShuttleTarget = null;
     }
 
     /**
@@ -1367,29 +976,73 @@ public class CustomGauntletScript extends Script {
         }
     }
 
-    /** True if the scene tile carries the safe floor ground object. Must run on the client thread. */
-    private boolean isSafeFloor(int sceneX, int sceneY) {
-        int plane = Microbot.getClient().getPlane();
-        Tile tile = Microbot.getClient().getScene().getTiles()[plane][sceneX][sceneY];
-        if (tile == null) return false;
-        GroundObject ground = tile.getGroundObject();
-        return ground != null && FLOOR_TILES.contains(ground.getId());
+    /**
+     * Resolves the live object ID for a tile object, evaluating varbit impostor transforms so that
+     * dynamic state changes (such as floor warning/damage patterns) are accurately reflected.
+     */
+    private int getActualTileObjectId(TileObject object) {
+        if (object == null) return -1;
+        int id = object.getId();
+        try {
+            ObjectComposition comp = Microbot.getClient().getObjectDefinition(id);
+            if (comp != null && comp.getImpostorIds() != null) {
+                ObjectComposition impostor = comp.getImpostor();
+                if (impostor != null) {
+                    return impostor.getId();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return id;
     }
 
-    /** True if the scene tile carries a damaging ground/game object (the Hunllef's floor attack). Client thread. */
-    private boolean isOnDangerousTile(int sceneX, int sceneY) {
+    /** True if the scene tile carries the safe floor ground object (evaluating impostors). Must run on the client thread. */
+    private boolean isSafeFloor(int sceneX, int sceneY) {
         int plane = Microbot.getClient().getPlane();
         if (sceneX < 0 || sceneY < 0 || sceneX >= SCENE_SIZE || sceneY >= SCENE_SIZE) return false;
         Tile tile = Microbot.getClient().getScene().getTiles()[plane][sceneX][sceneY];
         if (tile == null) return false;
         GroundObject ground = tile.getGroundObject();
-        if (ground != null && DANGEROUS_TILES.contains(ground.getId())) return true;
+        if (ground == null) return false;
+        int actualId = getActualTileObjectId(ground);
+        return FLOOR_TILES.contains(actualId);
+    }
+
+    /** True if the scene tile carries a damaging/warning ground or game object (evaluating impostors). Client thread. */
+    private boolean isOnDangerousTile(int sceneX, int sceneY) {
+        int plane = Microbot.getClient().getPlane();
+        if (sceneX < 0 || sceneY < 0 || sceneX >= SCENE_SIZE || sceneY >= SCENE_SIZE) return false;
+        Tile tile = Microbot.getClient().getScene().getTiles()[plane][sceneX][sceneY];
+        if (tile == null) return false;
+
+        GroundObject ground = tile.getGroundObject();
+        if (ground != null) {
+            int actualId = getActualTileObjectId(ground);
+            if (DANGEROUS_TILES.contains(actualId)) return true;
+        }
+
         GameObject[] gameObjects = tile.getGameObjects();
         if (gameObjects != null) {
             for (GameObject go : gameObjects) {
-                if (go != null && DANGEROUS_TILES.contains(go.getId())) return true;
+                if (go != null) {
+                    int actualId = getActualTileObjectId(go);
+                    if (DANGEROUS_TILES.contains(actualId)) return true;
+                }
             }
         }
+
+        DecorativeObject deco = tile.getDecorativeObject();
+        if (deco != null) {
+            int actualId = getActualTileObjectId(deco);
+            if (DANGEROUS_TILES.contains(actualId)) return true;
+        }
+
+        WallObject wall = tile.getWallObject();
+        if (wall != null) {
+            int actualId = getActualTileObjectId(wall);
+            if (DANGEROUS_TILES.contains(actualId)) return true;
+        }
+
         return false;
     }
 
@@ -1479,6 +1132,10 @@ public class CustomGauntletScript extends Script {
             Rs2Prayer.disableAllPrayers();
             nextPrayer = null;
             clearDodge();
+            safeLaneTileA = null;
+            safeLaneTileB = null;
+            currentShuttleTarget = null;
+            currentLaneTiles = new ArrayList<>();
             return;
         } else {
             ghState = State.FIGHTING;
@@ -1495,9 +1152,35 @@ public class CustomGauntletScript extends Script {
     public void eventGameTick() {
         tickHappened.set(true);
         gameTickCount++; // drives the once-per-tick tornado-dodge re-plan (see handleTornadoDodge)
+        if (ghState == State.FIGHTING && arenaBoundsKnown && hunllef != null) {
+            updateSafeLaneContinuous();
+        }
         if (loopCount > LOOPS_PER_TICK * 2) {
             tickHappened.set(true);
         } //failsafe
+    }
+
+    public void onGroundObjectSpawned(GroundObjectSpawned event) {
+        if (event == null || event.getGroundObject() == null) return;
+        int id = event.getGroundObject().getId();
+        if (WARNING_TILES.contains(id)) {
+            if (floorWarningStartTick != gameTickCount) {
+                floorWarningStartTick = gameTickCount;
+            }
+            if (ghState == State.FIGHTING && arenaBoundsKnown && hunllef != null) {
+                updateSafeLaneContinuous();
+            }
+        }
+    }
+
+    public void onGroundObjectDespawned(GroundObjectDespawned event) {
+        if (event == null || event.getGroundObject() == null) return;
+        int id = event.getGroundObject().getId();
+        if (DANGEROUS_TILES.contains(id)) {
+            if (ghState == State.FIGHTING && arenaBoundsKnown && hunllef != null) {
+                updateSafeLaneContinuous();
+            }
+        }
     }
 
 
@@ -1705,7 +1388,7 @@ public class CustomGauntletScript extends Script {
         }
     }
 
-    /** True if the player is currently on a safe floor tile (not on fire, not under boss, inside arena). */
+    /** True if the player is currently on a safe floor tile (not on fire, not under boss, inside arena, clear of tornadoes). */
     private boolean isPlayerOnSafeTile() {
         return Microbot.getClientThread().runOnClientThreadOptional(() -> {
             LocalPoint playerLp = Rs2Player.getLocalLocation();
@@ -1719,6 +1402,10 @@ public class CustomGauntletScript extends Script {
                 if (bossLp != null && isUnderBoss(px, py, bossLp.getSceneX(), bossLp.getSceneY(), 0)) {
                     return false;
                 }
+            }
+            List<int[]> torn = tornadoSceneCoords();
+            if (!torn.isEmpty() && minTornadoDistance(px, py, torn) <= 2) {
+                return false;
             }
             return true;
         }).orElse(false);
@@ -1774,7 +1461,7 @@ public class CustomGauntletScript extends Script {
         if (!config.autoAttack()) return;
         if (hunllef == null) return;
         if (isAttackingBoss()) return; // already attacking it — the client auto-continues, don't re-click
-        if (!hasArrived(lastWalkTargetX, lastWalkTargetY)) return; // Still moving to the clicked tile, don't interrupt!
+        if (!isPlayerOnSafeTile() && !hasArrived(lastWalkTargetX, lastWalkTargetY)) return; // Only wait if running to flee unsafe tiles!
         // We're stationary, not under a tornado, and NOT currently attacking the boss — i.e. the engagement
         // dropped (just arrived from a dodge, or finished eating/switching). Re-engage immediately; there's
         // no reason to wait out a timer. Re-clicking never resets the weapon cooldown (the game fires the hit
@@ -1785,6 +1472,7 @@ public class CustomGauntletScript extends Script {
             Microbot.log("[Action] Attack Hunllef");
             hunllef.click("attack");
             timeAttack = now;
+            lastAttackTick = gameTickCount;
         }
     }
 
