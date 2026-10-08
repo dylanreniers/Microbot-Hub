@@ -269,8 +269,8 @@ public class CustomGauntletScript extends Script {
 
                         boolean tornadoesActive = tornado != null && !tornado.isEmpty();
 
-                        // Only toggle offensive prayers when tornadoes are NOT active
-                        if (!tornadoesActive && now - timePrayOffence > CD_PRAYOFFENCE) checkAttackPrayers();
+                        // Maintain offensive prayers during combat
+                        if (now - timePrayOffence > CD_PRAYOFFENCE) checkAttackPrayers();
 
                         // Only simulate sleep on prayer changes when NOT kiting tornadoes!
                         if (!tornadoesActive && ((now - timePrayProtect < CD_RECENTLY) || (now - timePrayOffence < CD_RECENTLY) || (now - timeSteel < CD_RECENTLY)))
@@ -672,11 +672,22 @@ public class CustomGauntletScript extends Script {
                 // Standing at the safe lane endpoint
                 if (nearest > 3) {
                     // Tornadoes are at gap > 3: STAND STILL AND ATTACK HUNLLEF!
+                    boolean canAttackBoss = config.autoAttack() && hunllef != null
+                            && (isBowEquipped() || isStaffEquipped() || (isHalberdEquipped() && Math.max(Math.abs(px - bossX), Math.abs(py - bossY)) <= 2));
+                    boolean passed5Ticks = (gameTickCount - lastAttackTick >= 5) || (now - timeAttack >= 3000);
+
+                    if (passed5Ticks && canAttackBoss && !isAttackingBoss()) {
+                        Microbot.log(String.format("[Action] Standing clear at endpoint (gap %d > 3) - attacking Hunllef", nearest));
+                        hunllef.click("attack");
+                        timeAttack = now;
+                        lastAttackTick = gameTickCount;
+                    }
+
                     // Pre-hover over the opposite endpoint so the next sprint click lands instantly!
                     int[] opposite = (currentShuttleTarget[0] == safeLaneTileA[0] && currentShuttleTarget[1] == safeLaneTileA[1])
                             ? safeLaneTileB : safeLaneTileA;
                     hoverSceneTile(opposite[0], opposite[1]);
-                    // Return false so checkAttack(), checkFood(), checkPrayerPotions() execute freely!
+                    // Return false so checkFood(), checkPrayerPotions() execute freely!
                     return false;
                 } else {
                     // Tornadoes reached gap <= 3: SPRINT TO THE OPPOSITE ENDPOINT!
