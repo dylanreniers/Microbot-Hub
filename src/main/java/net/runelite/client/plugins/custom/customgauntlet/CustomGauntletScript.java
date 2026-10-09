@@ -2,6 +2,8 @@ package net.runelite.client.plugins.custom.customgauntlet;
 
 import com.google.inject.Inject;
 
+import java.awt.Polygon;
+import java.awt.Rectangle;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,6 +30,8 @@ import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 import net.runelite.client.plugins.microbot.util.tabs.Rs2Tab;
 import net.runelite.client.plugins.microbot.util.tile.Rs2Tile;
+import net.runelite.client.plugins.microbot.util.menu.NewMenuEntry;
+import net.runelite.client.plugins.microbot.util.walker.Rs2MiniMap;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 
 import java.util.concurrent.TimeUnit;
@@ -100,11 +104,15 @@ public class CustomGauntletScript extends Script {
             36149, 36046 // CG, G Safe Floor Tiles
     );
 
-    // --- 12-Tile Safe Lane Shuttle System ---
+    // --- 12-Tile Safe Lane Shuttle System & Waypoint Navigation ---
     private static volatile int[] safeLaneTileA = null;
     private static volatile int[] safeLaneTileB = null;
     private static volatile int[] currentShuttleTarget = null;
     private static volatile List<int[]> currentLaneTiles = new ArrayList<>();
+    private static volatile List<int[]> transitionWaypoints = new ArrayList<>();
+    private static volatile int transitionWaypointIndex = 0;
+    private static volatile boolean inTransition = false;
+    private volatile long lastDangerFloorFingerprint = -1L;
     private volatile int floorWarningStartTick = -1;
 
     public static int[] getSafeLaneTileA() {
@@ -121,6 +129,14 @@ public class CustomGauntletScript extends Script {
 
     public static List<int[]> getActiveLaneTiles() {
         return currentLaneTiles;
+    }
+
+    public static List<int[]> getTransitionWaypoints() {
+        return transitionWaypoints;
+    }
+
+    public static boolean isInTransition() {
+        return inTransition;
     }
 
     private static final int[] BOW_IDS = {
@@ -206,6 +222,13 @@ public class CustomGauntletScript extends Script {
     private boolean isEnRouteTo(int targetX, int targetY) {
         if (lastWalkTargetX != targetX || lastWalkTargetY != targetY) return false;
         return !hasArrived(targetX, targetY);
+    }
+
+    /** True if the client's current registered walk destination matches the given scene tile. */
+    private boolean isAlreadyWalkingTo(int targetSceneX, int targetSceneY) {
+        LocalPoint dest = Microbot.getClient().getLocalDestinationLocation();
+        if (dest == null) return false;
+        return dest.getSceneX() == targetSceneX && dest.getSceneY() == targetSceneY;
     }
 
     private CustomGauntletConfig config;
@@ -613,12 +636,14 @@ public class CustomGauntletScript extends Script {
      * @return true if a dodge move was issued this loop (caller skips gear/attack)
      */
     /**
-     * 12-Tile Safe Lane Shuttle System:
-     * - Shuttles back and forth between two safe endpoints of a full-length 12-tile lane (outer rim prioritized).
-     * - Only initiates movement when tornadoes close to gap <= 3.
-     * - Otherwise stands still at the endpoint attacking Hunllef, eating food, drinking potions, and switching prayers.
-     * - If the floor pattern changes mid-sprint: continues if distance <= 6 (arrives in <= 3 ticks before damage),
-     *   or adapts to the new safe lane if farther away.
+     * 12-Tile Safe Lane Shuttle System & Waypoint Navigation:
+     * - Discovers a long safe lane (straight horizontal or vertical line) in the arena clear of Hunllef and hazards.
+     * - Transition (Point 2 & 3): Enters the lane at the closest reachable tile matching player's X or Y coordinate,
+     *   navigating via corner-to-corner cardinal waypoints to prevent game engine diagonal cutting through hazards.
+     * - Shuttles back and forth along the safe lane, standing still to attack Hunllef when tornado gap > 3.
+     * - Turnaround (Point 4): When gap <= 3 at an endpoint, avoids 180° head-on collisions into trailing tornadoes
+     *   by turning 90° into a connected perpendicular lane (L-turn) or side-stepping to an adjacent parallel safe lane.
+     * - Floor Stability: Recalculates the route only once when dangerous floor patterns change.
      *
      * @return true if a dodge move was issued this loop (caller skips gear/attack)
      */
@@ -650,28 +675,36 @@ public class CustomGauntletScript extends Script {
                 Rs2Player.toggleRunEnergy(true);
             }
 
-            // Continuously update/verify the 12-tile safe lane
-            updateSafeLaneContinuous();
+            // Recalculate route only when dangerous floors change or lane is invalid
+            long dangerFp = computeDangerFloorFingerprint();
+            boolean floorsChanged = (dangerFp != lastDangerFloorFingerprint);
+            boolean laneInvalid = (safeLaneTileA == null || safeLaneTileB == null
+                    || !isSegmentFullySafe(safeLaneTileA, safeLaneTileB, bossX, bossY));
+
+            if (floorsChanged || laneInvalid) {
+                lastDangerFloorFingerprint = dangerFp;
+                recalculateSafeLaneAndRoute(px, py, bossX, bossY, tornadoes);
+            }
+
             if (safeLaneTileA == null || safeLaneTileB == null) {
                 return false;
             }
 
             int nearest = minTornadoDistance(px, py, tornadoes);
 
-            // Anchor target if not set
+            // Determine initial sprint target endpoint (furthest from tornadoes) if not set
             if (currentShuttleTarget == null) {
-                int distA = Math.max(Math.abs(safeLaneTileA[0] - px), Math.abs(safeLaneTileA[1] - py));
-                int distB = Math.max(Math.abs(safeLaneTileB[0] - px), Math.abs(safeLaneTileB[1] - py));
-                currentShuttleTarget = distA <= distB ? safeLaneTileA : safeLaneTileB;
+                int distA = minTornadoDistance(safeLaneTileA[0], safeLaneTileA[1], tornadoes);
+                int distB = minTornadoDistance(safeLaneTileB[0], safeLaneTileB[1], tornadoes);
+                currentShuttleTarget = (distA >= distB) ? safeLaneTileA : safeLaneTileB;
             }
 
             int distToTarget = Math.max(Math.abs(currentShuttleTarget[0] - px), Math.abs(currentShuttleTarget[1] - py));
             boolean atTarget = (distToTarget <= 1) || hasArrived(currentShuttleTarget[0], currentShuttleTarget[1]);
 
             if (atTarget) {
-                // Standing at the safe lane endpoint
                 if (nearest > 3) {
-                    // Tornadoes are at gap > 3: STAND STILL AND ATTACK HUNLLEF!
+                    // Standing clear at endpoint: Attack boss & pre-hover next move
                     boolean canAttackBoss = config.autoAttack() && hunllef != null
                             && (isBowEquipped() || isStaffEquipped() || (isHalberdEquipped() && Math.max(Math.abs(px - bossX), Math.abs(py - bossY)) <= 2));
                     boolean passed5Ticks = (gameTickCount - lastAttackTick >= 5) || (now - timeAttack >= 3000);
@@ -683,14 +716,12 @@ public class CustomGauntletScript extends Script {
                         lastAttackTick = gameTickCount;
                     }
 
-                    // Pre-hover over the opposite endpoint so the next sprint click lands instantly!
                     int[] opposite = (currentShuttleTarget[0] == safeLaneTileA[0] && currentShuttleTarget[1] == safeLaneTileA[1])
                             ? safeLaneTileB : safeLaneTileA;
                     hoverSceneTile(opposite[0], opposite[1]);
-                    // Return false so checkFood(), checkPrayerPotions() execute freely!
                     return false;
                 } else {
-                    // Tornadoes reached gap <= 3: SPRINT TO THE OPPOSITE ENDPOINT!
+                    // Tornadoes reached gap <= 3: Sprint to opposite endpoint on the fixed safe lane!
                     int[] opposite = (currentShuttleTarget[0] == safeLaneTileA[0] && currentShuttleTarget[1] == safeLaneTileA[1])
                             ? safeLaneTileB : safeLaneTileA;
                     currentShuttleTarget = opposite;
@@ -698,39 +729,55 @@ public class CustomGauntletScript extends Script {
                     lastWalkTargetY = currentShuttleTarget[1];
                     Microbot.log(String.format("[Action] Tornado gap %d <= 3 - sprinting to opposite endpoint (%d,%d)",
                             nearest, currentShuttleTarget[0], currentShuttleTarget[1]));
-                    Rs2Walker.walkFastLocal(LocalPoint.fromScene(currentShuttleTarget[0], currentShuttleTarget[1]));
+                    walkExactTile(currentShuttleTarget[0], currentShuttleTarget[1]);
                     return true;
                 }
             } else {
-                // En route toward currentShuttleTarget:
-                // Check if current segment is still fully safe
-                boolean segmentStillSafe = isSegmentFullySafe(safeLaneTileA, safeLaneTileB, bossX, bossY);
-                if (!segmentStillSafe) {
-                    // If within 6 tiles of target, we will arrive in <= 3 ticks (before damage activates)! Keep running!
-                    if (distToTarget <= 6) {
-                        Rs2Walker.walkFastLocal(LocalPoint.fromScene(currentShuttleTarget[0], currentShuttleTarget[1]));
+                // Fluid Sprint: check if direct running trajectory to currentShuttleTarget is fully safe
+                int dx = Integer.signum(currentShuttleTarget[0] - px);
+                int dy = Integer.signum(currentShuttleTarget[1] - py);
+                int step1X = px + dx, step1Y = py + dy;
+                int step2X = step1X + Integer.signum(currentShuttleTarget[0] - step1X);
+                int step2Y = step1Y + Integer.signum(currentShuttleTarget[1] - step1Y);
+
+                boolean canSprintDirect = isTileFullySafe(step1X, step1Y, bossX, bossY)
+                        && (step2X == currentShuttleTarget[0] && step2Y == currentShuttleTarget[1] || isTileFullySafe(step2X, step2Y, bossX, bossY));
+
+                if (canSprintDirect) {
+                    // Direct path is clear: sprint directly to the endpoint! No 1-tile baby steps!
+                    inTransition = false;
+                    if (!isAlreadyWalkingTo(currentShuttleTarget[0], currentShuttleTarget[1])) {
+                        lastWalkTargetX = currentShuttleTarget[0];
+                        lastWalkTargetY = currentShuttleTarget[1];
+                        walkExactTile(currentShuttleTarget[0], currentShuttleTarget[1]);
+                    }
+                    return true;
+                } else {
+                    // Direct path is obstructed (by Hunllef or floor hazards): take safe cardinal step around obstacle
+                    List<int[]> safePath = findCardinalSafePath(px, py, currentShuttleTarget[0], currentShuttleTarget[1], bossX, bossY);
+                    if (safePath.size() > 1) {
+                        int[] nextStep = safePath.get(1);
+                        if (!isAlreadyWalkingTo(nextStep[0], nextStep[1])) {
+                            lastWalkTargetX = nextStep[0];
+                            lastWalkTargetY = nextStep[1];
+                            walkExactTile(nextStep[0], nextStep[1]);
+                        }
                         return true;
                     } else {
-                        // More than 6 tiles away: immediately switch to new safe segment
-                        safeLaneTileA = null;
-                        safeLaneTileB = null;
-                        currentShuttleTarget = null;
-                        updateSafeLaneContinuous();
-                        if (currentShuttleTarget != null) {
-                            lastWalkTargetX = currentShuttleTarget[0];
-                            lastWalkTargetY = currentShuttleTarget[1];
-                            Rs2Walker.walkFastLocal(LocalPoint.fromScene(currentShuttleTarget[0], currentShuttleTarget[1]));
+                        // Emergency fallback to closest safe lane tile
+                        int[] snap = findClosestSafeLaneTile(px, py, bossX, bossY);
+                        if (snap != null) {
+                            if (!isAlreadyWalkingTo(snap[0], snap[1])) {
+                                lastWalkTargetX = snap[0];
+                                lastWalkTargetY = snap[1];
+                                walkExactTile(snap[0], snap[1]);
+                            }
                             return true;
                         }
                     }
                 }
-
-                // Continue sprint to current target
-                lastWalkTargetX = currentShuttleTarget[0];
-                lastWalkTargetY = currentShuttleTarget[1];
-                Rs2Walker.walkFastLocal(LocalPoint.fromScene(currentShuttleTarget[0], currentShuttleTarget[1]));
-                return true;
             }
+            return false;
         }).orElse(false);
 
         return result;
@@ -776,28 +823,26 @@ public class CustomGauntletScript extends Script {
         return true;
     }
 
-    /**
-     * Continuously evaluates and discovers the best safe straight segment across the arena:
-     * - Every tile in the segment must be 100% safe (in arena, safe floor, not fire, not under Hunllef 5x5).
-     * - The 2 endpoints have the highest distance between them while having the same X or same Y.
-     * - Prioritizes outer rim segments when available.
-     * - Retains current segment if still 100% safe and near max distance (hysteresis).
-     */
-    public void updateSafeLaneContinuous() {
-        if (!arenaBoundsKnown || hunllef == null) return;
-        Player local = Microbot.getClient().getLocalPlayer();
-        if (local == null || local.getLocalLocation() == null) return;
-        int px = local.getLocalLocation().getSceneX();
-        int py = local.getLocalLocation().getSceneY();
-        LocalPoint bossLp = hunllef.getLocalLocation();
-        if (bossLp == null) return;
-        int bossX = bossLp.getSceneX();
-        int bossY = bossLp.getSceneY();
+    /** Computes a unique fingerprint of all dangerous floor tiles in the arena to detect layout changes. */
+    private long computeDangerFloorFingerprint() {
+        if (!arenaBoundsKnown) return 0L;
+        long h = 1125899906842597L;
+        for (int x = arenaMinX; x <= arenaMaxX; x++) {
+            for (int y = arenaMinY; y <= arenaMaxY; y++) {
+                if (isOnDangerousTile(x, y)) {
+                    h = 31L * h + ((x << 8) | y);
+                }
+            }
+        }
+        return h;
+    }
 
+    /** Discovers all contiguous safe segments in the arena along rows and columns. */
+    private List<SafeSegment> findAllSafeSegments(int bossX, int bossY) {
         List<SafeSegment> segments = new ArrayList<>();
-        int maxDistFound = 0;
+        if (!arenaBoundsKnown) return segments;
 
-        // 1. Scan all horizontal rows (same Y)
+        // 1. Scan horizontal rows (same Y)
         for (int y = arenaMinY; y <= arenaMaxY; y++) {
             int rimDist = Math.min(y - arenaMinY, arenaMaxY - y);
             int segStart = -1;
@@ -808,9 +853,7 @@ public class CustomGauntletScript extends Script {
                     if (segStart != -1) {
                         int segEnd = x - 1;
                         if (segEnd > segStart) {
-                            SafeSegment seg = new SafeSegment(new int[]{segStart, y}, new int[]{segEnd, y}, rimDist, true);
-                            segments.add(seg);
-                            maxDistFound = Math.max(maxDistFound, seg.dist);
+                            segments.add(new SafeSegment(new int[]{segStart, y}, new int[]{segEnd, y}, rimDist, true));
                         }
                         segStart = -1;
                     }
@@ -819,14 +862,12 @@ public class CustomGauntletScript extends Script {
             if (segStart != -1) {
                 int segEnd = arenaMaxX;
                 if (segEnd > segStart) {
-                    SafeSegment seg = new SafeSegment(new int[]{segStart, y}, new int[]{segEnd, y}, rimDist, true);
-                    segments.add(seg);
-                    maxDistFound = Math.max(maxDistFound, seg.dist);
+                    segments.add(new SafeSegment(new int[]{segStart, y}, new int[]{segEnd, y}, rimDist, true));
                 }
             }
         }
 
-        // 2. Scan all vertical columns (same X)
+        // 2. Scan vertical columns (same X)
         for (int x = arenaMinX; x <= arenaMaxX; x++) {
             int rimDist = Math.min(x - arenaMinX, arenaMaxX - x);
             int segStart = -1;
@@ -837,9 +878,7 @@ public class CustomGauntletScript extends Script {
                     if (segStart != -1) {
                         int segEnd = y - 1;
                         if (segEnd > segStart) {
-                            SafeSegment seg = new SafeSegment(new int[]{x, segStart}, new int[]{x, segEnd}, rimDist, false);
-                            segments.add(seg);
-                            maxDistFound = Math.max(maxDistFound, seg.dist);
+                            segments.add(new SafeSegment(new int[]{x, segStart}, new int[]{x, segEnd}, rimDist, false));
                         }
                         segStart = -1;
                     }
@@ -848,68 +887,408 @@ public class CustomGauntletScript extends Script {
             if (segStart != -1) {
                 int segEnd = arenaMaxY;
                 if (segEnd > segStart) {
-                    SafeSegment seg = new SafeSegment(new int[]{x, segStart}, new int[]{x, segEnd}, rimDist, false);
-                    segments.add(seg);
-                    maxDistFound = Math.max(maxDistFound, seg.dist);
+                    segments.add(new SafeSegment(new int[]{x, segStart}, new int[]{x, segEnd}, rimDist, false));
                 }
             }
         }
 
-        if (segments.isEmpty()) return;
+        return segments;
+    }
 
-        // 3. Hysteresis: If current segment is still 100% safe and has the maximum distance, KEEP IT!
-        if (safeLaneTileA != null && safeLaneTileB != null) {
-            int currentDist = Math.max(Math.abs(safeLaneTileB[0] - safeLaneTileA[0]), Math.abs(safeLaneTileB[1] - safeLaneTileA[1]));
-            if (currentDist >= maxDistFound && isSegmentFullySafe(safeLaneTileA, safeLaneTileB, bossX, bossY)) {
-                return; // Keep current safe segment, no jitter!
+    /** 4-direction cardinal BFS over safe tiles from (startX, startY). Returns map of packed tile -> distance. */
+    private Map<Integer, Integer> computeReachableTiles(int startX, int startY, int bossX, int bossY) {
+        Map<Integer, Integer> distances = new HashMap<>();
+        Queue<Integer> queue = new ArrayDeque<>();
+
+        int startPacked = (startX << 8) | startY;
+        distances.put(startPacked, 0);
+        queue.add(startPacked);
+
+        int[] dx = {0, 0, -1, 1};
+        int[] dy = {1, -1, 0, 0};
+
+        while (!queue.isEmpty()) {
+            int curr = queue.poll();
+            int d = distances.get(curr);
+            int cx = curr >> 8;
+            int cy = curr & 0xFF;
+
+            for (int i = 0; i < 4; i++) {
+                int nx = cx + dx[i];
+                int ny = cy + dy[i];
+
+                if (!inArena(nx, ny)) continue;
+                if (!isTileFullySafe(nx, ny, bossX, bossY)) continue;
+
+                int nPacked = (nx << 8) | ny;
+                if (!distances.containsKey(nPacked)) {
+                    distances.put(nPacked, d + 1);
+                    queue.add(nPacked);
+                }
+            }
+        }
+        return distances;
+    }
+
+    /** Finds shortest cardinal safe path from start to target. */
+    private List<int[]> findCardinalSafePath(int startX, int startY, int targetX, int targetY, int bossX, int bossY) {
+        if (startX == targetX && startY == targetY) {
+            return Collections.singletonList(new int[]{startX, startY});
+        }
+
+        Queue<Integer> queue = new ArrayDeque<>();
+        Map<Integer, Integer> cameFrom = new HashMap<>();
+        Set<Integer> visited = new HashSet<>();
+
+        int startPacked = (startX << 8) | startY;
+        queue.add(startPacked);
+        visited.add(startPacked);
+
+        int targetPacked = (targetX << 8) | targetY;
+        boolean found = false;
+
+        int[] dx = {0, 0, -1, 1};
+        int[] dy = {1, -1, 0, 0};
+
+        while (!queue.isEmpty()) {
+            int curr = queue.poll();
+            if (curr == targetPacked) {
+                found = true;
+                break;
+            }
+
+            int cx = curr >> 8;
+            int cy = curr & 0xFF;
+
+            for (int i = 0; i < 4; i++) {
+                int nx = cx + dx[i];
+                int ny = cy + dy[i];
+
+                if (!inArena(nx, ny)) continue;
+                if (!isTileFullySafe(nx, ny, bossX, bossY)) continue;
+
+                int nPacked = (nx << 8) | ny;
+                if (visited.add(nPacked)) {
+                    cameFrom.put(nPacked, curr);
+                    queue.add(nPacked);
+                }
             }
         }
 
-        // 4. Filter strictly to segments with the highest distance
-        int finalMaxDist = maxDistFound;
-        List<SafeSegment> bestCandidates = segments.stream()
-                .filter(s -> s.dist == finalMaxDist)
-                .collect(Collectors.toList());
+        if (!found) return Collections.emptyList();
 
-        // 5. Select the best segment:
-        //    High distance is paramount: seg.dist * 100
-        //    Outer rim priority: (12 - seg.rimDist) * 20
-        //    Proximity to player: -perpDist
-        SafeSegment best = null;
+        List<int[]> path = new ArrayList<>();
+        int curr = targetPacked;
+        while (curr != startPacked) {
+            path.add(new int[]{curr >> 8, curr & 0xFF});
+            curr = cameFrom.get(curr);
+        }
+        path.add(new int[]{startX, startY});
+        Collections.reverse(path);
+        return path;
+    }
+
+    /**
+     * Compresses a cardinal path into turn/corner waypoints.
+     * All movements between waypoints are purely along a single axis (pure N/S or pure E/W),
+     * preventing diagonal path cutting through hazards or boss footprints.
+     */
+    private List<int[]> extractWaypoints(List<int[]> path) {
+        if (path == null || path.size() <= 1) return Collections.emptyList();
+
+        List<int[]> waypoints = new ArrayList<>();
+        int prevDirX = path.get(1)[0] - path.get(0)[0];
+        int prevDirY = path.get(1)[1] - path.get(0)[1];
+
+        for (int i = 2; i < path.size(); i++) {
+            int dirX = path.get(i)[0] - path.get(i - 1)[0];
+            int dirY = path.get(i)[1] - path.get(i - 1)[1];
+
+            if (dirX != prevDirX || dirY != prevDirY) {
+                waypoints.add(path.get(i - 1));
+                prevDirX = dirX;
+                prevDirY = dirY;
+            }
+        }
+        waypoints.add(path.get(path.size() - 1));
+        return waypoints;
+    }
+
+    /** Returns all tiles belonging to a segment. */
+    private List<int[]> getSegmentTiles(SafeSegment seg) {
+        List<int[]> tiles = new ArrayList<>();
+        if (seg == null || seg.p1 == null || seg.p2 == null) return tiles;
+        int dx = Integer.signum(seg.p2[0] - seg.p1[0]);
+        int dy = Integer.signum(seg.p2[1] - seg.p1[1]);
+        int cx = seg.p1[0], cy = seg.p1[1];
+        while (true) {
+            tiles.add(new int[]{cx, cy});
+            if (cx == seg.p2[0] && cy == seg.p2[1]) break;
+            cx += dx;
+            cy += dy;
+        }
+        return tiles;
+    }
+
+    /** True if the tile is on the active safe lane. */
+    private boolean isPlayerOnSafeLane(int px, int py) {
+        if (currentLaneTiles == null || currentLaneTiles.isEmpty()) return false;
+        for (int[] t : currentLaneTiles) {
+            if (t[0] == px && t[1] == py) return true;
+        }
+        return false;
+    }
+
+    /** Rebuilds currentLaneTiles from safeLaneTileA and safeLaneTileB. */
+    private void rebuildCurrentLaneTiles() {
+        if (safeLaneTileA == null || safeLaneTileB == null) {
+            currentLaneTiles = new ArrayList<>();
+            return;
+        }
+        List<int[]> tiles = new ArrayList<>();
+        int dx = Integer.signum(safeLaneTileB[0] - safeLaneTileA[0]);
+        int dy = Integer.signum(safeLaneTileB[1] - safeLaneTileA[1]);
+        int cx = safeLaneTileA[0], cy = safeLaneTileA[1];
+        while (true) {
+            tiles.add(new int[]{cx, cy});
+            if (cx == safeLaneTileB[0] && cy == safeLaneTileB[1]) break;
+            cx += dx;
+            cy += dy;
+        }
+        currentLaneTiles = tiles;
+    }
+
+    /** Finds the closest fully safe tile on the active safe lane to snap back to if displaced. */
+    private int[] findClosestSafeLaneTile(int px, int py, int bossX, int bossY) {
+        if (safeLaneTileA == null || safeLaneTileB == null) return null;
+        boolean isHorizontal = (safeLaneTileA[1] == safeLaneTileB[1]);
+
+        // First try orthogonal projection directly onto the lane
+        if (isHorizontal) {
+            int laneY = safeLaneTileA[1];
+            int minX = Math.min(safeLaneTileA[0], safeLaneTileB[0]);
+            int maxX = Math.max(safeLaneTileA[0], safeLaneTileB[0]);
+            int clampedX = Math.max(minX, Math.min(maxX, px));
+            if (isTileFullySafe(clampedX, laneY, bossX, bossY)) {
+                return new int[]{clampedX, laneY};
+            }
+        } else {
+            int laneX = safeLaneTileA[0];
+            int minY = Math.min(safeLaneTileA[1], safeLaneTileB[1]);
+            int maxY = Math.max(safeLaneTileA[1], safeLaneTileB[1]);
+            int clampedY = Math.max(minY, Math.min(maxY, py));
+            if (isTileFullySafe(laneX, clampedY, bossX, bossY)) {
+                return new int[]{laneX, clampedY};
+            }
+        }
+
+        // Fallback: search all tiles in currentLaneTiles
+        int[] bestTile = null;
+        int bestDist = Integer.MAX_VALUE;
+        if (currentLaneTiles != null) {
+            for (int[] t : currentLaneTiles) {
+                if (isTileFullySafe(t[0], t[1], bossX, bossY)) {
+                    int d = Math.abs(t[0] - px) + Math.abs(t[1] - py);
+                    if (d < bestDist) {
+                        bestDist = d;
+                        bestTile = t;
+                    }
+                }
+            }
+        }
+        return bestTile;
+    }
+
+    /**
+     * Recalculates the safe lane and safe transition route from the player's position.
+     * Selects an entry tile matching player's X or Y coordinate and builds waypoint path.
+     */
+    private void recalculateSafeLaneAndRoute(int px, int py, int bossX, int bossY, List<int[]> tornadoes) {
+        List<SafeSegment> allSegments = findAllSafeSegments(bossX, bossY);
+        if (allSegments.isEmpty()) return;
+
+        Map<Integer, Integer> reachable = computeReachableTiles(px, py, bossX, bossY);
+        if (reachable.isEmpty()) return;
+
+        List<SafeSegment> reachableSegments = new ArrayList<>();
+        Map<SafeSegment, Integer> segmentBfsDist = new HashMap<>();
+
+        for (SafeSegment seg : allSegments) {
+            int minD = Integer.MAX_VALUE;
+            for (int[] t : getSegmentTiles(seg)) {
+                int packed = (t[0] << 8) | t[1];
+                if (reachable.containsKey(packed)) {
+                    minD = Math.min(minD, reachable.get(packed));
+                }
+            }
+            if (minD != Integer.MAX_VALUE) {
+                reachableSegments.add(seg);
+                segmentBfsDist.put(seg, minD);
+            }
+        }
+
+        if (reachableSegments.isEmpty()) return;
+
+        // Score reachable segments
+        SafeSegment bestSeg = null;
         int bestScore = Integer.MIN_VALUE;
 
-        for (SafeSegment seg : bestCandidates) {
+        for (SafeSegment seg : reachableSegments) {
+            int bfsD = segmentBfsDist.get(seg);
             int perpDist = seg.horizontal ? Math.abs(py - seg.p1[1]) : Math.abs(px - seg.p1[0]);
-            int score = (seg.dist * 100) + ((12 - seg.rimDist) * 20) - perpDist;
+            boolean onAxis = seg.horizontal ? (py == seg.p1[1]) : (px == seg.p1[0]);
+
+            int score = (seg.dist * 100) + ((12 - seg.rimDist) * 20) - (bfsD * 15) - perpDist + (onAxis ? 80 : 0);
             if (score > bestScore) {
                 bestScore = score;
-                best = seg;
+                bestSeg = seg;
             }
         }
 
-        if (best != null) {
-            safeLaneTileA = best.p1;
-            safeLaneTileB = best.p2;
+        if (bestSeg == null) return;
 
-            List<int[]> tiles = new ArrayList<>();
-            int dx = Integer.signum(safeLaneTileB[0] - safeLaneTileA[0]);
-            int dy = Integer.signum(safeLaneTileB[1] - safeLaneTileA[1]);
-            int cx = safeLaneTileA[0], cy = safeLaneTileA[1];
-            while (true) {
-                tiles.add(new int[]{cx, cy});
-                if (cx == safeLaneTileB[0] && cy == safeLaneTileB[1]) break;
-                cx += dx;
-                cy += dy;
+        safeLaneTileA = bestSeg.p1;
+        safeLaneTileB = bestSeg.p2;
+        rebuildCurrentLaneTiles();
+
+        if (isPlayerOnSafeLane(px, py)) {
+            inTransition = false;
+            transitionWaypoints.clear();
+            int distA = minTornadoDistance(safeLaneTileA[0], safeLaneTileA[1], tornadoes);
+            int distB = minTornadoDistance(safeLaneTileB[0], safeLaneTileB[1], tornadoes);
+            currentShuttleTarget = (distA >= distB) ? safeLaneTileA : safeLaneTileB;
+            return;
+        }
+
+        // Point 3: Target closest reachable tile on lane matching player's X or Y coordinate
+        int[] entryTile = null;
+        int minSegX = Math.min(bestSeg.p1[0], bestSeg.p2[0]);
+        int maxSegX = Math.max(bestSeg.p1[0], bestSeg.p2[0]);
+        int minSegY = Math.min(bestSeg.p1[1], bestSeg.p2[1]);
+        int maxSegY = Math.max(bestSeg.p1[1], bestSeg.p2[1]);
+
+        if (bestSeg.horizontal) {
+            int idealX = Math.max(minSegX, Math.min(maxSegX, px));
+            int laneY = bestSeg.p1[1];
+            int idealPacked = (idealX << 8) | laneY;
+            if (reachable.containsKey(idealPacked)) {
+                entryTile = new int[]{idealX, laneY};
             }
-            currentLaneTiles = tiles;
-
-            // Anchor currentShuttleTarget to the endpoint closest to player if not set or if current target is invalid
-            if (currentShuttleTarget == null || (!Arrays.equals(currentShuttleTarget, safeLaneTileA) && !Arrays.equals(currentShuttleTarget, safeLaneTileB))) {
-                int distA = Math.max(Math.abs(safeLaneTileA[0] - px), Math.abs(safeLaneTileA[1] - py));
-                int distB = Math.max(Math.abs(safeLaneTileB[0] - px), Math.abs(safeLaneTileB[1] - py));
-                currentShuttleTarget = distA <= distB ? safeLaneTileA : safeLaneTileB;
+        } else {
+            int laneX = bestSeg.p1[0];
+            int idealY = Math.max(minSegY, Math.min(maxSegY, py));
+            int idealPacked = (laneX << 8) | idealY;
+            if (reachable.containsKey(idealPacked)) {
+                entryTile = new int[]{laneX, idealY};
             }
         }
+
+        if (entryTile == null) {
+            int bestTileScore = Integer.MIN_VALUE;
+            for (int[] t : getSegmentTiles(bestSeg)) {
+                int packed = (t[0] << 8) | t[1];
+                if (!reachable.containsKey(packed)) continue;
+
+                int d = reachable.get(packed);
+                int manhattan = Math.abs(t[0] - px) + Math.abs(t[1] - py);
+                boolean matchCoord = (t[0] == px || t[1] == py);
+
+                int tScore = (matchCoord ? 300 : 0) - (manhattan * 10) - (d * 15);
+                if (tScore > bestTileScore) {
+                    bestTileScore = tScore;
+                    entryTile = t;
+                }
+            }
+        }
+
+        if (entryTile == null) {
+            entryTile = bestSeg.p1;
+        }
+
+        // Point 2: Generate cardinal safe path from player to entryTile, then extract turn waypoints
+        List<int[]> path = findCardinalSafePath(px, py, entryTile[0], entryTile[1], bossX, bossY);
+        transitionWaypoints = extractWaypoints(path);
+        transitionWaypointIndex = 0;
+        inTransition = true;
+        currentShuttleTarget = transitionWaypoints.isEmpty() ? entryTile : transitionWaypoints.get(0);
+
+        Microbot.log(String.format("[Action] Transition planned to safe lane entry (%d,%d) via %d waypoints (matching coord: %s)",
+                entryTile[0], entryTile[1], transitionWaypoints.size(),
+                (entryTile[0] == px ? "X=" + px : (entryTile[1] == py ? "Y=" + py : "none"))));
+    }
+
+    /**
+     * Evaluates dangerous floor changes and recalculates the safe lane only once when floor changes occur.
+     */
+    public void updateSafeLaneContinuous() {
+        if (!arenaBoundsKnown || hunllef == null) return;
+        Player local = Microbot.getClient().getLocalPlayer();
+        if (local == null || local.getLocalLocation() == null) return;
+        LocalPoint bossLp = hunllef.getLocalLocation();
+        if (bossLp == null) return;
+
+        int px = local.getLocalLocation().getSceneX();
+        int py = local.getLocalLocation().getSceneY();
+        int bossX = bossLp.getSceneX();
+        int bossY = bossLp.getSceneY();
+        List<int[]> tornadoes = tornadoSceneCoords();
+
+        long currentFingerprint = computeDangerFloorFingerprint();
+        boolean floorsChanged = (currentFingerprint != lastDangerFloorFingerprint);
+        boolean laneInvalid = (safeLaneTileA == null || safeLaneTileB == null
+                || !isSegmentFullySafe(safeLaneTileA, safeLaneTileB, bossX, bossY));
+
+        if (floorsChanged || laneInvalid) {
+            lastDangerFloorFingerprint = currentFingerprint;
+            recalculateSafeLaneAndRoute(px, py, bossX, bossY, tornadoes);
+        }
+    }
+
+    /**
+     * Accurately clicks a scene tile by computing its screen polygon centroid and verifying it is inside the viewport.
+     * Falls back to the top-down 2D minimap for distant or off-screen tiles, eliminating 3D camera raycast skew.
+     */
+    private void walkExactTile(int sceneX, int sceneY) {
+        if (sceneX < 0 || sceneY < 0 || sceneX >= SCENE_SIZE || sceneY >= SCENE_SIZE) return;
+        LocalPoint lp = LocalPoint.fromScene(sceneX, sceneY);
+        if (lp == null) return;
+        Client client = Microbot.getClient();
+
+        // 1. Scene polygon centroid click
+        Polygon poly = Perspective.getCanvasTilePoly(client, lp);
+        if (poly != null && poly.npoints == 4) {
+            int cx = (poly.xpoints[0] + poly.xpoints[1] + poly.xpoints[2] + poly.xpoints[3]) / 4;
+            int cy = (poly.ypoints[0] + poly.ypoints[1] + poly.ypoints[2] + poly.ypoints[3]) / 4;
+
+            Rectangle viewport = new Rectangle(
+                    client.getViewportXOffset(),
+                    client.getViewportYOffset(),
+                    client.getViewportWidth(),
+                    client.getViewportHeight()
+            );
+
+            if (viewport.contains(cx, cy) && poly.contains(cx, cy)) {
+                NewMenuEntry entry = new NewMenuEntry()
+                        .param0(cx)
+                        .param1(cy)
+                        .type(MenuAction.WALK)
+                        .identifier(0)
+                        .itemId(-1)
+                        .option("Walk here");
+                Microbot.doInvoke(entry, new Rectangle(cx - 2, cy - 2, 4, 4));
+                return;
+            }
+        }
+
+        // 2. Minimap fallback: 100% exact top-down orthogonal projection without 3D perspective distortion
+        Point minimapPoint = Rs2MiniMap.localToMinimap(lp);
+        if (minimapPoint != null && Rs2MiniMap.isPointInsideMinimap(minimapPoint)) {
+            Microbot.getMouse().click(minimapPoint);
+            return;
+        }
+
+        // 3. Fallback to walkFastLocal
+        Rs2Walker.walkFastLocal(lp);
     }
 
     private long lastHoverTime = -1;
@@ -925,7 +1304,15 @@ public class CustomGauntletScript extends Script {
         Microbot.getClientThread().runOnClientThreadOptional(() -> {
             LocalPoint lp = LocalPoint.fromScene(sceneX, sceneY);
             if (lp == null) return null;
-            net.runelite.api.Point canvas = Perspective.localToCanvas(Microbot.getClient(), lp, Microbot.getClient().getPlane());
+            Polygon poly = Perspective.getCanvasTilePoly(Microbot.getClient(), lp);
+            net.runelite.api.Point canvas;
+            if (poly != null && poly.npoints == 4) {
+                int cx = (poly.xpoints[0] + poly.xpoints[1] + poly.xpoints[2] + poly.xpoints[3]) / 4;
+                int cy = (poly.ypoints[0] + poly.ypoints[1] + poly.ypoints[2] + poly.ypoints[3]) / 4;
+                canvas = new net.runelite.api.Point(cx, cy);
+            } else {
+                canvas = Perspective.localToCanvas(Microbot.getClient(), lp, Microbot.getClient().getPlane());
+            }
             if (canvas == null) return null;
             if (Microbot.naturalMouse != null && Rs2AntibanSettings.naturalMouse) {
                 Microbot.naturalMouse.moveTo(canvas.getX(), canvas.getY());
@@ -972,6 +1359,13 @@ public class CustomGauntletScript extends Script {
         tornadoThreat = false;
         lastDodgeTick = -1;
         currentShuttleTarget = null;
+        safeLaneTileA = null;
+        safeLaneTileB = null;
+        currentLaneTiles = new ArrayList<>();
+        transitionWaypoints = new ArrayList<>();
+        transitionWaypointIndex = 0;
+        inTransition = false;
+        lastDangerFloorFingerprint = -1L;
     }
 
     /**

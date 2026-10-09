@@ -74,6 +74,16 @@ public class CustomGauntletSceneOverlay extends Overlay {
             if (target != null) {
                 drawTileWithText(client, graphics, target, TARGET_FILL, TARGET_OUTLINE, "Target");
             }
+
+            // 5. Draw transition waypoints if transitioning to the safe lane
+            if (CustomGauntletScript.isInTransition()) {
+                List<int[]> wps = CustomGauntletScript.getTransitionWaypoints();
+                if (wps != null) {
+                    for (int i = 0; i < wps.size(); i++) {
+                        drawTileWithText(client, graphics, wps.get(i), new Color(255, 165, 0, 70), new Color(255, 165, 0, 240), "WP " + (i + 1));
+                    }
+                }
+            }
         } catch (Exception ignored) {
             // Overlay must never throw into the render loop.
         }
