@@ -461,25 +461,9 @@ public class CustomGauntletScript extends Script {
 
     /**
      * A scene tile is "under" the boss when it falls within its 5x5 footprint, optionally expanded by {@code margin}.
-     * Uses the NPC's WorldArea in scene space for exact tile boundaries when available, with LocalPoint center fallback.
+     * Computed purely in scene coordinates from Hunllef's local center point (100% instance-safe).
      */
     private boolean isUnderBoss(int sceneX, int sceneY, int bossSceneX, int bossSceneY, int margin) {
-        if (hunllef != null) {
-            WorldArea area = hunllef.getWorldArea();
-            if (area != null) {
-                WorldView wv = Microbot.getClient().getTopLevelWorldView();
-                LocalPoint lp = LocalPoint.fromWorld(wv, area.getX(), area.getY());
-                if (lp != null) {
-                    int swX = lp.getSceneX();
-                    int swY = lp.getSceneY();
-                    int minX = swX - margin;
-                    int maxX = swX + area.getWidth() - 1 + margin;
-                    int minY = swY - margin;
-                    int maxY = swY + area.getHeight() - 1 + margin;
-                    return sceneX >= minX && sceneX <= maxX && sceneY >= minY && sceneY <= maxY;
-                }
-            }
-        }
         int reach = HUNLLEF_RADIUS + margin;
         return Math.abs(sceneX - bossSceneX) <= reach && Math.abs(sceneY - bossSceneY) <= reach;
     }
@@ -733,15 +717,8 @@ public class CustomGauntletScript extends Script {
                     return true;
                 }
             } else {
-                // Fluid Sprint: check if direct running trajectory to currentShuttleTarget is fully safe
-                int dx = Integer.signum(currentShuttleTarget[0] - px);
-                int dy = Integer.signum(currentShuttleTarget[1] - py);
-                int step1X = px + dx, step1Y = py + dy;
-                int step2X = step1X + Integer.signum(currentShuttleTarget[0] - step1X);
-                int step2Y = step1Y + Integer.signum(currentShuttleTarget[1] - step1Y);
-
-                boolean canSprintDirect = isTileFullySafe(step1X, step1Y, bossX, bossY)
-                        && (step2X == currentShuttleTarget[0] && step2Y == currentShuttleTarget[1] || isTileFullySafe(step2X, step2Y, bossX, bossY));
+                // Fluid Sprint: check if full direct running trajectory to currentShuttleTarget is safe
+                boolean canSprintDirect = isStraightPathFullySafe(px, py, currentShuttleTarget[0], currentShuttleTarget[1], bossX, bossY, true);
 
                 if (canSprintDirect) {
                     // Direct path is clear: sprint directly to the endpoint! No 1-tile baby steps!
@@ -756,11 +733,20 @@ public class CustomGauntletScript extends Script {
                     // Direct path is obstructed (by Hunllef or floor hazards): take safe cardinal step around obstacle
                     List<int[]> safePath = findCardinalSafePath(px, py, currentShuttleTarget[0], currentShuttleTarget[1], bossX, bossY);
                     if (safePath.size() > 1) {
-                        int[] nextStep = safePath.get(1);
-                        if (!isAlreadyWalkingTo(nextStep[0], nextStep[1])) {
-                            lastWalkTargetX = nextStep[0];
-                            lastWalkTargetY = nextStep[1];
-                            walkExactTile(nextStep[0], nextStep[1]);
+                        int[] bestWp = safePath.get(1);
+                        for (int i = safePath.size() - 1; i >= 1; i--) {
+                            int[] candidate = safePath.get(i);
+                            if (isStraightPathFullySafe(px, py, candidate[0], candidate[1], bossX, bossY)) {
+                                bestWp = candidate;
+                                break;
+                            }
+                        }
+                        if (!isAlreadyWalkingTo(bestWp[0], bestWp[1])) {
+                            lastWalkTargetX = bestWp[0];
+                            lastWalkTargetY = bestWp[1];
+                            Microbot.log(String.format("[Action] Navigating around hazard to waypoint (%d,%d) (target is %d,%d)",
+                                    bestWp[0], bestWp[1], currentShuttleTarget[0], currentShuttleTarget[1]));
+                            walkExactTile(bestWp[0], bestWp[1]);
                         }
                         return true;
                     } else {
@@ -770,6 +756,7 @@ public class CustomGauntletScript extends Script {
                             if (!isAlreadyWalkingTo(snap[0], snap[1])) {
                                 lastWalkTargetX = snap[0];
                                 lastWalkTargetY = snap[1];
+                                Microbot.log(String.format("[Action] Snap-walking to safe lane tile (%d,%d)", snap[0], snap[1]));
                                 walkExactTile(snap[0], snap[1]);
                             }
                             return true;
@@ -781,6 +768,31 @@ public class CustomGauntletScript extends Script {
         }).orElse(false);
 
         return result;
+    }
+
+    /**
+     * Checks every single tile along the straight-line trajectory from (fromX, fromY) to (toX, toY).
+     * Returns true ONLY if all tiles are 100% safe (not active damage, not warning floor, not Hunllef).
+     */
+    private boolean isStraightPathFullySafe(int fromX, int fromY, int toX, int toY, int bossX, int bossY, boolean logFail) {
+        int cx = fromX;
+        int cy = fromY;
+        while (cx != toX || cy != toY) {
+            cx += Integer.signum(toX - cx);
+            cy += Integer.signum(toY - cy);
+            if (!isTileFullySafe(cx, cy, bossX, bossY)) {
+                if (logFail) {
+                    Microbot.log(String.format("[Trajectory Blocked] Tile (%d,%d) unsafe on path to (%d,%d): inArena=%b safeFloor=%b onDanger=%b underBoss=%b (boss center=%d,%d)",
+                            cx, cy, toX, toY, inArena(cx, cy), isSafeFloor(cx, cy), isOnDangerousTile(cx, cy), isUnderBoss(cx, cy, bossX, bossY, 0), bossX, bossY));
+                }
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isStraightPathFullySafe(int fromX, int fromY, int toX, int toY, int bossX, int bossY) {
+        return isStraightPathFullySafe(fromX, fromY, toX, toY, bossX, bossY, false);
     }
 
     private static class SafeSegment {
@@ -1129,7 +1141,10 @@ public class CustomGauntletScript extends Script {
 
         if (reachableSegments.isEmpty()) return;
 
-        // Score reachable segments
+        // Score reachable segments (In Phase 3 < 333HP, prioritize proximity heavily to avoid running across dangerous floor)
+        boolean isPhase3 = hunllef != null && hunllef.getHealthPercentage() > 0 && hunllef.getHealthPercentage() <= 34.0;
+        int bfsWeight = isPhase3 ? 45 : 15;
+
         SafeSegment bestSeg = null;
         int bestScore = Integer.MIN_VALUE;
 
@@ -1138,7 +1153,7 @@ public class CustomGauntletScript extends Script {
             int perpDist = seg.horizontal ? Math.abs(py - seg.p1[1]) : Math.abs(px - seg.p1[0]);
             boolean onAxis = seg.horizontal ? (py == seg.p1[1]) : (px == seg.p1[0]);
 
-            int score = (seg.dist * 100) + ((12 - seg.rimDist) * 20) - (bfsD * 15) - perpDist + (onAxis ? 80 : 0);
+            int score = (seg.dist * 100) + ((12 - seg.rimDist) * 20) - (bfsD * bfsWeight) - perpDist + (onAxis ? 100 : 0);
             if (score > bestScore) {
                 bestScore = score;
                 bestSeg = seg;
@@ -1150,6 +1165,10 @@ public class CustomGauntletScript extends Script {
         safeLaneTileA = bestSeg.p1;
         safeLaneTileB = bestSeg.p2;
         rebuildCurrentLaneTiles();
+
+        Microbot.log(String.format("[Safe Lane] Selected lane from (%d,%d) to (%d,%d) len=%d | Boss center=(%d,%d) footprint=x[%d,%d] y[%d,%d]",
+                safeLaneTileA[0], safeLaneTileA[1], safeLaneTileB[0], safeLaneTileB[1], bestSeg.dist + 1,
+                bossX, bossY, bossX - 2, bossX + 2, bossY - 2, bossY + 2));
 
         if (isPlayerOnSafeLane(px, py)) {
             inTransition = false;
@@ -1816,9 +1835,29 @@ public class CustomGauntletScript extends Script {
         }).orElse(false);
     }
 
+    /** True if the player is currently actively running/moving towards a destination. */
+    private boolean isPlayerInFlight() {
+        LocalPoint dest = Microbot.getClient().getLocalDestinationLocation();
+        if (dest == null) return false;
+        Player local = Microbot.getClient().getLocalPlayer();
+        if (local == null) return false;
+        LocalPoint lp = local.getLocalLocation();
+        if (lp == null) return false;
+        return dest.getSceneX() != lp.getSceneX() || dest.getSceneY() != lp.getSceneY();
+    }
+
     private void checkFood() {
         if (!config.enableFood()) return;
-        if (!isPlayerOnSafeTile()) return; // ONLY eat on tiles that are safe to stand on!
+        boolean tornadoesActive = tornado != null && !tornado.isEmpty();
+
+        if (tornadoesActive) {
+            // During tornadoes: ONLY eat while in flight to destination!
+            // When stationary at the safe tile, avoid eating to keep mouse prepared for turnaround click.
+            if (!isPlayerInFlight()) return;
+        } else {
+            // Outside tornadoes: normal safe tile check
+            if (!isPlayerOnSafeTile()) return;
+        }
 
         int currentHp = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
         if (currentHp <= 0) return;
@@ -1844,7 +1883,14 @@ public class CustomGauntletScript extends Script {
 
     private void checkPrayerPotions() {
         if (!config.enableDrink()) return;
-        if (!isPlayerOnSafeTile()) return; // ONLY drink on tiles that are safe to stand on!
+        boolean tornadoesActive = tornado != null && !tornado.isEmpty();
+
+        if (tornadoesActive) {
+            // During tornadoes: ONLY drink while in flight to destination!
+            if (!isPlayerInFlight()) return;
+        } else {
+            if (!isPlayerOnSafeTile()) return;
+        }
 
         int currentPrayer = Microbot.getClient().getBoostedSkillLevel(Skill.PRAYER);
         if (currentPrayer < config.prayerPotionValue()) {
