@@ -154,6 +154,18 @@ public interface CustomGauntletConfig extends Config {
         return false;
     }
 
+    @ConfigItem(
+            keyName = "autoPrep",
+            name = "Automated Preparation (T2)",
+            description = "Automatically execute Tier 2 prep: gathering 7 ore/bark/linum, 3 leaves, 24 fish, "
+                    + "T2 staff/bow, T2 armour, and 3 egniol potions before fighting.",
+            position = 5,
+            section = "featureSection"
+    )
+    default boolean autoPrep() {
+        return true;
+    }
+
 
 
     @ConfigItem(

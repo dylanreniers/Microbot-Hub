@@ -241,7 +241,11 @@ public class CustomGauntletScript extends Script {
     public boolean run() {
 
         now = System.currentTimeMillis();
-        ghState = config.startState();
+        if (config.autoPrep() || config.startState() == State.PREP) {
+            ghState = State.PREP;
+        } else {
+            ghState = config.startState();
+        }
         timeNpc = now;
         timePrayProtect = now;
         timeEatAttempted = now;

@@ -19,6 +19,7 @@ import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.UnderDevelopment;
+import net.runelite.client.plugins.custom.customgauntlet.prep.CustomGauntletPrepScript;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
 import net.runelite.client.plugins.microbot.globval.enums.InterfaceTab;
@@ -57,7 +58,7 @@ import static net.runelite.client.plugins.microbot.Microbot.log;
 )
 @UnderDevelopment
 public class CustomGauntletPlugin extends Plugin {
-    public static final String version = "1.8.1";
+    public static final String version = "1.8.7";
 
     private static final int RANGE_PROJECTILE_MINIBOSS = 1705;
     private static final int MAGE_PROJECTILE_MINIBOSS = 1701;
@@ -95,6 +96,8 @@ public class CustomGauntletPlugin extends Plugin {
     }
     @Inject
     private CustomGauntletScript script;
+    @Inject
+    private CustomGauntletPrepScript prepScript;
 
     @Getter
     private static int timer1Count = 0;
@@ -108,6 +111,10 @@ public class CustomGauntletPlugin extends Plugin {
         log("Gauntlet Helper plugin started!");
         script.startup2();
         script.run();
+        if (config.autoPrep()) {
+            CustomGauntletScript.ghState = State.PREP;
+            prepScript.run();
+        }
         if (overlayManager != null) {
             overlayManager.add(overlay);
             overlayManager.add(sceneOverlay);
@@ -119,6 +126,7 @@ public class CustomGauntletPlugin extends Plugin {
         log("Gauntlet Helper plugin stopped!");
         try {
             if (script != null) script.shutdown();
+            if (prepScript != null) prepScript.shutdown();
         } finally {
             overlayManager.remove(overlay);
             overlayManager.remove(sceneOverlay);
@@ -144,6 +152,14 @@ public class CustomGauntletPlugin extends Plugin {
     public void onConfigChanged(ConfigChanged event) {
         if (!"CustomGauntlet".equals(event.getGroup())) {
             return;
+        }
+        if ("autoPrep".equals(event.getKey())) {
+            if (config.autoPrep()) {
+                CustomGauntletScript.ghState = State.PREP;
+                prepScript.run();
+            } else {
+                if (prepScript != null) prepScript.shutdown();
+            }
         }
         // Config values are read live each loop, so most changes adapt on their own; this lets the
         // script react immediately (e.g. clear in-progress tornado dodging the moment it's disabled).
