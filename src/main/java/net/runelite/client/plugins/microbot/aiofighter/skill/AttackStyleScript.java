@@ -123,6 +123,9 @@ public class AttackStyleScript extends Script {
 
             // Get the component to display
             WidgetInfo componentToDisplay = getComponentToDisplay(config);
+            if (componentToDisplay == null || attackStyleToTrain == null || attackStyle == null) {
+                return;
+            }
 
             Microbot.log("Current Attack Style: " + attackStyle.getName());
             Microbot.log("Attack Style to Train: " + attackStyleToTrain.getName());
@@ -194,14 +197,25 @@ public class AttackStyleScript extends Script {
         }
     }
 
-    private AttackStyle[] getWeaponTypeStyles(int weaponType) {
-        int weaponStyleEnum = Microbot.getEnum(EnumID.WEAPON_STYLES).getIntValue(weaponType);
-        int[] weaponStyleStructs = Microbot.getEnum(weaponStyleEnum).getIntVals();
+    static AttackStyle[] getWeaponTypeStyles(int weaponType) {
+        EnumComposition weaponStylesEnum = Microbot.getEnum(EnumID.WEAPON_STYLES);
+        if (weaponStylesEnum == null) {
+            return new AttackStyle[0];
+        }
+        EnumComposition weaponStyleEnum = Microbot.getEnum(weaponStylesEnum.getIntValue(weaponType));
+        if (weaponStyleEnum == null) {
+            return new AttackStyle[0];
+        }
+        int[] weaponStyleStructs = weaponStyleEnum.getIntVals();
 
         AttackStyle[] styles = new AttackStyle[weaponStyleStructs.length];
         int i = 0;
         for (int style : weaponStyleStructs) {
-            String attackStyleName = Microbot.getStructComposition(style).getStringValue(ParamID.ATTACK_STYLE_NAME);
+            StructComposition struct = Microbot.getStructComposition(style);
+            String attackStyleName = struct == null ? null : struct.getStringValue(ParamID.ATTACK_STYLE_NAME);
+            if (attackStyleName == null) {
+                return new AttackStyle[0];
+            }
             AttackStyle attackStyle = AttackStyle.valueOf(attackStyleName.toUpperCase());
 
             if (attackStyle == AttackStyle.OTHER) {
@@ -355,10 +369,19 @@ public class AttackStyleScript extends Script {
                 }
             }
         }
-        WidgetInfo componentToDisplay = componentsToDisplay.get(random.nextInt(componentsToDisplay.size()));
+        WidgetInfo componentToDisplay = pickComponent(componentsToDisplay, random);
+        if (componentToDisplay == null) {
+            return null;
+        }
         attackStyleToTrain = attackStyles[componentToDisplay.ordinal() - 233];
-        // Return a random component if the list is not empty, otherwise return null
         return componentToDisplay;
+    }
+
+    static WidgetInfo pickComponent(List<WidgetInfo> components, Random random) {
+        if (components == null || components.isEmpty()) {
+            return null;
+        }
+        return components.get(random.nextInt(components.size()));
     }
 
     private boolean isMaxed() {

@@ -43,6 +43,7 @@ public class BankerScript extends Script {
     boolean initialized = false;
     public static boolean inventorySetupChanged = false;
     private static boolean bankingTriggered = false;
+    private static String missingSetupWarned = null;
     @Inject
     private MInventorySetupsPlugin inventorySetupsPlugin;
 
@@ -161,6 +162,10 @@ public class BankerScript extends Script {
             return false;
         }
         
+        if (!isSetupAvailable(setupName)) {
+            return false;
+        }
+
         Rs2InventorySetup inventorySetup = new Rs2InventorySetup(setupName, mainScheduledFuture);
 
         // (3) If food is required but not available
@@ -206,6 +211,47 @@ public class BankerScript extends Script {
         return false;
     }
 
+
+    private boolean isSetupAvailable(String setupName) {
+        List<InventorySetup> setups = MInventorySetupsPlugin.getInventorySetups();
+        List<String> names = new ArrayList<>();
+        if (setups != null) {
+            for (InventorySetup setup : setups) {
+                if (setup != null) {
+                    names.add(setup.getName());
+                }
+            }
+        }
+        if (isSetupResolvable(names, setupName)) {
+            missingSetupWarned = null;
+            return true;
+        }
+        if (!setupName.equals(missingSetupWarned)) {
+            missingSetupWarned = setupName;
+            Microbot.log("Inventory setup " + setupName + " not found; reselect it in AIO Fighter config");
+        }
+        return false;
+    }
+
+    static boolean isSetupResolvable(Collection<String> setupNames, String setupName) {
+        if (setupNames == null || setupName == null) {
+            return false;
+        }
+        return setupNames.stream()
+                .filter(Objects::nonNull)
+                .anyMatch(name -> name.equalsIgnoreCase(setupName) || name.equals("default"));
+    }
+
+    static InventorySetup findSetupByName(Collection<InventorySetup> setups, String setupName) {
+        if (setups == null || setupName == null) {
+            return null;
+        }
+        return setups.stream()
+                .filter(Objects::nonNull)
+                .filter(setup -> setupName.equalsIgnoreCase(setup.getName()))
+                .findFirst()
+                .orElse(null);
+    }
 
     /**
      * Checks if the given setup requires any variant of a specific potion but the player does not have it.
@@ -288,7 +334,7 @@ public class BankerScript extends Script {
     public boolean hasProtectiveSlayerEquipment() {
         String needed = Rs2Slayer.getSlayerTaskProtectiveEquipment();
 
-        if ("None".equals(needed)) {
+        if (!requiresProtectiveEquipment(needed)) {
             return true;
         }
 
@@ -314,7 +360,14 @@ public class BankerScript extends Script {
         return result;
     }
 
-    private boolean isBypassedBySlayerHelmet(String item) {
+    static boolean requiresProtectiveEquipment(String needed) {
+        return needed != null && !"None".equals(needed);
+    }
+
+    static boolean isBypassedBySlayerHelmet(String item) {
+        if (item == null) {
+            return false;
+        }
         switch (item) {
             case "Earmuffs":
             case "Facemask":
@@ -377,11 +430,18 @@ public class BankerScript extends Script {
                 return;
             }
             
-            Rs2InventorySetup inventorySetup = new Rs2InventorySetup(setupName, mainScheduledFuture);
             if (!Rs2Bank.isOpen()) {
                 Microbot.log("Bank didn't open, returning.");
                 return;
             }
+            if (!isSetupAvailable(setupName)) {
+                Rs2Bank.depositAll();
+                Rs2Inventory.waitForInventoryChanges(2000);
+                bankingTriggered = false;
+                inventorySetupChanged = false;
+                return;
+            }
+            Rs2InventorySetup inventorySetup = new Rs2InventorySetup(setupName, mainScheduledFuture);
             if (config.currentInventorySetup() != null) {
                 Microbot.log("Loading equipment for: " + config.currentInventorySetup().getName());
             } else {
@@ -430,7 +490,8 @@ public class BankerScript extends Script {
                         Rs2Bank.withdrawAndEquip(Rs2Slayer.getSlayerTaskProtectiveEquipment());
                         sleep(3000);
                         inventorySetupsPlugin.addInventorySetup("cache");
-                        InventorySetup inventorySetup1 = MInventorySetupsPlugin.getInventorySetups().stream().filter(Objects::nonNull).filter(x -> x.getName().equalsIgnoreCase("cache")).findFirst().orElse(null);
+                        sleepUntil(() -> findSetupByName(MInventorySetupsPlugin.getInventorySetups(), "cache") != null, 3000);
+                        InventorySetup inventorySetup1 = findSetupByName(MInventorySetupsPlugin.getInventorySetups(), "cache");
                          AIOFighterPlugin.setCurrentSlayerInventorySetup(inventorySetup1);
                     } else {
                         ShopScript.shopItems.add(new ShopItem(Rs2Slayer.getSlayerTaskProtectiveEquipment(), 1, Microbot.getRs2ItemManager().getItemId(Rs2Slayer.getSlayerTaskProtectiveEquipment()), ShopType.SLAYER_SHOP));
