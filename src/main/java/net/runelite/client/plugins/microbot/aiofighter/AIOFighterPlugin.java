@@ -62,7 +62,7 @@ import java.util.stream.Collectors;
 )
 @Slf4j
 public class AIOFighterPlugin extends Plugin {
-    public static final String version = "2.2.0";
+    public static final String version = "2.2.10";
     public static boolean needShopping = false;
     private static final String SET = "Set";
     private static final String CENTER_TILE = ColorUtil.wrapWithColorTag("Center Tile", JagexColors.MENU_TARGET);
@@ -251,6 +251,10 @@ public class AIOFighterPlugin extends Plugin {
     }
 
     public static void setCurrentSlayerInventorySetup(InventorySetup currentInventorySetup) {
+        if (currentInventorySetup == null) {
+            Microbot.log("Inventory setup not found; keeping current inventory setup");
+            return;
+        }
         Microbot.log("Setting current inventory setup to: " + currentInventorySetup.getName());
         setConfig("currentInventorySetup", currentInventorySetup);
     }
@@ -467,7 +471,8 @@ public class AIOFighterPlugin extends Plugin {
             if (event.getActor() != Microbot.getClient().getLocalPlayer()) return;
             final Hitsplat hitsplat = event.getHitsplat();
 
-            if ((hitsplat.isMine()) && event.getActor().getInteracting() instanceof NPC && config.togglePrayer() && (config.prayerStyle() == PrayerStyle.LAZY_FLICK) || (config.prayerStyle() == PrayerStyle.PERFECT_LAZY_FLICK) || (config.prayerStyle() == PrayerStyle.MIXED_LAZY_FLICK)) {
+            if (hitsplat.isMine() && event.getActor().getInteracting() instanceof NPC && config.togglePrayer()
+                    && (config.prayerStyle() == PrayerStyle.LAZY_FLICK || config.prayerStyle() == PrayerStyle.PERFECT_LAZY_FLICK || config.prayerStyle() == PrayerStyle.MIXED_LAZY_FLICK)) {
                 flickerScript.resetLastAttack(true);
                 Rs2Prayer.disableAllPrayers();
                 if (config.toggleQuickPray())

@@ -4,13 +4,13 @@ import net.runelite.api.GameState;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 import net.runelite.client.plugins.microbot.sandcrabs.enums.State;
 import net.runelite.client.plugins.microbot.sandcrabs.models.ScanLocation;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
-import net.runelite.client.plugins.microbot.util.keyboard.Rs2Keyboard;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
@@ -18,9 +18,7 @@ import net.runelite.client.plugins.microbot.util.player.Rs2PlayerModel;
 import net.runelite.client.plugins.microbot.util.security.Login;
 import net.runelite.client.plugins.microbot.util.tabs.Rs2Tab;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
-import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
-import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -51,6 +49,10 @@ public class SandCrabScript extends Script {
 
     List<ScanLocation> sandCrabLocations = new ArrayList<>();
 
+    static boolean hasInventorySetup(InventorySetup setup) {
+        return setup != null && setup.getName() != null && !setup.getName().isEmpty();
+    }
+
     public boolean run(SandCrabConfig config, SandCrabPlugin plugin) {
         initialPlayerLocation = null;
         if (config.threeNpcs()) {
@@ -66,19 +68,20 @@ public class SandCrabScript extends Script {
                     initialPlayerLocation = Rs2Player.getWorldLocation();
                 }
                 long startTime = System.currentTimeMillis();
-                var inventorySetup = new Rs2InventorySetup(config.inventorySetup().getName(), mainScheduledFuture);
+                Rs2InventorySetup inventorySetup = null;
 
                 if (!config.DisableInventorySetup()) {
-                    if (inventorySetup == null || config.inventorySetup().getName().isEmpty()) {
+                    if (!hasInventorySetup(config.inventorySetup())) {
                         Microbot.showMessage("Please setup your Inventory Setup for sand crabs! Stopping...");
                         shutdown();
                         return;
                     }
+                    inventorySetup = new Rs2InventorySetup(config.inventorySetup().getName(), mainScheduledFuture);
                 }
 
                 Rs2Combat.enableAutoRetialiate();
 
-                if (!inventorySetup.doesEquipmentMatch() && !config.DisableInventorySetup()) {
+                if (!config.DisableInventorySetup() && !inventorySetup.doesEquipmentMatch()) {
                     if (Rs2Bank.walkToBankAndUseBank()) {
                         if (inventorySetup.loadEquipment()) {
                             Microbot.log("We're setup for sand crabs!");
@@ -162,15 +165,11 @@ public class SandCrabScript extends Script {
                         break;
                     case HOP_WORLD:
                         int world = Login.getRandomWorld(true, null);
-                        boolean isHopped = Microbot.hopToWorld(world);
-                        if (isHopped) {
-                            boolean result = sleepUntil(() -> Rs2Widget.findWidget("Switch World") != null);
-                            if (result) {
-                                Rs2Keyboard.keyPress(KeyEvent.VK_SPACE);
-                                sleepUntil(() -> Microbot.getClient().getGameState() == GameState.HOPPING);
-                                sleepUntil(() -> Microbot.getClient().getGameState() == GameState.LOGGED_IN);
-                            }
+                        if (!Microbot.hopToWorld(world)) {
+                            Microbot.log("World hop to " + world + " refused, retrying next loop");
+                            break;
                         }
+                        sleepUntil(() -> Microbot.getClient().getGameState() == GameState.LOGGED_IN);
 
                         if (timesHopped > 10) {
                             timesHopped = 0;
