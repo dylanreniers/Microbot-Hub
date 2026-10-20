@@ -12,6 +12,7 @@ import groovy.json.JsonOutput
 
 apply from: 'gradle/project-config.gradle'
 apply from: 'gradle/plugin-utils.gradle'
+apply from: 'gradle/plugin-version-checks.gradle'
 
 def microbotClientVersion = project.ext.getMicrobotClientVersion()
 def microbotClientPath = project.findProperty("microbotClientPath")
@@ -122,6 +123,8 @@ dependencies {
         microbotRuntime "com.microbot:microbot:${microbotClientVersion}@jar"
         testImplementation "com.microbot:microbot:${microbotClientVersion}@jar"
     }
+
+    testImplementation 'org.mockito:mockito-core:5.11.0'
 }
 
 tasks.withType(Test).configureEach {
@@ -257,8 +260,27 @@ afterEvaluate {
         dependsOn allPluginCompileTasks
     }
 
+    def pluginVersions = new TreeMap(validPlugins.collectEntries { plugin ->
+        [(project.ext.getPluginClassName(plugin)): pluginVersionFromPluginJson(plugin.dir)]
+    })
+    def pluginVersionsFile = layout.buildDirectory.file('plugin-versions/plugin-versions.properties')
+    def writePluginVersions = tasks.register('writePluginVersions') {
+        group = 'verification'
+        description = 'Writes the plugin versions resolved for plugins.json so tests can compare them with the compiled descriptors'
+        inputs.property('pluginVersions', pluginVersions)
+        outputs.file(pluginVersionsFile)
+        doLast {
+            def output = pluginVersionsFile.get().asFile
+            output.parentFile.mkdirs()
+            output.text = pluginVersions.collect { className, version -> "${className}=${version}\n" }.join('')
+        }
+    }
+
     tasks.named('test').configure {
         dependsOn allPluginCompileTasks
+        dependsOn writePluginVersions
+        inputs.file(pluginVersionsFile)
+        systemProperty 'microbot.hub.pluginVersions', pluginVersionsFile.get().asFile.absolutePath
     }
 }
 
@@ -288,6 +310,22 @@ tasks.register("copyPluginDocs") {
     }
 }
 
+tasks.register('validatePluginHealth') {
+    group = 'verification'
+    description = 'Validates plugin-health.json against discovered plugins'
+    inputs.file('plugin-health.json').optional()
+
+    doLast {
+        def allPlugins = project.ext.discoverPlugins(file(project.ext.getPluginsSourcePath()))
+        def health = project.ext.readPluginHealth(file('plugin-health.json'), allPlugins.collect { it.name })
+        logger.lifecycle("plugin-health.json: ${health.size()} entr${health.size() == 1 ? 'y' : 'ies'} valid")
+    }
+}
+
+tasks.named('check') {
+    dependsOn 'validatePluginHealth'
+}
+
 // Validating JDK version when generating plugins.json is important to ensure consistent hashing :(
 tasks.register("generatePluginsJson") {
     group = "build"
@@ -300,7 +338,7 @@ tasks.register("generatePluginsJson") {
         def jarOutputDir = file("$buildDir/libs")
 
         def allPlugins = project.ext.discoverPlugins(pluginRoot)
-        def plugins = project.ext.generatePluginsJsonData(allPlugins, jarOutputDir)
+        def plugins = project.ext.applyPluginHealth(project.ext.generatePluginsJsonData(allPlugins, jarOutputDir), file('plugin-health.json'), allPlugins.collect { it.name })
 
         outputJson.parentFile.mkdirs()
         outputJson.text = JsonOutput.prettyPrint(JsonOutput.toJson(plugins))

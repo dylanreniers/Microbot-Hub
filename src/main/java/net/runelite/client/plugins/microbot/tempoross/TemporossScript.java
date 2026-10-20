@@ -3,7 +3,7 @@ package net.runelite.client.plugins.microbot.tempoross;
 import net.runelite.api.*;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.api.widgets.InterfaceID;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
@@ -45,7 +45,6 @@ public class TemporossScript extends Script {
     public static final Pattern DIGIT_PATTERN = Pattern.compile("(\\d+)");
     public static final int TEMPOROSS_REGION = 12076;
 
-    private static final int TEMPOROSS_INTERFACE_ID = 437;
     // Game state variables
 
     // ---- Client-thread snapshot ---------------------------------------------------------------
@@ -1773,9 +1772,9 @@ public class TemporossScript extends Script {
 
     public static void handleWidgetInfo() {
         try {
-            Widget energyWidget = Microbot.getClient().getWidget(TEMPOROSS_INTERFACE_ID, 35);
-            Widget essenceWidget = Microbot.getClient().getWidget(TEMPOROSS_INTERFACE_ID, 45);
-            Widget intensityWidget = Microbot.getClient().getWidget(TEMPOROSS_INTERFACE_ID, 55);
+            Widget energyWidget = Microbot.getClient().getWidget(InterfaceID.TemporossHud.ENERGY_TITLE);
+            Widget essenceWidget = Microbot.getClient().getWidget(InterfaceID.TemporossHud.ESSENCE_TITLE);
+            Widget intensityWidget = Microbot.getClient().getWidget(InterfaceID.TemporossHud.STORM_INTENSITY_TITLE);
 
             if (energyWidget == null || essenceWidget == null || intensityWidget == null) {
                 if(Rs2AntibanSettings.devDebug)
