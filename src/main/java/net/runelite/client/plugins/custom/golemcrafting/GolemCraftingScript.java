@@ -20,7 +20,7 @@ public class GolemCraftingScript extends ActionScript<GolemState> {
     @Inject
     private GolemCraftingConfig config;
 
-    private final GolemContext context = new GolemContext();
+    private GolemContext context = new GolemContext();
 
     @Override
     protected Class<? extends Action<GolemState>> actionType() {
@@ -34,6 +34,9 @@ public class GolemCraftingScript extends ActionScript<GolemState> {
 
     @Override
     protected void onInitialize() {
+        // run()/initialize() fires on every start; the plugin (and this script) is a reused singleton,
+        // so start from a brand-new context to wipe all stale run state from a previous start/stop.
+        context = new GolemContext();
         context.setGolemsPerTrip(config.golemsPerTrip());
         String fur = config.furType() == null || config.furType().isBlank()
                 ? "Dashing kebbit fur" : config.furType().trim();

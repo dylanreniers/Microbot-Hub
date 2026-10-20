@@ -1,8 +1,10 @@
 package net.runelite.client.plugins.custom.tormenteddemons;
 
 
+import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
+import net.runelite.client.ui.overlay.components.LineComponent;
 import net.runelite.client.ui.overlay.components.TitleComponent;
 
 import javax.inject.Inject;
@@ -34,7 +36,9 @@ public class CustomTormentedDemonOverlay extends OverlayPanel {
                     .text("Kill Count: " + CustomTormentedDemonScript.killCount)  // Add kill count display
                     .color(Color.YELLOW)
                     .build());
-
+            panelComponent.getChildren().add(LineComponent.builder()
+                    .left(Microbot.status)
+                    .build());
         } catch(Exception ex) {
             System.out.println(ex.getMessage());
         }

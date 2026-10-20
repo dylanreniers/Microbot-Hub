@@ -78,9 +78,9 @@ final class GolemHelpers {
         return Rs2Inventory.count(i -> i.getName() != null && i.getName().toLowerCase().contains("uncut")) > 0;
     }
 
-    /** Only our own drops count — a personal reward (owned by us / private), never another player's. */
+    /** Only drops that belong to us count — ownership must be SELF, never private/none/another player's. */
     private static boolean isOwn(GroundItem gi) {
-        return gi.getOwnership() == TileItem.OWNERSHIP_SELF || gi.isPrivate();
+        return gi.getOwnership() == TileItem.OWNERSHIP_SELF;
     }
 
     /** True if {@code gi} is a drop we want: a Jeweller's chisel, or an uncut gem when {@code includeGems}. */

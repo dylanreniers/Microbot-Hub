@@ -6,17 +6,17 @@ import net.runelite.api.Player;
 import net.runelite.api.Skill;
 import net.runelite.api.TileItem;
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.client.plugins.grounditems.GroundItem;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.tileitem.models.Rs2TileItemModel;
+import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
+import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.equipment.JewelleryLocationEnum;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
-import net.runelite.client.plugins.microbot.util.models.RS2Item;
-import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
@@ -27,12 +27,16 @@ import net.runelite.client.plugins.skillcalculator.skills.MagicAction;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 public class CustomTormentedDemonScript extends Script {
 
+    private static final Logger log = LoggerFactory.getLogger(CustomTormentedDemonScript.class);
     private boolean isRunning = false;
     public static int killCount = 0;
     private Rs2PrayerEnum currentDefensivePrayer = null;
@@ -64,10 +68,7 @@ public class CustomTormentedDemonScript extends Script {
      * action: the pile of flesh is "Eat-from", the gland is "Crush". (The smouldering heart is a normal
      * "Take", so it's left to the regular loot pass.) {@code [name, action]}.
      */
-    private static final String[][] SMOULDERING_DROPS = {
-            {"Smouldering pile of flesh", "Eat-from"},
-            {"Smouldering gland", "Crush"}
-    };
+    private static final String[] SMOULDERING_DROPS = { "Smouldering pile of flesh", "Smouldering gland", "Smouldering heart"};
 
     // ---- FULL_AUTO restock + travel constants ----
     private static final int FEROX_POOL_ID = 39651;
@@ -91,7 +92,7 @@ public class CustomTormentedDemonScript extends Script {
      */
     private static final String TRAVEL_INTO_CHASM_OPTION = "Travel into the chasm";
 
-    private enum State {BANKING, TRAVEL_TO_TORMENTED, FIGHTING}
+    public enum State {BANKING, TRAVEL_TO_TORMENTED, FIGHTING}
 
     public static State BOT_STATUS = State.BANKING;
 
@@ -190,6 +191,8 @@ public class CustomTormentedDemonScript extends Script {
             case TELE_HOUSE_TO_FEROX:
                 Microbot.status = "Teleporting to house...";
                 if (teleportToHouse()) {
+                    Rs2Player.toggleRunEnergy(true);
+                    disableAllPrayers();
                     if (bankingSetup != null && !bankingSetup.doesEquipmentMatch()) {
                         bankingSetup.wearEquipment();
                     }
@@ -241,13 +244,20 @@ public class CustomTormentedDemonScript extends Script {
     /** Casts the standard-spellbook Teleport to House and waits until we're inside the POH. */
     private boolean teleportToHouse() {
         if (PohTeleports.isInHouse()) {
+            Rs2Player.toggleRunEnergy(true);
+            disableAllPrayers();
             return true;
         }
         if (!Rs2Magic.cast(MagicAction.TELEPORT_TO_HOUSE)) {
             logOnceToChat("Could not cast Teleport to House (missing runes / not on the standard spellbook?)");
             return false;
         }
-        return sleepUntil(PohTeleports::isInHouse, 8000);
+        boolean arrived = sleepUntil(PohTeleports::isInHouse, 8000);
+        if (arrived) {
+            Rs2Player.toggleRunEnergy(true);
+            disableAllPrayers();
+        }
+        return arrived;
     }
 
     /** Drinks at the pool (Ferox Pool of Refreshment) until HP and Prayer are back to full. */
@@ -259,10 +269,11 @@ public class CustomTormentedDemonScript extends Script {
         if (full) {
             return true;
         }
-        if (Microbot.getRs2TileObjectCache().query().interact(FEROX_POOL_ID, "Drink")) {
+        if (Microbot.getRs2TileObjectCache().query().withId(FEROX_POOL_ID).firstOnClientThread().click("Drink")) {
             Rs2Player.waitForAnimation();
             sleepUntil(() -> Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS) >= maxHealth
                     && Microbot.getClient().getBoostedSkillLevel(Skill.PRAYER) >= maxPrayer, 8000);
+            Rs2Player.toggleRunEnergy(true);
             return Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS) >= maxHealth;
         }
         return false;
@@ -313,9 +324,12 @@ public class CustomTormentedDemonScript extends Script {
         switch (travelStep) {
             case CLIMB_ROCKS:
                 Microbot.status = "Climbing the rocks...";
-                if (Microbot.getRs2TileObjectCache().query().interact(TOG_ROCKS_ID, "Climb")) {
-                    Rs2Player.waitForWalking();
-                    sleepUntil(() -> !Rs2Player.isMoving(), 5000);
+                var rocks = Microbot.getRs2TileObjectCache().query().withId(TOG_ROCKS_ID).firstOnClientThread();
+                if (rocks != null) {
+                    Rs2Camera.turnTo(rocks);
+                    rocks.click();
+                    sleep(1200);
+                    sleepUntil(() -> !Rs2Player.isMoving(), 10000);
                     travelStep = TravelStep.USE_LANTERN;
                 }
                 break;
@@ -336,35 +350,23 @@ public class CustomTormentedDemonScript extends Script {
 
             case WAIT_IN_CHASM:
                 Microbot.status = "Travelling through the chasm...";
-                sleep(CHASM_TRAVEL_WAIT_MS);
+                sleepUntil(() -> Rs2Player.getWorldLocation().getX() == 4075, 30000);
                 travelStep = TravelStep.CLIMB_WALL_ONE;
                 break;
 
             case CLIMB_WALL_ONE:
                 Microbot.status = "Climbing the first wall...";
-                if (Microbot.getRs2TileObjectCache().query().interact(WALL_ONE_ID, "Climb-up")) {
-                    Rs2Player.waitForAnimation();
-                    sleepUntil(() -> !Rs2Player.isAnimating());
-                    travelStep = TravelStep.CLIMB_WALL_TWO;
-                }
+                clickOnGameObjectToNextHoop(WALL_ONE_ID, TravelStep.CLIMB_WALL_TWO);
                 break;
 
             case CLIMB_WALL_TWO:
                 Microbot.status = "Climbing the second wall...";
-                if (Microbot.getRs2TileObjectCache().query().interact(WALL_TWO_ID, "Climb-up")) {
-                    Rs2Player.waitForAnimation();
-                    sleepUntil(() -> !Rs2Player.isAnimating());
-                    travelStep = TravelStep.CLIMB_OPENING;
-                }
+                clickOnGameObjectToNextHoop(WALL_TWO_ID, TravelStep.CLIMB_OPENING);
                 break;
 
             case CLIMB_OPENING:
                 Microbot.status = "Climbing through the opening...";
-                if (Microbot.getRs2TileObjectCache().query().withName(OPENING_NAME).interact("Climb-through")) {
-                    Rs2Player.waitForAnimation();
-                    sleepUntil(() -> !Rs2Player.isAnimating());
-                    travelStep = TravelStep.RUN_TO_DEMONS;
-                }
+                clickOnGameObjectToNextHoop(OPENING_NAME, TravelStep.RUN_TO_DEMONS);
                 break;
 
             case RUN_TO_DEMONS:
@@ -375,6 +377,27 @@ public class CustomTormentedDemonScript extends Script {
                     BOT_STATUS = State.FIGHTING;
                 }
                 break;
+        }
+    }
+
+    private void clickOnGameObjectToNextHoop(int id, TravelStep nextTravelStep) {
+        var wall1 = Microbot.getRs2TileObjectCache().query().withId(id).firstOnClientThread();
+        clickObjectAndWait(nextTravelStep, wall1);
+    }
+
+    private void clickOnGameObjectToNextHoop(String name, TravelStep nextTravelStep) {
+        var wall1 = Microbot.getRs2TileObjectCache().query().withName(name).firstOnClientThread();
+        clickObjectAndWait(nextTravelStep, wall1);
+    }
+
+    private void clickObjectAndWait(TravelStep nextTravelStep, Rs2TileObjectModel wall1) {
+        if (wall1 != null) {
+            Rs2Camera.turnTo(wall1);
+            wall1.click();
+            Rs2Player.waitForAnimation(20000);
+            sleepUntil(() -> !Rs2Player.isAnimating());
+            sleep(600);
+            travelStep = nextTravelStep;
         }
     }
 
@@ -441,17 +464,15 @@ public class CustomTormentedDemonScript extends Script {
 
         if (currentTarget == null || currentTarget.isDead()) {
             disableAllPrayers();
-
+            log.info("Tormented demon has died.");
             if (!lootAttempted) {
-                if (CustomTormentedDemonPlugin.isDodgeActive()) return;
-                sleep(2500);
-                if (CustomTormentedDemonPlugin.isDodgeActive()) return;
-                attemptLooting(config);
+                sleepUntil(() -> hasLootableDrops(config), 6000);
+                if (hasLootableDrops(config)) {
+                    attemptLooting(config);
+                }
                 lootAttempted = true;
                 killCount++;
             }
-
-            if (CustomTormentedDemonPlugin.isDodgeActive()) return;
 
             currentTarget = findNewTarget(config);
             if (currentTarget != null && currentTarget.getInteracting() != Microbot.getClient().getLocalPlayer()) {
@@ -461,7 +482,6 @@ public class CustomTormentedDemonScript extends Script {
                 }
             }
             if (currentTarget != null) {
-                if (CustomTormentedDemonPlugin.isDodgeActive()) return;
                 prayDefaultDefensivePrayer(config);
                 currentOverheadIcon = Microbot.getClientThread().invoke(() -> currentTarget.getHeadIcon());
                 Microbot.log("Acquired target overhead: " + currentOverheadIcon);
@@ -469,7 +489,6 @@ public class CustomTormentedDemonScript extends Script {
                     logOnceToChat("Failed to retrieve HeadIcon for target.");
                     return;
                 }
-                if (CustomTormentedDemonPlugin.isDodgeActive()) return;
                 switchGear(config, currentOverheadIcon);
                 lootAttempted = false;
             } else {
@@ -489,9 +508,11 @@ public class CustomTormentedDemonScript extends Script {
             currentOverheadIcon = null;
             intendedGearSetup = null;
             disableAllPrayers();
+            Rs2Player.toggleRunEnergy(true);
             // Start the restock trip from the top: teleport home, jewellery box to Ferox, restore, resupply.
             bankingStep = BankingStep.TELE_HOUSE_TO_FEROX;
             BOT_STATUS = State.BANKING;
+            teleportToHouse();
             return;
         }
 
@@ -792,6 +813,9 @@ public class CustomTormentedDemonScript extends Script {
     }
 
     public void disableAllPrayers() {
+        if (Rs2Prayer.isQuickPrayerEnabled()) {
+            Rs2Prayer.toggleQuickPrayer(false);
+        }
         Rs2Prayer.disableAllPrayers();
         currentDefensivePrayer = null;
         currentOffensivePrayer = null;
@@ -816,23 +840,11 @@ public class CustomTormentedDemonScript extends Script {
         consumeSmoulderingDrops();
 
         long startTime = System.currentTimeMillis();
-        long deadline = startTime + 12_000;
+        long deadline = startTime + 15_000;
 
         while (System.currentTimeMillis() < deadline) {
-            if (CustomTormentedDemonPlugin.isDodgeActive()) {
-                return;
-            }
-
-            boolean looted = lootNextDrop(config);
-
-            if (looted) {
-                deadline = Math.min(startTime + 20_000, System.currentTimeMillis() + 3_000);
-            } else {
-                if (!hasLootableDrops(config)) {
-                    break;
-                }
-                sleep(600);
-            }
+            lootNextDrop(config);
+            sleep(600);
         }
 
         if (config.scatterAshes()) {
@@ -841,26 +853,15 @@ public class CustomTormentedDemonScript extends Script {
     }
 
     private boolean lootNextDrop(CustomTormentedDemonConfig config) {
-        RS2Item[] groundItems = Microbot.getClientThread()
-                .runOnClientThreadOptional(() -> Rs2GroundItem.getAll(LOOT_RANGE))
-                .orElse(new RS2Item[]{});
+        var items = getLootOnTheGround();
 
-        boolean mine = config.lootMyLootOnly();
+        log.info("Looting items...  " + items.size());
         List<String> lootItems = parseLootItems(config.lootItems());
 
-        for (RS2Item item : groundItems) {
-            if (item == null || item.getItem() == null) {
-                continue;
-            }
+        for (var item : items) {
 
-            if (mine && item.getTileItem() != null
-                    && item.getTileItem().getOwnership() != TileItem.OWNERSHIP_SELF
-                    && item.getTileItem().getOwnership() != TileItem.OWNERSHIP_NONE) {
-                continue;
-            }
-
-            String name = item.getItem().getName();
-            if (name == null || name.isEmpty() || isSmoulderingDrop(name)) {
+            String name = item.getName();
+            if (name == null || name.isEmpty()) {
                 continue;
             }
 
@@ -888,7 +889,7 @@ public class CustomTormentedDemonScript extends Script {
                 }
             }
 
-            if (Rs2GroundItem.interact(item)) {
+            if (item.click()) {
                 Rs2Inventory.waitForInventoryChanges(2400);
                 if (config.scatterAshes() && Rs2Inventory.hasItem("Infernal ashes")) {
                     scatterCarriedAshes();
@@ -899,12 +900,18 @@ public class CustomTormentedDemonScript extends Script {
         return false;
     }
 
-    private boolean needsInventorySpace(RS2Item item) {
+    private static List<Rs2TileItemModel> getLootOnTheGround() {
+        return Microbot.getRs2TileItemCache().query()
+                .where((candidate) -> candidate.getTileItem().getOwnership() == TileItem.OWNERSHIP_SELF)
+                .toListOnClientThread();
+    }
+
+    private boolean needsInventorySpace(Rs2TileItemModel item) {
         if (!Rs2Inventory.isFull()) {
             return false;
         }
-        if (item != null && item.getItem() != null) {
-            if (item.getItem().isStackable() && Rs2Inventory.hasItem(item.getItem().getId())) {
+        if (item != null) {
+            if (item.isStackable() && Rs2Inventory.hasItem(item.getId())) {
                 return false;
             }
         }
@@ -939,24 +946,15 @@ public class CustomTormentedDemonScript extends Script {
     }
 
     private boolean hasLootableDrops(CustomTormentedDemonConfig config) {
-        RS2Item[] groundItems = Microbot.getClientThread()
-                .runOnClientThreadOptional(() -> Rs2GroundItem.getAll(LOOT_RANGE))
-                .orElse(new RS2Item[]{});
+        var groundItems = getLootOnTheGround();
 
-        boolean mine = config.lootMyLootOnly();
         List<String> lootItems = parseLootItems(config.lootItems());
 
-        for (RS2Item item : groundItems) {
-            if (item == null || item.getItem() == null) continue;
+        for (Rs2TileItemModel item : groundItems) {
+            if (item == null) continue;
 
-            if (mine && item.getTileItem() != null
-                    && item.getTileItem().getOwnership() != TileItem.OWNERSHIP_SELF
-                    && item.getTileItem().getOwnership() != TileItem.OWNERSHIP_NONE) {
-                continue;
-            }
-
-            String name = item.getItem().getName();
-            if (name == null || name.isEmpty() || isSmoulderingDrop(name)) continue;
+            String name = item.getName();
+            if (name == null || name.isEmpty()) continue;
 
             String lowerName = name.toLowerCase();
 
@@ -973,31 +971,25 @@ public class CustomTormentedDemonScript extends Script {
         return false;
     }
 
-    private boolean isSmoulderingDrop(String name) {
-        for (String[] drop : SMOULDERING_DROPS) {
-            if (drop[0].equalsIgnoreCase(name)) return true;
-        }
-        return false;
-    }
-
     /**
      * Consume the demon's smouldering drops on the ground for their reward rather than taking them, using
      * each item's own action (pile of flesh = "Eat-from", gland/heart = "Crush"). Loops per item until it's
      * gone (the action removes the ground item), bounded so a stubborn/blocked interaction can't hang looting.
      */
     private void consumeSmoulderingDrops() {
-        for (String[] drop : SMOULDERING_DROPS) {
-            final String name = drop[0];
-            final String action = drop[1];
-            int attempts = 0;
-            while (Rs2GroundItem.exists(name, LOOT_RANGE) && attempts++ < 5) {
-                if (!Rs2GroundItem.interact(name, action, LOOT_RANGE)) {
-                    break;
-                }
-                logOnceToChat(action + " " + name);
-                sleepUntil(() -> !Rs2GroundItem.exists(name, LOOT_RANGE), 3000);
+        var smoulderingItems = Microbot.getRs2TileItemCache().query()
+                .withNames(SMOULDERING_DROPS)
+                .where((candidate) -> candidate.getTileItem().getOwnership() == TileItem.OWNERSHIP_SELF)
+                .toListOnClientThread();
+        int maxHealth = Microbot.getClient().getRealSkillLevel(Skill.HITPOINTS);
+        boolean full = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS) >= maxHealth;
+
+        smoulderingItems.forEach(item -> {
+            if (!item.getName().equalsIgnoreCase("Smouldering pile of flesh") || !full) {
+                item.click();
+                sleep(1200, 1800);
             }
-        }
+        });
     }
 
     private void scatterCarriedAshes() {

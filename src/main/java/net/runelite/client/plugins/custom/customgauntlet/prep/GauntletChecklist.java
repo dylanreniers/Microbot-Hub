@@ -2,10 +2,7 @@ package net.runelite.client.plugins.custom.customgauntlet.prep;
 
 import lombok.Getter;
 import lombok.Setter;
-import net.runelite.api.gameval.ItemID;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
-
-import java.util.Set;
 
 /**
  * Tracks items collected, items remaining, total shards accumulated, and calculates
@@ -20,21 +17,24 @@ public class GauntletChecklist {
     public static final int TARGET_BARK = 7;
     public static final int TARGET_LINUM = 7;
     public static final int TARGET_LEAF = 3;
-    public static final int TARGET_FISH_PHASE_1 = 16;
+    public static final int TARGET_FISH_PHASE_1 = 16;       // required before Phase 2 can start
+    public static final int TARGET_FISH_PHASE_1_SOFT = 12;  // soft cap: don't hog inventory with fish early...
     public static final int TARGET_FISH_TOTAL = 24;
     public static final int TARGET_TOTAL_SHARDS = 550;
 
-    // Item IDs
-    public static final Set<Integer> ORE_IDS = Set.of(23824, 23837, 23877);
-    public static final Set<Integer> BARK_IDS = Set.of(23838, 23878);
-    public static final Set<Integer> LINUM_IDS = Set.of(23836, 23876);
-    public static final Set<Integer> LEAF_IDS = Set.of(23835, 23875);
-    public static final Set<Integer> RAW_FISH_IDS = Set.of(23872);
-    public static final Set<Integer> COOKED_FISH_IDS = Set.of(23874);
-    public static final Set<Integer> SHARD_IDS = Set.of(23825, 23866);
-    public static final Set<Integer> WEAPON_FRAME_IDS = Set.of(23834, 23841, 23871);
-    public static final Set<Integer> ORB_IDS = Set.of(23868, 23870);
-    public static final Set<Integer> BOWSTRING_IDS = Set.of(23869, 23871);
+    // Item names (matched exactly). Covers both Corrupted and Crystalline variants where they differ; the
+    // plant/wood/fish resources share a name across both gauntlets. Exact matching matters: "Paddlefish"
+    // (cooked) is a substring of "Raw paddlefish", so a non-exact match would conflate them.
+    public static final String[] ORE_NAMES = {"Corrupted ore", "Crystal ore"};
+    public static final String[] BARK_NAMES = {"Phren bark"};
+    public static final String[] LINUM_NAMES = {"Linum tirinum"};
+    public static final String[] LEAF_NAMES = {"Grym leaf"};
+    public static final String[] RAW_FISH_NAMES = {"Raw paddlefish"};
+    public static final String[] COOKED_FISH_NAMES = {"Paddlefish"};
+    public static final String[] SHARD_NAMES = {"Corrupted shards", "Crystal shards"};
+    public static final String[] WEAPON_FRAME_NAMES = {"Weapon frame"};
+    public static final String[] ORB_NAMES = {"Corrupted orb", "Crystal orb"};
+    public static final String[] BOWSTRING_NAMES = {"Corrupted bowstring", "Crystalline bowstring"};
 
     // Tracking
     private int shardsSpent = 0;
@@ -44,28 +44,50 @@ public class GauntletChecklist {
 
     private int droppedFishAtBase = 0;
 
+    /**
+     * Summed quantity of inventory items matching any of {@code names} (exact). itemQuantity sums stack
+     * quantity, which we need because ore/bark/shards stack into a single slot - a slot count would read 1.
+     */
+    private static int quantityOf(String... names) {
+        int total = 0;
+        for (String name : names) {
+            total += Rs2Inventory.itemQuantity(name, true);
+        }
+        return total;
+    }
+
+    /** True if the inventory holds any item exactly matching one of {@code names}. */
+    private static boolean hasAny(String... names) {
+        for (String name : names) {
+            if (Rs2Inventory.hasItem(name, true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public int getOreCount() {
-        return Rs2Inventory.count(ORE_IDS::contains);
+        return quantityOf(ORE_NAMES);
     }
 
     public int getBarkCount() {
-        return Rs2Inventory.count(BARK_IDS::contains);
+        return quantityOf(BARK_NAMES);
     }
 
     public int getLinumCount() {
-        return Rs2Inventory.count(LINUM_IDS::contains);
+        return quantityOf(LINUM_NAMES);
     }
 
     public int getLeafCount() {
-        return Rs2Inventory.count(LEAF_IDS::contains);
+        return quantityOf(LEAF_NAMES);
     }
 
     public int getRawFishCount() {
-        return Rs2Inventory.count(RAW_FISH_IDS::contains);
+        return quantityOf(RAW_FISH_NAMES);
     }
 
     public int getCookedFishCount() {
-        return Rs2Inventory.count(COOKED_FISH_IDS::contains);
+        return quantityOf(COOKED_FISH_NAMES);
     }
 
     public int getTotalFishCount() {
@@ -73,11 +95,11 @@ public class GauntletChecklist {
     }
 
     public int getWeaponFrameCount() {
-        return Rs2Inventory.count(WEAPON_FRAME_IDS::contains);
+        return quantityOf(WEAPON_FRAME_NAMES);
     }
 
     public int getInventoryShards() {
-        return Rs2Inventory.count(SHARD_IDS::contains);
+        return quantityOf(SHARD_NAMES);
     }
 
     public int getTotalShardsEarned() {
@@ -85,11 +107,11 @@ public class GauntletChecklist {
     }
 
     public boolean hasOrb() {
-        return ORB_IDS.stream().anyMatch(Rs2Inventory::hasItem);
+        return hasAny(ORB_NAMES);
     }
 
     public boolean hasBowstring() {
-        return BOWSTRING_IDS.stream().anyMatch(Rs2Inventory::hasItem);
+        return hasAny(BOWSTRING_NAMES);
     }
 
     public boolean hasBothWeaponComponents() {
@@ -114,6 +136,20 @@ public class GauntletChecklist {
 
     public int phase1FishRemaining() {
         return Math.max(0, TARGET_FISH_PHASE_1 - getTotalFishCount());
+    }
+
+    /**
+     * How many fish to actively gather right now. We hold off at the soft cap (12) to keep inventory room
+     * for the other materials, and only go for the full 16 once a tool slot has freed up - i.e. we've hit
+     * 7 bark or 7 ore (which drops the axe/pickaxe). Phase 2 still requires the full 16 (phase1FishRemaining).
+     */
+    public int phase1FishSeekTarget() {
+        boolean slotFreed = getBarkCount() >= TARGET_BARK || getOreCount() >= TARGET_ORE;
+        return slotFreed ? TARGET_FISH_PHASE_1 : TARGET_FISH_PHASE_1_SOFT;
+    }
+
+    public int phase1FishSeekRemaining() {
+        return Math.max(0, phase1FishSeekTarget() - getTotalFishCount());
     }
 
     public int totalFishRemaining() {
@@ -143,7 +179,7 @@ public class GauntletChecklist {
         score += Math.min(barkRemaining(), room.getPhrenRoots() * 3) * 20;
         score += Math.min(linumRemaining(), room.getLinumPlants() * 3) * 20;
         score += Math.min(leafRemaining(), room.getGrymRoots()) * 25;
-        score += Math.min(phase1FishRemaining(), room.getFishingSpots() * 3) * 15;
+        score += Math.min(phase1FishSeekRemaining(), room.getFishingSpots() * 3) * 15;
 
         // Weak mob for 1st weapon frame
         if (getWeaponFrameCount() == 0 && room.isHasWeakMob()) {

@@ -20,6 +20,7 @@ import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 import net.runelite.client.plugins.microbot.util.tile.Rs2Tile;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.plugins.UnderDevelopment;
 
 import javax.inject.Inject;
 import java.awt.*;
@@ -48,9 +49,10 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
         isExternal = PluginConstants.IS_EXTERNAL
 )
 @Slf4j
+@UnderDevelopment
 public class CustomTormentedDemonPlugin extends Plugin {
 
-    public static final String version = "1.0.2";
+    public static final String version = "1.0.3";
 
     // Tormented Demon (LUC2_UNDEAD_DEMON) per-attack animations — each is set the tick the demon launches
     // that attack, so they tell us the style of the incoming hit.
@@ -127,6 +129,10 @@ public class CustomTormentedDemonPlugin extends Plugin {
     public void onGraphicsObjectCreated(GraphicsObjectCreated event) {
         final GraphicsObject graphicsObject = event.getGraphicsObject();
         if (graphicsObject.getId() != TORMENTED_VENGEANCE_SPECIAL) {
+            return;
+        }
+
+        if (CustomTormentedDemonScript.BOT_STATUS != CustomTormentedDemonScript.State.FIGHTING) {
             return;
         }
 
@@ -284,6 +290,9 @@ public class CustomTormentedDemonPlugin extends Plugin {
     @Subscribe
     public void onAnimationChanged(AnimationChanged event) {
         if (!config.enableDefensivePrayer()) {
+            return;
+        }
+        if (CustomTormentedDemonScript.BOT_STATUS != CustomTormentedDemonScript.State.FIGHTING) {
             return;
         }
         if (!(event.getActor() instanceof NPC)) {

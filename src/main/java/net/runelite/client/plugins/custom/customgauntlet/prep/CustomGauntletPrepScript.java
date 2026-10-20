@@ -24,18 +24,22 @@ import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
+import net.runelite.client.plugins.microbot.util.keyboard.Rs2Keyboard;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
+import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
+import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.IntSupplier;
 
 /**
  * Handles full Tier 2 automated preparation for The Gauntlet:
@@ -56,14 +60,18 @@ public class CustomGauntletPrepScript extends Script {
 
     // Object IDs
     public static final Set<Integer> SINGING_BOWL_IDS = Set.of(35966, 36063);
+    private static final int SINGING_BOWL_GROUP = 270; // the Singing Bowl "What would you like to make?" interface (verified live; NOT a chat dialogue or group 640)
+    private static final int SINGING_BOWL_TITLE_CHILD = 5; // "What would you like to make?" text, present whenever the interface is open
     public static final Set<Integer> WATER_PUMP_IDS = Set.of(35981, 36078);
     public static final Set<Integer> RANGE_STOVE_IDS = Set.of(35980, 36077);
     public static final Set<Integer> TOOL_STORAGE_IDS = Set.of(35977, 36074);
     public static final Set<Integer> HUNLLEF_BARRIER_IDS = Set.of(35982, 36079);
     public static final Set<Integer> ROOM_DOOR_IDS = Set.of(37339);
     public static final Set<Integer> GAUNTLET_ENTRY_IDS = Set.of(37340); // "The Gauntlet" lobby entry (enter to start)
-    private static final int NODE_SEARCH_TILES = 12; // only light nodes within the current room (reachable without crossing walls)
+    private static final int NODE_SEARCH_TILES = 12; // prefer nodes within the current room (guaranteed reachable, no walls between)
+    private static final int FRONTIER_SEARCH_TILES = 48; // fallback when cornered: reach for a far unlit node several rooms out
     private static final int GATHER_SEARCH_TILES = 48; // reach resources/mobs several rooms out; game click-to-walk paths there
+    private static final int DEMIBOSS_PRAYER_RANGE = 10; // keep the right protection prayer up within this many tiles of a demiboss
     public static final Set<Integer> NODE_IDS = Set.of(35998, 35999, 36101, 36102);
     public static final Set<Integer> LIT_NODE_IDS = Set.of(35992, 36095);
 
@@ -80,11 +88,13 @@ public class CustomGauntletPrepScript extends Script {
     public static final Set<Integer> DARK_BEAST_IDS = Set.of(9034, 9048);
     public static final Set<Integer> BEAR_IDS = Set.of(9032, 9046);
 
-    // Tools
-    public static final Set<Integer> PICKAXE_IDS = Set.of(23863);
-    public static final Set<Integer> AXE_IDS = Set.of(23862);
-    public static final Set<Integer> HARPOON_IDS = Set.of(23864);
-    public static final Set<Integer> PESTLE_IDS = Set.of(23865);
+    // Tools — matched by name (exact), so they work for both Corrupted and Crystalline variants and don't
+    // depend on item ids (which were wrong/fragile here, e.g. axe id 238). Full names avoid "axe" matching
+    // "pickaxe".
+    public static final String[] PICKAXE_NAMES = {"Corrupted pickaxe", "Crystal pickaxe"};
+    public static final String[] AXE_NAMES = {"Corrupted axe", "Crystal axe"};
+    public static final String[] HARPOON_NAMES = {"Corrupted harpoon", "Crystal harpoon"};
+    public static final String PESTLE_NAME = "Pestle and mortar";
 
     private final CustomGauntletPlugin plugin;
     private final CustomGauntletConfig config;
@@ -94,6 +104,10 @@ public class CustomGauntletPrepScript extends Script {
     private PrepPhase currentPhase = PrepPhase.PHASE_1_RESOURCES;
 
     private boolean initialized = false;
+
+    // Remaining-count supplier for the resource we last clicked. Continuous gather actions don't stop on
+    // their own, so once this hits 0 we break the action (step off) instead of overshooting the target.
+    private IntSupplier activeGatherRemaining = null;
 
     @Inject
     public CustomGauntletPrepScript(CustomGauntletPlugin plugin, CustomGauntletConfig config) {
@@ -154,6 +168,10 @@ public class CustomGauntletPrepScript extends Script {
                     }
                 }
 
+                // Survival: keep the correct protection prayer up near any demiboss, in every phase. They
+                // hit from range, so this must run regardless of what the current phase is doing.
+                updateDemibossProtectionPrayer();
+
                 switch (currentPhase) {
                     case PHASE_1_RESOURCES:
                         executePhase1Resources();
@@ -190,14 +208,14 @@ public class CustomGauntletPrepScript extends Script {
      */
     private void executePhase1Resources() {
         // 1. Tool drop checks to preserve inventory space
-        if (checklist.getOreCount() >= GauntletChecklist.TARGET_ORE && PICKAXE_IDS.stream().anyMatch(Rs2Inventory::hasItem)) {
+        if (checklist.getOreCount() >= GauntletChecklist.TARGET_ORE && Rs2Inventory.hasItem(PICKAXE_NAMES, true)) {
             Microbot.log("[Prep] 7 Ore reached -> Dropping pickaxe");
-            Rs2Inventory.drop(PICKAXE_IDS::contains);
+            dropByName(PICKAXE_NAMES);
             return;
         }
-        if (checklist.getBarkCount() >= GauntletChecklist.TARGET_BARK && AXE_IDS.stream().anyMatch(Rs2Inventory::hasItem)) {
+        if (checklist.getBarkCount() >= GauntletChecklist.TARGET_BARK && Rs2Inventory.hasItem(AXE_NAMES, true)) {
             Microbot.log("[Prep] 7 Bark reached -> Dropping axe");
-            Rs2Inventory.drop(AXE_IDS::contains);
+            dropByName(AXE_NAMES);
             return;
         }
 
@@ -207,6 +225,18 @@ public class CustomGauntletPrepScript extends Script {
             teleportToBase();
             currentPhase = PrepPhase.PHASE_2_WEAPONS_AND_ARMOR;
             return;
+        }
+
+        // 2b. Stop overshooting: the resource we last clicked keeps gathering on its own, so once it's at
+        //     its target, break the action (step off) instead of mining/picking a stray extra while the
+        //     next material's gate is blocked by us still being busy.
+        if (activeGatherRemaining != null && activeGatherRemaining.getAsInt() == 0) {
+            activeGatherRemaining = null;
+            if ((Rs2Player.isAnimating() || Rs2Player.isInteracting()) && !Rs2Player.isMoving()) {
+                Microbot.log("[Prep] Resource target reached - stepping off to stop gathering");
+                stepOffCurrentTile();
+                return;
+            }
         }
 
         // 3. Loot ground items in current room if available
@@ -232,24 +262,44 @@ public class CustomGauntletPrepScript extends Script {
         }
 
         // 5. Gather any still-needed resource that is REACHABLE in the current accessible area.
-        if (checklist.oreRemaining() > 0 && gatherNearestObject(ORE_DEPOSIT_IDS, "Mine")) return;
-        if (checklist.barkRemaining() > 0 && gatherNearestObject(PHREN_ROOTS_IDS, "Chop")) return;
-        if (checklist.linumRemaining() > 0 && gatherNearestObject(LINUM_TIRINUM_IDS, "Pick")) return;
-        if (checklist.leafRemaining() > 0 && gatherNearestObject(GRYM_ROOT_IDS, "Pick")) return;
-        if (checklist.phase1FishRemaining() > 0 && gatherNearestObject(FISHING_SPOT_IDS, "Harpoon")) return;
+        if (checklist.oreRemaining() > 0 && gatherNearestObject(ORE_DEPOSIT_IDS, "Mine", checklist::oreRemaining, GauntletChecklist.ORE_NAMES)) return;
+        if (checklist.barkRemaining() > 0 && gatherNearestObject(PHREN_ROOTS_IDS, "Chop", checklist::barkRemaining, GauntletChecklist.BARK_NAMES)) return;
+        if (checklist.linumRemaining() > 0 && gatherNearestObject(LINUM_TIRINUM_IDS, "Pick", checklist::linumRemaining, GauntletChecklist.LINUM_NAMES)) return;
+        if (checklist.leafRemaining() > 0 && gatherNearestObject(GRYM_ROOT_IDS, "Pick", checklist::leafRemaining)) return;
+        // Phase-1 fish uses a dynamic seek cap (12 normally, 16 once 7 bark/ore has freed a tool slot) so we
+        // don't hog inventory with paddlefish before the other materials are gathered. Fishing is a
+        // continuous auto-action, so once we hit the current cap we actively step off the spot to break the
+        // harpoon (otherwise the player keeps fishing 13, 14, ... eating slots), then fall through to explore.
+        int fishCap = checklist.phase1FishSeekTarget();
+        if (checklist.getRawFishCount() >= fishCap) {
+            if (!Rs2Player.isMoving()) {
+                Microbot.log("[Prep] Phase-1 fish cap (" + fishCap + ") reached - stepping off the fishing spot");
+                stepOffCurrentTile();
+            }
+        } else if (checklist.phase1FishSeekRemaining() > 0 && gatherNearestObject(FISHING_SPOT_IDS, "Harpoon")) {
+            return;
+        }
 
         // 6. Nothing needed is reachable here -> EXPAND the accessible area: light the nearest reachable
         //    unlit node (opens a room), else pass the nearest barrier into a new room. This replaces the
         //    world-coordinate grid navigation, which is unreliable in the instance.
         if (scoutBaseRooms()) return;
         if (passNearestBarrier()) return;
+        if (scoutFrontierNode()) return; // cornered: reach for a far unlit node to open the next room
 
         Microbot.log("[Prep] Phase 1: nothing reachable to gather/light/pass right now - waiting for a path to open");
     }
 
-    /** Pass through the nearest barrier (37339 etc., not the Hunllef barrier) into an adjacent room. */
+    /**
+     * Pass through the nearest barrier (37339 etc., not the Hunllef barrier) into an adjacent room.
+     * NOTE: previously this tried to avoid "outer rim" rooms via a grid-cell calculation, but the
+     * gauntlet instance does not map cleanly onto the 7x7 / 16-tile-room grid assumption, so it
+     * mis-classified inner rooms as rim and rejected every barrier -> the bot stalled and never reached
+     * the fishing room. Demiboss safety is now handled by updateDemibossProtectionPrayer() (10-tile
+     * protection prayer), which is the real fix, so this just takes the nearest barrier again.
+     */
     private boolean passNearestBarrier() {
-        TileObject door = findNearestDoorTowardsRoom(null); // room param is unused; returns nearest barrier
+        TileObject door = findNearestPassableBarrier();
         if (door == null) return false;
         if (!Rs2Player.isMoving() && !Rs2Player.isInteracting()) {
             Microbot.log("[Prep] Passing barrier " + door.getId() + " into a new room");
@@ -260,6 +310,38 @@ public class CustomGauntletPrepScript extends Script {
             }
         }
         return true;
+    }
+
+    /** Nearest passable barrier (not the Hunllef arena barrier). Client thread. */
+    private TileObject findNearestPassableBarrier() {
+        return Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            Client client = Microbot.getClient();
+            TileObject best = null;
+            int bestDist = Integer.MAX_VALUE;
+            for (TileObject obj : collectAllTileObjects()) {
+                if (obj == null) continue;
+                int dist = tileDist(obj); // instance-safe local distance
+                if (dist > 25) continue;
+                if (!isPassableBarrier(obj, client)) continue;
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = obj;
+                }
+            }
+            return best;
+        }).orElse(null);
+    }
+
+    /** Whether a tile object is a passable room barrier (not the Hunllef arena barrier). Client thread. */
+    private boolean isPassableBarrier(TileObject obj, Client client) {
+        int id = obj.getId();
+        if (HUNLLEF_BARRIER_IDS.contains(id)) return false;
+        if (ROOM_DOOR_IDS.contains(id)) return true;
+        ObjectComposition comp = client.getObjectDefinition(id);
+        if (comp == null) return false;
+        String[] actions = comp.getActions();
+        return "Barrier".equalsIgnoreCase(comp.getName())
+                || (actions != null && (Arrays.asList(actions).contains("Pass") || Arrays.asList(actions).contains("Quick-pass")));
     }
 
     /** Instance-safe Chebyshev tile distance from the player to an NPC (local/scene coords). */
@@ -273,6 +355,47 @@ public class CustomGauntletPrepScript extends Script {
     }
 
     /**
+     * Keeps the correct protection prayer up while a demiboss is within {@link #DEMIBOSS_PRAYER_RANGE}
+     * tiles - Magic for the Dragon, Range for the Dark beast, Melee for the Bear. They attack from a
+     * distance, so this runs every loop in all prep phases (previously we only prayed once we chose to
+     * engage, which is why Phase-1 wandering near the rim got us killed). The nearest demiboss wins if
+     * several are close; when none are near, protection prayers are turned back off to save prayer.
+     */
+    private void updateDemibossProtectionPrayer() {
+        Rs2PrayerEnum needed = null;
+        int best = DEMIBOSS_PRAYER_RANGE + 1;
+
+        Rs2NpcModel dragon = nearestLivingNpc(DRAGON_IDS);
+        int d = npcTileDist(dragon);
+        if (d <= DEMIBOSS_PRAYER_RANGE && d < best) { best = d; needed = Rs2PrayerEnum.PROTECT_MAGIC; }
+
+        Rs2NpcModel darkBeast = nearestLivingNpc(DARK_BEAST_IDS);
+        d = npcTileDist(darkBeast);
+        if (d <= DEMIBOSS_PRAYER_RANGE && d < best) { best = d; needed = Rs2PrayerEnum.PROTECT_RANGE; }
+
+        Rs2NpcModel bear = nearestLivingNpc(BEAR_IDS);
+        d = npcTileDist(bear);
+        if (d <= DEMIBOSS_PRAYER_RANGE && d < best) { best = d; needed = Rs2PrayerEnum.PROTECT_MELEE; }
+
+        togglePrayerIfNeeded(Rs2PrayerEnum.PROTECT_MAGIC, needed == Rs2PrayerEnum.PROTECT_MAGIC);
+        togglePrayerIfNeeded(Rs2PrayerEnum.PROTECT_RANGE, needed == Rs2PrayerEnum.PROTECT_RANGE);
+        togglePrayerIfNeeded(Rs2PrayerEnum.PROTECT_MELEE, needed == Rs2PrayerEnum.PROTECT_MELEE);
+    }
+
+    /** Nearest non-dead NPC of the given ids, or null. */
+    private Rs2NpcModel nearestLivingNpc(Set<Integer> ids) {
+        Rs2NpcModel npc = Microbot.getRs2NpcCache().query().where(n -> ids.contains(n.getId())).nearest();
+        return (npc != null && !npc.isDead()) ? npc : null;
+    }
+
+    /** Toggle a prayer only when it isn't already in the desired state (avoids click spam / flicker). */
+    private void togglePrayerIfNeeded(Rs2PrayerEnum prayer, boolean on) {
+        if (Rs2Prayer.isPrayerActive(prayer) != on) {
+            Rs2Prayer.toggle(prayer, on);
+        }
+    }
+
+    /**
      * Phase 2: Armour Crafting & Demiboss Hunting
      * - Drops 16 paddlefish on base floor.
      * - Crafts T1 armour, T2 staff, 1 teleport crystal at Singing Bowl.
@@ -281,21 +404,31 @@ public class CustomGauntletPrepScript extends Script {
      */
     private void executePhase2WeaponsAndArmor() {
         // Step 1: Drop 16 paddlefish on floor at starting base
-        if (GauntletChecklist.RAW_FISH_IDS.stream().anyMatch(Rs2Inventory::hasItem)) {
+        if (Rs2Inventory.hasItem(GauntletChecklist.RAW_FISH_NAMES, true)) {
             Microbot.log("[Prep] Dropping paddlefish at starting base floor to free inventory");
-            int fishCount = Rs2Inventory.count(GauntletChecklist.RAW_FISH_IDS::contains);
-            Rs2Inventory.dropAll(GauntletChecklist.RAW_FISH_IDS::contains);
+            int fishCount = checklist.getRawFishCount();
+            Rs2Inventory.dropAll(true, GauntletChecklist.RAW_FISH_NAMES);
             checklist.setDroppedFishAtBase(checklist.getDroppedFishAtBase() + fishCount);
             return;
         }
 
-        // Step 2: Craft T1 Armour + T2 Staff + Teleport crystal at Singing Bowl if not yet crafted
+        // Step 2: Craft T1 basic armour + attuned staff + teleport crystal at the Singing Bowl, then equip.
         if (!hasT1ArmourEquipped() || !hasT2StaffEquipped()) {
-            TileObject bowl = findTileObject(SINGING_BOWL_IDS);
-            if (bowl != null) {
-                craftStartingGear(bowl);
+            if (!startingGearCrafted()) {
+                TileObject bowl = findTileObject(SINGING_BOWL_IDS);
+                if (bowl != null) {
+                    craftStartingGear(bowl);
+                }
                 return;
             }
+            // Everything is made - close the bowl interface, then wear/wield it.
+            if (isSingingBowlOpen()) {
+                Rs2Keyboard.keyPress(KeyEvent.VK_ESCAPE);
+                sleep(600);
+                return;
+            }
+            equipStartingGear();
+            return;
         }
 
         // Step 3: Check if both weapon components acquired
@@ -308,7 +441,7 @@ public class CustomGauntletPrepScript extends Script {
         // Step 4: Hunt Demibosses
         Rs2NpcModel dragon = Microbot.getRs2NpcCache().query().where(npc -> DRAGON_IDS.contains(npc.getId())).nearest();
         if (dragon != null && !dragon.isDead() && !checklist.hasOrb()) {
-            Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MAGIC, true);
+            // Protection prayer is handled globally by updateDemibossProtectionPrayer() based on distance.
             if (!Rs2Player.isInteracting()) {
                 Microbot.log("[Prep] Engaging Corrupted Dragon (Protect from Magic)");
                 dragon.click("Attack");
@@ -318,7 +451,7 @@ public class CustomGauntletPrepScript extends Script {
 
         Rs2NpcModel darkBeast = Microbot.getRs2NpcCache().query().where(npc -> DARK_BEAST_IDS.contains(npc.getId())).nearest();
         if (darkBeast != null && !darkBeast.isDead() && !checklist.hasBowstring()) {
-            Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_RANGE, true);
+            // Protection prayer is handled globally by updateDemibossProtectionPrayer() based on distance.
             if (!Rs2Player.isInteracting()) {
                 Microbot.log("[Prep] Engaging Corrupted Dark Beast (Protect from Range)");
                 darkBeast.click("Attack");
@@ -330,7 +463,7 @@ public class CustomGauntletPrepScript extends Script {
         if ((checklist.hasOrb() ^ checklist.hasBowstring()) && grid.getKnownBearCount() >= 2) {
             Rs2NpcModel bear = Microbot.getRs2NpcCache().query().where(npc -> BEAR_IDS.contains(npc.getId())).nearest();
             if (bear != null && !bear.isDead()) {
-                Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MELEE, true);
+                // Protection prayer is handled globally by updateDemibossProtectionPrayer() based on distance.
                 if (!Rs2Player.isInteracting()) {
                     Microbot.log("[Prep] 2-Bear fallback active: engaging Bear for missing component");
                     bear.click("Attack");
@@ -541,26 +674,86 @@ public class CustomGauntletPrepScript extends Script {
         }).orElse(null);
     }
 
+    /**
+     * Step one tile (instance-safe local walk) to interrupt a continuous action such as fishing. Tries each
+     * cardinal neighbour and walks to the first valid scene tile; the client paths one tile, breaking the action.
+     */
+    /** Drop every inventory item matching any of the given exact names (covers Corrupted + Crystal variants). */
+    private void dropByName(String... names) {
+        for (String name : names) {
+            Rs2Inventory.drop(name, true);
+        }
+    }
+
+    private void stepOffCurrentTile() {
+        Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            Player p = Microbot.getClient().getLocalPlayer();
+            LocalPoint lp = p == null ? null : p.getLocalLocation();
+            if (lp == null) return false;
+            int sx = lp.getSceneX(), sy = lp.getSceneY();
+            int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            for (int[] d : dirs) {
+                LocalPoint target = LocalPoint.fromScene(sx + d[0], sy + d[1]);
+                if (target != null) {
+                    Rs2Walker.walkFastLocal(target);
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+
     private boolean gatherNearestObject(Set<Integer> objectIds, String action) {
-        // Don't try to gather with no inventory space — the harvested item has nowhere to go, so we'd just
-        // click the resource forever (e.g. "still fishing with a full inventory"). Let the phase advance.
-        if (Rs2Inventory.isFull()) return false;
+        return gatherNearestObject(objectIds, action, null, null);
+    }
+
+    private boolean gatherNearestObject(Set<Integer> objectIds, String action, IntSupplier remaining) {
+        return gatherNearestObject(objectIds, action, remaining, null);
+    }
+
+    /**
+     * @param stackableResult names of the item this resource yields when it stacks (ore/bark/linum). When the
+     *        inventory is full we still gather these IF we already hold the item, because it stacks into the
+     *        existing slot (no free slot needed). Pass null for non-stackable yields (leaf, fish), which
+     *        genuinely need a free slot, so a full inventory blocks them.
+     */
+    private boolean gatherNearestObject(Set<Integer> objectIds, String action, IntSupplier remaining, String[] stackableResult) {
+        // A full inventory only blocks us if the yield needs a NEW slot. Stackable yields we already hold just
+        // add to the existing stack, so keep gathering those (the old blanket isFull() guard made the bot run
+        // past ore/linum it still needed once the inventory filled with paddlefish).
+        boolean stacksIntoExisting = stackableResult != null && Rs2Inventory.hasItem(stackableResult, true);
+        if (Rs2Inventory.isFull() && !stacksIntoExisting) return false;
         // Search several rooms out (CG rooms connect via open doorways), and let the game's click-to-walk
         // path us there — instance-safe, unlike a manual WorldPoint walk.
         TileObject obj = findTileObject(objectIds, GATHER_SEARCH_TILES);
         if (obj == null) return false;
-        if (!Rs2Player.isInteracting() && !Rs2Player.isMoving()) {
+        // Click once, then WAIT while the gather runs. Resource nodes are game objects (not NPCs), so the
+        // engine's isInteracting() flag stays false while mining/chopping/picking — only the animation tells
+        // us we're busy. Re-clicking every loop (the old behaviour) just spam-restarts the action.
+        if (!Rs2Player.isAnimating() && !Rs2Player.isInteracting() && !Rs2Player.isMoving()) {
             Microbot.log("[Prep] Gathering (" + action + ") " + tileDist(obj) + " tiles away");
             Rs2GameObject.interact(obj, action);
+            activeGatherRemaining = remaining; // remember what we're on so we can stop at target
         }
         return true;
     }
 
-    private void teleportToBase() {
-        if (Rs2Inventory.hasItem("Teleport crystal") || Rs2Inventory.hasItem("Corrupted teleport crystal")) {
-            Rs2Inventory.interact("Teleport crystal", "Teleport");
-            sleep(1800);
-        }
+    /**
+     * Teleports back to the starting base using the gauntlet teleport crystal. Matched by name (both
+     * variants) and the correct "Activate" action - the old "Teleport crystal"/"Teleport" call matched
+     * neither the corrupted item name nor its real action, so it silently did nothing and the script
+     * dropped fish / crafted wherever it happened to be standing. Sleeps so the teleport lands before the
+     * caller proceeds.
+     *
+     * @return true if the teleport was issued
+     */
+    private boolean teleportToBase() {
+        String[] names = {"Corrupted teleport crystal", "Teleport crystal"};
+        if (!Rs2Inventory.hasItem(names, false)) return false;
+        Microbot.log("[Prep] Activating teleport crystal to return to base");
+        boolean issued = Rs2Inventory.interact(names, "Activate");
+        if (issued) sleep(2400);
+        return issued;
     }
 
     private void openAndEnterRoom(GauntletRoom room) {
@@ -628,55 +821,65 @@ public class CustomGauntletPrepScript extends Script {
      * For each doorway, lights only 1 node on that doorway (max 3 nodes total).
      */
     private boolean scoutBaseRooms() {
-        TileObject targetNode = findDoorwayNodeToLight();
-        if (targetNode != null) {
-            Microbot.log(String.format("[Scout] Lighting doorway node at %s (max 3 doorways)", targetNode.getWorldLocation()));
-            Rs2GameObject.interact(targetNode, "Light");
-            sleep(1200);
-
-            // Scan all scouted rooms after lighting
-            scanBaseAdjacentRooms();
-            return true;
-        }
-        return false;
+        return lightNode(NODE_SEARCH_TILES, "doorway node");
     }
 
-    private TileObject findDoorwayNodeToLight() {
+    /**
+     * Fallback for when we're cornered: nothing to gather, no near node, no barrier within reach. Reach for
+     * the nearest unlit node up to FRONTIER_SEARCH_TILES away and let click-to-walk path through the opened
+     * rooms to it. It MIGHT be behind a wall (Chebyshev distance ignores walls), but standing still forever
+     * is worse, and the nearest unlit node is normally on the reachable frontier.
+     */
+    private boolean scoutFrontierNode() {
+        return lightNode(FRONTIER_SEARCH_TILES, "distant frontier node");
+    }
+
+    /**
+     * Light the nearest reachable unlit node. COMMITS: it only (re)issues the click when idle - while walking
+     * to the node it holds, so it doesn't re-pick a different "nearest" node every loop and oscillate.
+     */
+    private boolean lightNode(int maxTiles, String label) {
+        TileObject node = findDoorwayNodeToLight(maxTiles);
+        if (node == null) return false;
+        if (!Rs2Player.isMoving() && !Rs2Player.isInteracting() && !Rs2Player.isAnimating()) {
+            Microbot.log(String.format("[Scout] Lighting %s at %s", label, node.getWorldLocation()));
+            Rs2GameObject.interact(node, "Light");
+            sleep(600);
+            scanBaseAdjacentRooms();
+        }
+        return true; // committed - either walking to it or just lit it
+    }
+
+    private TileObject findDoorwayNodeToLight(int maxTiles) {
         return Microbot.getClientThread().runOnClientThreadOptional(() -> {
             Client client = Microbot.getClient();
-            // Only consider nodes in the CURRENT room (<= NODE_SEARCH_TILES). A node within the current room
-            // has no walls between us and it, so it is reachable — avoids chasing nodes across rooms we
-            // haven't opened yet (Microbot's reachability check is unreliable inside the instance). Pick the
-            // NEAREST such node; once it's lit it drops out and the next-nearest is chosen.
+            // Nearest reachable unlit node within maxTiles (Chebyshev, scene coords). Nearest keeps it to the
+            // open/reachable frontier - a "farthest" pick just targets off-screen tiles the player can't path
+            // to. By phase 2 the inner rooms are already open, so the nearest frontier node heads outward.
             TileObject nearest = null;
             int nearestDist = Integer.MAX_VALUE;
             for (TileObject obj : collectAllTileObjects()) {
                 if (obj == null) continue;
                 int dist = tileDist(obj);
-                if (dist > NODE_SEARCH_TILES) continue;
-
-                int id = obj.getId();
-                boolean isNode = NODE_IDS.contains(id);
-                if (!isNode) {
-                    ObjectComposition comp = client.getObjectDefinition(id);
-                    if (comp != null) {
-                        String name = comp.getName();
-                        String[] actions = comp.getActions();
-                        if ("Node".equalsIgnoreCase(name) || (actions != null && Arrays.asList(actions).contains("Light"))) {
-                            isNode = true;
-                        }
-                    }
-                }
-                if (isNode && dist < nearestDist) {
+                if (dist > maxTiles) continue;
+                if (!isUnlitNode(obj, client)) continue;
+                if (dist < nearestDist) {
                     nearestDist = dist;
                     nearest = obj;
                 }
             }
-            if (nearest != null) {
-                Microbot.log("[Scout] Nearest unlit node " + nearestDist + " tiles away");
-            }
             return nearest;
         }).orElse(null);
+    }
+
+    /** A gauntlet "node" (unlit doorway opener) - matched by id, or by name/"Light" action. Client thread. */
+    private boolean isUnlitNode(TileObject obj, Client client) {
+        if (NODE_IDS.contains(obj.getId())) return true;
+        ObjectComposition comp = client.getObjectDefinition(obj.getId());
+        if (comp == null) return false;
+        String[] actions = comp.getActions();
+        return "Node".equalsIgnoreCase(comp.getName())
+                || (actions != null && Arrays.asList(actions).contains("Light"));
     }
 
     private void scanBaseAdjacentRooms() {
@@ -743,39 +946,29 @@ public class CustomGauntletPrepScript extends Script {
     }
 
     private void scoutOuterRim() {
-        // If an unlit node is on the doorway, light it to scout without entering
-        TileObject node = findTileObject(NODE_IDS);
-        if (node != null) {
-            Microbot.log("[Prep] Lighting outer-rim node to scout demiboss");
-            Rs2GameObject.interact(node, "Light");
-            sleep(1200);
-            return;
-        }
-
-        List<GauntletRoom> edgeRooms = new ArrayList<>();
-        for (int x = 0; x < GauntletGrid.GRID_SIZE; x++) {
-            for (int y = 0; y < GauntletGrid.GRID_SIZE; y++) {
-                if (GauntletRoom.isOuterDemibossLocation(x, y) && grid.getRoom(x, y).getState() == GauntletRoom.ExplorationState.UNEXPLORED) {
-                    edgeRooms.add(grid.getRoom(x, y));
-                }
-            }
-        }
-        if (!edgeRooms.isEmpty()) {
-            openAndEnterRoom(edgeRooms.get(0));
-        }
+        // Phase 2: push toward the rim by reusing the frontier primitives that actually MOVE the player.
+        // Lighting a node alone never relocates us, and picking the "farthest" node just targets an
+        // off-screen/unreachable tile so the player stands still re-clicking it. Passing the nearest barrier
+        // walks us through into the next room; by phase 2 the inner rooms are already open, so the nearest
+        // frontier is the way out to the rim, where the demibosses load and the hunt steps take over.
+        if (scoutBaseRooms()) return;      // light the nearest reachable frontier node
+        if (passNearestBarrier()) return;  // WALK through the nearest barrier into the next room
+        scoutFrontierNode();               // reach a little further if cornered
     }
 
     private void dropUnneededTools() {
-        Rs2Inventory.drop(HARPOON_IDS::contains);
-        Rs2Inventory.drop(PESTLE_IDS::contains);
+        dropByName(HARPOON_NAMES);
+        dropByName(PESTLE_NAME);
         Rs2Inventory.drop("Crystal sceptre");
         Rs2Inventory.drop("Corrupted sceptre");
     }
 
+    // Gear is matched by name fragment (exact=false) so it covers both Crystal and Corrupted variants,
+    // e.g. "helm (basic)" matches "Crystal helm (basic)" and "Corrupted helm (basic)".
     private boolean hasT1ArmourEquipped() {
-        return Rs2Equipment.isWearing("Crystal helm (basic)")
-                && Rs2Equipment.isWearing("Crystal body (basic)")
-                && Rs2Equipment.isWearing("Crystal legs (basic)");
+        return Rs2Equipment.isWearing("helm (basic)", false)
+                && Rs2Equipment.isWearing("body (basic)", false)
+                && Rs2Equipment.isWearing("legs (basic)", false);
     }
 
     private boolean hasAttunedArmourEquipped() {
@@ -785,7 +978,7 @@ public class CustomGauntletPrepScript extends Script {
     }
 
     private boolean hasT2StaffEquipped() {
-        return Rs2Equipment.isWearing("Crystal staff (attuned)") || Rs2Equipment.isWearing("Corrupted staff (attuned)");
+        return Rs2Equipment.isWearing("staff (attuned)", false);
     }
 
     private boolean hasPerfectedWeapons() {
@@ -794,9 +987,64 @@ public class CustomGauntletPrepScript extends Script {
         return hasBow && hasStaff;
     }
 
+    /** Has every piece we craft here been made yet (in inventory or already worn)? */
+    private boolean startingGearCrafted() {
+        return hasItemOrWorn("helm (basic)")
+                && hasItemOrWorn("body (basic)")
+                && hasItemOrWorn("legs (basic)")
+                && hasItemOrWorn("staff (attuned)");
+    }
+
+    private boolean hasItemOrWorn(String fragment) {
+        return Rs2Inventory.hasItem(fragment, false) || Rs2Equipment.isWearing(fragment, false);
+    }
+
+    /**
+     * Crafts the starting kit at the Singing Bowl following the dialogue hotkeys: open the bowl, then
+     * space = teleport crystal, 3/4/5 = helm/body/legs (basic), 7 = staff (pressed twice to upgrade it to
+     * the attuned version; 8 would make a bow). Each item is only made if we don't already have it, so
+     * re-entry never over-produces, and we wait for the inventory to change between presses.
+     */
+    /** The Singing Bowl "What would you like to make?" interface (group 270) is open. Verified live: it is
+     *  NOT a chat dialogue (isInDialogue is false) and NOT group 640 - it renders under group 270. */
+    private boolean isSingingBowlOpen() {
+        return Rs2Widget.isWidgetVisible(SINGING_BOWL_GROUP, SINGING_BOWL_TITLE_CHILD);
+    }
+
     private void craftStartingGear(TileObject bowl) {
-        Microbot.log("[Prep] Crafting T1 Armour, T2 Staff & Teleport Crystal at Singing Bowl");
-        Rs2GameObject.interact(bowl, "Sing-dialogue");
+        if (!isSingingBowlOpen()) {
+            Microbot.log("[Prep] Opening Singing Bowl");
+            if (!Rs2GameObject.interact(bowl, "Sing-dialogue")) {
+                Rs2GameObject.interact(bowl); // fall back to the default left-click action
+            }
+            sleepUntil(this::isSingingBowlOpen, 5000);
+            if (!isSingingBowlOpen()) return;
+        }
+
+        if (!hasItemOrWorn("teleport crystal")) singBowl(' ', "teleport crystal");
+        if (!hasItemOrWorn("helm (basic)")) singBowl('3', "helm");
+        if (!hasItemOrWorn("body (basic)")) singBowl('4', "body");
+        if (!hasItemOrWorn("legs (basic)")) singBowl('5', "legs");
+        // Staff: press 7 to make a basic staff, press 7 again to upgrade it to the attuned version.
+        for (int i = 0; i < 2 && !hasItemOrWorn("staff (attuned)"); i++) {
+            singBowl('7', "staff");
+        }
+    }
+
+    /** Press a Singing Bowl dialogue hotkey and wait for the resulting inventory change. */
+    private void singBowl(char hotkey, String label) {
+        Microbot.log("[Prep] Singing " + label);
+        Rs2Keyboard.keyPress(hotkey);
+        Rs2Inventory.waitForInventoryChanges(3000);
+    }
+
+    /** Wear the basic armour and wield the attuned staff (name fragments cover both gauntlet variants). */
+    private void equipStartingGear() {
+        Microbot.log("[Prep] Equipping starting gear");
+        Rs2Inventory.interact("helm (basic)", "Wear", false);
+        Rs2Inventory.interact("body (basic)", "Wear", false);
+        Rs2Inventory.interact("legs (basic)", "Wear", false);
+        Rs2Inventory.interact("staff (attuned)", "Wield", false);
     }
 
     private void upgradeGearAtBowl(TileObject bowl) {

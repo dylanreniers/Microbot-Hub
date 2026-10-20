@@ -48,7 +48,10 @@ public class LootGemAction implements GolemAction {
             log.info("[golem] picked up a Jeweller's chisel!");
             return "loot-chisel";
         }
-        // A gem — stash it into the bag so it doesn't take a batch slot.
+        // A gem — wait for it to actually land in the inventory before anything else runs (notably the
+        // next plinth click / walk-off), so the pickup isn't cancelled mid-flight.
+        Rs2Inventory.waitForInventoryChanges(2400);
+        // Stash it into the bag so it doesn't take a batch slot.
         state.context().setGemsLooted(state.context().getGemsLooted() + 1);
         if (useGemBag) {
             GolemHelpers.fillGemBag();
