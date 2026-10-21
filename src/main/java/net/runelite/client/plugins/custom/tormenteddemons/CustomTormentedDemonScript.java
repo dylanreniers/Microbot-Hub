@@ -69,6 +69,13 @@ public class CustomTormentedDemonScript extends Script {
      * "Take", so it's left to the regular loot pass.) {@code [name, action]}.
      */
     private static final String[] SMOULDERING_DROPS = { "Smouldering pile of flesh", "Smouldering gland", "Smouldering heart"};
+    /**
+     * The smouldering drops consumed in place (Eat-from / Crush) by {@link #consumeSmoulderingDrops()}. The loot
+     * pass must skip these so it never re-triggers their actions — e.g. clicking the pile of flesh over and over
+     * at full HP, where the Eat-from does nothing and the pile never despawns. The heart is deliberately absent:
+     * it's a normal "Take" and stays eligible for the regular loot pass.
+     */
+    private static final List<String> GROUND_CONSUMED_DROPS = Arrays.asList("Smouldering pile of flesh", "Smouldering gland");
 
     // ---- FULL_AUTO restock + travel constants ----
     private static final int FEROX_POOL_ID = 39651;
@@ -862,6 +869,11 @@ public class CustomTormentedDemonScript extends Script {
 
             String name = item.getName();
             if (name == null || name.isEmpty()) {
+                continue;
+            }
+
+            // Handled in place by consumeSmoulderingDrops() (Eat-from / Crush); never let the loot pass click them.
+            if (GROUND_CONSUMED_DROPS.stream().anyMatch(name::equalsIgnoreCase)) {
                 continue;
             }
 
