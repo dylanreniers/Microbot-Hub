@@ -1,11 +1,13 @@
 package net.runelite.client.plugins.custom.tormenteddemons;
 
+import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.HeadIcon;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
 import net.runelite.api.Skill;
 import net.runelite.api.TileItem;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.client.game.ItemStats;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.api.tileitem.models.Rs2TileItemModel;
@@ -14,12 +16,15 @@ import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
+import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.equipment.JewelleryLocationEnum;
+import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
+import net.runelite.client.plugins.microbot.util.misc.Rs2Potion;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.poh.PohTeleports;
@@ -33,6 +38,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 public class CustomTormentedDemonScript extends Script {
 
@@ -76,6 +82,12 @@ public class CustomTormentedDemonScript extends Script {
      * it's a normal "Take" and stays eligible for the regular loot pass.
      */
     private static final List<String> GROUND_CONSUMED_DROPS = Arrays.asList("Smouldering pile of flesh", "Smouldering gland");
+    /**
+     * Junk we deliberately drop and must never pick back up — the empty Butterfly jars left by released
+     * moonlight moths (see {@link #dropEmptyButterflyJars()}). Without this, {@code lootEverything} would
+     * loot them straight back off the ground.
+     */
+    private static final List<String> NEVER_LOOT = Arrays.asList("Butterfly jar");
 
     // ---- FULL_AUTO restock + travel constants ----
     private static final int FEROX_POOL_ID = 39651;
@@ -86,6 +98,8 @@ public class CustomTormentedDemonScript extends Script {
     /** Matched by name rather than id — the id shifts between updates (was a stale 53622). Action "Climb-through". */
     private static final String OPENING_NAME = "Opening";
     private static final WorldPoint DEMON_LOCATION = new WorldPoint(4041, 4452, 0);
+    /** Guthixian temple teleport scroll — the "Teleport Scroll" walk method teleports to the chasm with it. */
+    private static final int GUTHIXIAN_TEMPLE_TELEPORT = 29684;
     /** Time the light creature takes to carry us into the chasm before the walls are reachable. */
     private static final int CHASM_TRAVEL_WAIT_MS = 15000;
     /** How close (tiles) to {@link #DEMON_LOCATION} counts as "already at the demons". */
@@ -108,8 +122,12 @@ public class CustomTormentedDemonScript extends Script {
 
     private TravelStep travelStep = TravelStep.CLIMB_ROCKS;
 
-    /** Restock trip: POH -> jewellery box to Ferox -> pool + bank -> POH -> jewellery box to Tears of Guthix. */
-    private enum BankingStep {TELE_HOUSE_TO_FEROX, JEWELLERY_TO_FEROX, RESTORE_AT_POOL, RESUPPLY, TELE_HOUSE_TO_TOG, JEWELLERY_TO_TOG}
+    /**
+     * Restock trip: POH -> jewellery box to Ferox -> pool + bank, then back to the demons. The return leg
+     * depends on the configured walk method: POH does TELE_HOUSE_TO_TOG -> JEWELLERY_TO_TOG, while the
+     * teleport-scroll method does TELEPORT_SCROLL_TO_DEMONS instead.
+     */
+    private enum BankingStep {TELE_HOUSE_TO_FEROX, JEWELLERY_TO_FEROX, RESTORE_AT_POOL, RESUPPLY, TELE_HOUSE_TO_TOG, JEWELLERY_TO_TOG, TELEPORT_SCROLL_TO_DEMONS}
 
     private BankingStep bankingStep = BankingStep.TELE_HOUSE_TO_FEROX;
 
@@ -191,7 +209,7 @@ public class CustomTormentedDemonScript extends Script {
             if (Rs2Bank.isOpen()) {
                 Rs2Bank.closeBank();
             }
-            bankingStep = BankingStep.TELE_HOUSE_TO_TOG;
+            bankingStep = returnToDemonsStep(config);
         }
 
         switch (bankingStep) {
@@ -225,7 +243,7 @@ public class CustomTormentedDemonScript extends Script {
             case RESUPPLY:
                 Microbot.status = "Resupplying at bank...";
                 if (resupplyAtBank()) {
-                    bankingStep = BankingStep.TELE_HOUSE_TO_TOG;
+                    bankingStep = returnToDemonsStep(config);
                 }
                 break;
 
@@ -245,7 +263,55 @@ public class CustomTormentedDemonScript extends Script {
                     BOT_STATUS = State.TRAVEL_TO_TORMENTED;
                 }
                 break;
+
+            case TELEPORT_SCROLL_TO_DEMONS:
+                Microbot.status = "Teleporting to the chasm via Guthixian temple teleport...";
+                if (useGuthixianTempleTeleport()) {
+                    bankingStep = BankingStep.TELE_HOUSE_TO_FEROX; // reset for the next restock trip
+                    // The scroll drops us in the chasm past the light-creature travel, so pick up the
+                    // descent at the wall climbs rather than the Tears-of-Guthix rocks.
+                    travelStep = TravelStep.CLIMB_WALL_ONE;
+                    BOT_STATUS = State.TRAVEL_TO_TORMENTED;
+                }
+                break;
         }
+    }
+
+    /** The banking step that begins the trip back to the demons, per the configured walk method. */
+    private BankingStep returnToDemonsStep(CustomTormentedDemonConfig config) {
+        return config.walkMethod() == CustomTormentedDemonConfig.WalkMethod.TELEPORT_SCROLL
+                ? BankingStep.TELEPORT_SCROLL_TO_DEMONS
+                : BankingStep.TELE_HOUSE_TO_TOG;
+    }
+
+    /**
+     * Uses a Guthixian temple teleport from the inventory to teleport to the chasm near the Tormented Demons.
+     * The scroll's teleport action name varies, so the first teleport-like action it exposes is used. Success
+     * is detected by the player moving well away from where they stood.
+     */
+    private boolean useGuthixianTempleTeleport() {
+        Rs2ItemModel scroll = Rs2Inventory.get(item -> item != null && item.getId() == GUTHIXIAN_TEMPLE_TELEPORT);
+        if (scroll == null) {
+            logOnceToChat("No Guthixian temple teleport in inventory — add it to the banking setup.");
+            return false;
+        }
+
+        WorldPoint before = Rs2Player.getWorldLocation();
+        String action = Arrays.stream(scroll.getInventoryActions())
+                .filter(a -> a != null)
+                .filter(a -> a.equalsIgnoreCase("Read") || a.equalsIgnoreCase("Teleport")
+                        || a.equalsIgnoreCase("Break") || a.equalsIgnoreCase("Rub"))
+                .findFirst()
+                .orElse("Read");
+
+        if (!Rs2Inventory.interact(scroll, action)) {
+            return false;
+        }
+
+        return sleepUntil(() -> {
+            WorldPoint now = Rs2Player.getWorldLocation();
+            return now != null && before != null && before.distanceTo(now) > 20;
+        }, 10000);
     }
 
     /** Casts the standard-spellbook Teleport to House and waits until we're inside the POH. */
@@ -481,6 +547,21 @@ public class CustomTormentedDemonScript extends Script {
                 killCount++;
             }
 
+            // Before committing to another kill, bail out if we're out of food or prayer potions. Starting a
+            // fight we can't sustain wastes consumables on a kill we'd abandon mid-way. In FULL_AUTO we go
+            // resupply; in COMBAT_ONLY there's no restock path, so we stop rather than engage another demon.
+            if (isOutOfConsumables()) {
+                if (config.mode() == CustomTormentedDemonConfig.MODE.FULL_AUTO) {
+                    logOnceToChat("Out of food or prayer potions — resupplying before the next kill.");
+                    retreatToResupply();
+                } else {
+                    logOnceToChat("Out of food or prayer potions — stopping before the next kill.");
+                    disableAllPrayers();
+                    shutdown();
+                }
+                return;
+            }
+
             currentTarget = findNewTarget(config);
             if (currentTarget != null && currentTarget.getInteracting() != Microbot.getClient().getLocalPlayer()) {
                 int anim = Microbot.getClientThread().invoke(() -> currentTarget.getAnimation());
@@ -511,15 +592,7 @@ public class CustomTormentedDemonScript extends Script {
         if (CustomTormentedDemonPlugin.isDodgeActive()) return;
 
         if (config.mode() == CustomTormentedDemonConfig.MODE.FULL_AUTO && shouldRetreat(config)) {
-            currentTarget = null;
-            currentOverheadIcon = null;
-            intendedGearSetup = null;
-            disableAllPrayers();
-            Rs2Player.toggleRunEnergy(true);
-            // Start the restock trip from the top: teleport home, jewellery box to Ferox, restore, resupply.
-            bankingStep = BankingStep.TELE_HOUSE_TO_FEROX;
-            BOT_STATUS = State.BANKING;
-            teleportToHouse();
+            retreatToResupply();
             return;
         }
 
@@ -527,7 +600,8 @@ public class CustomTormentedDemonScript extends Script {
             if (CustomTormentedDemonPlugin.isDodgeActive()) return;
 
             Rs2Player.eatAt(config.minEatPercent());
-            Rs2Player.drinkPrayerPotionAt(config.minPrayerPercent());
+            restorePrayer(config);
+            dropEmptyButterflyJars();
 
             if (CustomTormentedDemonPlugin.isDodgeActive()) return;
 
@@ -603,6 +677,44 @@ public class CustomTormentedDemonScript extends Script {
         if (config.enableOffensivePrayer() && !CustomTormentedDemonPlugin.isDodgeActive()) {
             activateOffensivePrayer(config);
         }
+
+        if (!CustomTormentedDemonPlugin.isDodgeActive()) {
+            maybeUseSpecialAttack(config);
+        }
+    }
+
+    /**
+     * Arms the weapon's special attack when the style we're attacking with has its spec checkbox enabled and
+     * the spec bar holds enough energy. The required energy is the per-style spec cost % from the config
+     * (scaled to the engine's 0-1000 range); {@link Rs2Combat#setSpecState(boolean, int)} then enables the
+     * orb only when current energy >= that cost (and no-ops if the spec is already armed).
+     */
+    private void maybeUseSpecialAttack(CustomTormentedDemonConfig config) {
+        Integer specPercent = specPercentForStyle(config, intendedGearSetup);
+        if (specPercent == null) {
+            return; // the style we're attacking with doesn't have the special attack enabled
+        }
+        Rs2Combat.setSpecState(true, specPercent * 10); // config is 0-100%, the engine uses 0-1000
+    }
+
+    /**
+     * The configured spec cost % for the style we're attacking with, or null when that style doesn't have its
+     * "Use ... Special Attack" checkbox enabled.
+     */
+    private Integer specPercentForStyle(CustomTormentedDemonConfig config, Rs2InventorySetup setup) {
+        if (setup == null) {
+            return null;
+        }
+        if (setup == rangeSetup) {
+            return config.useRangeSpec() ? config.rangeSpecPercent() : null;
+        }
+        if (setup == magicSetup) {
+            return config.useMagicSpec() ? config.magicSpecPercent() : null;
+        }
+        if (setup == meleeSetup) {
+            return config.useMeleeSpec() ? config.meleeSpecPercent() : null;
+        }
+        return null;
     }
 
     private void activateOffensivePrayer(CustomTormentedDemonConfig config) {
@@ -727,11 +839,62 @@ public class CustomTormentedDemonScript extends Script {
         if (target.doesEquipmentMatch()) {
             return;
         }
+        ensureSpaceForTwoHandedSwap(target);
         logOnceToChat("Changing gear to " + gearLabel(target) + " setup");
         if (!target.wearEquipment()) {
             logOnceToChat("Could not fully equip " + gearLabel(target)
                     + " setup (missing items / inventory full) — will retry");
         }
+    }
+
+    /**
+     * Frees an inventory slot when a weapon swap would otherwise deadlock. Equipping a two-handed weapon while
+     * wearing a one-handed weapon + shield pushes BOTH into the inventory for a net +1 slot; with a full
+     * inventory (e.g. right after looting a kill) that swap is impossible, leaving the bot stuck until forced
+     * to consume something. When exactly that situation is detected, scatter a pile of ashes to free the slot
+     * (no food wasted), falling back to eating a piece of food only when we carry no ashes.
+     */
+    private void ensureSpaceForTwoHandedSwap(Rs2InventorySetup target) {
+        if (!Rs2Inventory.isFull() || !wearingWeaponAndShield() || !setupUsesTwoHandedWeapon(target)) {
+            return;
+        }
+        if (Rs2Inventory.hasItem("Infernal ashes")) {
+            logOnceToChat("Inventory full — scattering ashes to free a slot so the 2h weapon can be equipped.");
+            Rs2Inventory.interact("Infernal ashes", "Scatter");
+            sleepUntil(() -> !Rs2Inventory.isFull(), 1800);
+            return;
+        }
+        List<Rs2ItemModel> foods = Rs2Inventory.getInventoryFood();
+        if (foods.isEmpty()) {
+            logOnceToChat("Need to equip a 2h weapon but inventory is full with no ashes or food to free a slot.");
+            return;
+        }
+        logOnceToChat("Inventory full — eating to free a slot so the 2h weapon can be equipped.");
+        Rs2Inventory.interact(foods.get(0), "Eat");
+        sleepUntil(() -> !Rs2Inventory.isFull(), 1800);
+    }
+
+    /** True while both the weapon and shield slots are filled (a 1h+shield loadout — a shield rules out a 2h). */
+    private boolean wearingWeaponAndShield() {
+        return Rs2Equipment.isWearing(EquipmentInventorySlot.WEAPON)
+                && Rs2Equipment.isWearing(EquipmentInventorySlot.SHIELD);
+    }
+
+    /** True if the setup's equipped loadout includes a two-handed weapon. */
+    private boolean setupUsesTwoHandedWeapon(Rs2InventorySetup setup) {
+        if (setup == null) {
+            return false;
+        }
+        // Cast to Supplier<Boolean>: a bare boolean lambda would bind to ClientThread.invoke(BooleanSupplier),
+        // which returns void.
+        return Microbot.getClientThread().invoke((Supplier<Boolean>) () -> setup.getEquipmentItems().stream()
+                .anyMatch(item -> item != null && isTwoHanded(item.getId())));
+    }
+
+    /** Looks up the item's equipment stats (on the client thread) to tell whether it is two-handed. */
+    private boolean isTwoHanded(int itemId) {
+        ItemStats stats = Microbot.getItemManager().getItemStats(itemId);
+        return stats != null && stats.getEquipment() != null && stats.getEquipment().isTwoHanded();
     }
 
     /** Chooses the setup for a style the demon is NOT protecting against, honoring the enabled-style toggles. */
@@ -808,15 +971,87 @@ public class CustomTormentedDemonScript extends Script {
 
         double currentHealthPct = Rs2Player.getHealthPercentage();
         int currentPrayer = Microbot.getClient().getBoostedSkillLevel(Skill.PRAYER);
-        boolean noFood = Rs2Inventory.getInventoryFood().isEmpty();
-        boolean noPrayerPotions = Rs2Inventory.items()
-                .noneMatch(item -> item != null && item.getName() != null && item.getName().toLowerCase().contains("prayer potion"));
 
         // Only exit on low health if we are completely out of food
-        boolean lowHealthWithoutFood = noFood && (currentHealthPct <= config.healthThreshold()
+        boolean lowHealthWithoutFood = !hasFood() && (currentHealthPct <= config.healthThreshold()
                 || Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS) <= config.healthThreshold());
 
-        return lowHealthWithoutFood || (noPrayerPotions && currentPrayer < 10);
+        return lowHealthWithoutFood || (!hasPrayerRestore() && currentPrayer < 10);
+    }
+
+    /**
+     * True when either consumable is fully depleted. Used between kills to decide whether to start another
+     * fight at all: unlike {@link #shouldRetreat} (which waits for HP/prayer to actually run low), this bails
+     * as soon as we're out of food or prayer potions so we don't commit to a kill we can't finish.
+     */
+    private boolean isOutOfConsumables() {
+        return !hasFood() || !hasPrayerRestore();
+    }
+
+    private boolean hasFood() {
+        return !Rs2Inventory.getInventoryFood().isEmpty();
+    }
+
+    /** True if we carry anything that can restore prayer — a prayer potion, moonlight moth, super restore, etc. */
+    private boolean hasPrayerRestore() {
+        List<String> variants = Rs2Potion.getPrayerPotionsVariants();
+        return Rs2Inventory.items()
+                .anyMatch(item -> item != null && item.getName() != null
+                        && variants.stream().anyMatch(v -> item.getName().toLowerCase().contains(v.toLowerCase())));
+    }
+
+    /**
+     * Restores prayer when it drops below the configured threshold, preferring moonlight moths over prayer
+     * potions so the (more valuable) potions are conserved. Falls back to the normal potion drink once the
+     * moths run out.
+     */
+    private void restorePrayer(CustomTormentedDemonConfig config) {
+        int threshold = config.minPrayerPercent();
+        if (Microbot.getClient().getBoostedSkillLevel(Skill.PRAYER) > threshold) {
+            return;
+        }
+        if (releaseMoonlightMoth()) {
+            return;
+        }
+        Rs2Player.drinkPrayerPotionAt(threshold);
+    }
+
+    /**
+     * Consumes one moonlight moth to restore prayer. The caught moth is used via its "Release" action (matched
+     * by exact name so the drinkable "Moonlight moth mix" is left to the potion fallback). The empty Butterfly
+     * jar it leaves behind is NOT dropped here: the jar only appears a tick or so later, so cleanup is handled
+     * each tick by {@link #dropEmptyButterflyJars()} instead. Returns false when no moth is held.
+     */
+    private boolean releaseMoonlightMoth() {
+        Rs2ItemModel moth = Rs2Inventory.get(item -> item != null && "Moonlight moth".equals(item.getName()));
+        if (moth == null) {
+            return false;
+        }
+        boolean used = Rs2Inventory.interact(moth, "Release");
+        if (used) {
+            logOnceToChat("Restoring prayer with a moonlight moth");
+        }
+        return used;
+    }
+
+    /** Drops the empty Butterfly jars left behind by released moonlight moths. Cheap no-op when none are held. */
+    private void dropEmptyButterflyJars() {
+        if (Rs2Inventory.hasItem("Butterfly jar")) {
+            Rs2Inventory.dropAll("Butterfly jar");
+        }
+    }
+
+    /** Abandons the current fight and kicks off the FULL_AUTO restock trip (POH -> Ferox -> bank -> back). */
+    private void retreatToResupply() {
+        currentTarget = null;
+        currentOverheadIcon = null;
+        intendedGearSetup = null;
+        disableAllPrayers();
+        Rs2Player.toggleRunEnergy(true);
+        // Start the restock trip from the top: teleport home, jewellery box to Ferox, restore, resupply.
+        bankingStep = BankingStep.TELE_HOUSE_TO_FEROX;
+        BOT_STATUS = State.BANKING;
+        teleportToHouse();
     }
 
     public void disableAllPrayers() {
@@ -874,6 +1109,11 @@ public class CustomTormentedDemonScript extends Script {
 
             // Handled in place by consumeSmoulderingDrops() (Eat-from / Crush); never let the loot pass click them.
             if (GROUND_CONSUMED_DROPS.stream().anyMatch(name::equalsIgnoreCase)) {
+                continue;
+            }
+
+            // Jars we dropped ourselves — skip so lootEverything doesn't pick them straight back up.
+            if (NEVER_LOOT.stream().anyMatch(name::equalsIgnoreCase)) {
                 continue;
             }
 
@@ -968,6 +1208,11 @@ public class CustomTormentedDemonScript extends Script {
             String name = item.getName();
             if (name == null || name.isEmpty()) continue;
 
+            // Jars we dropped ourselves aren't loot — ignore them so we don't trigger a loot pass for junk.
+            if (NEVER_LOOT.stream().anyMatch(name::equalsIgnoreCase)) {
+                continue;
+            }
+
             String lowerName = name.toLowerCase();
 
             for (String needle : lootItems) {
@@ -984,9 +1229,11 @@ public class CustomTormentedDemonScript extends Script {
     }
 
     /**
-     * Consume the demon's smouldering drops on the ground for their reward rather than taking them, using
-     * each item's own action (pile of flesh = "Eat-from", gland/heart = "Crush"). Loops per item until it's
-     * gone (the action removes the ground item), bounded so a stubborn/blocked interaction can't hang looting.
+     * Consume the demon's smouldering drops on the ground for their reward rather than taking them, using each
+     * item's OWN menu action (pile of flesh = "Eat-from", gland = "Crush"). A bare {@code click()} fires the
+     * ground item's first/default action (usually "Take"/"Walk here"), which does NOT consume these — the
+     * explicit action is required. The Smouldering heart has no in-place action here; it's a normal "Take" and
+     * is left to the regular loot pass.
      */
     private void consumeSmoulderingDrops() {
         var smoulderingItems = Microbot.getRs2TileItemCache().query()
@@ -997,11 +1244,28 @@ public class CustomTormentedDemonScript extends Script {
         boolean full = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS) >= maxHealth;
 
         smoulderingItems.forEach(item -> {
-            if (!item.getName().equalsIgnoreCase("Smouldering pile of flesh") || !full) {
-                item.click();
-                sleep(1200, 1800);
+            String action = smoulderingConsumeAction(item.getName());
+            if (action == null) {
+                return; // e.g. the Smouldering heart — taken by the normal loot pass, not consumed here
             }
+            // Eating from the pile at full HP does nothing and the pile never despawns, so skip it then.
+            if (full && "Eat-from".equalsIgnoreCase(action)) {
+                return;
+            }
+            item.click(action);
+            sleep(1200, 1800);
         });
+    }
+
+    /** The in-place menu action that consumes a given smouldering drop, or null if it isn't consumed in place. */
+    private String smoulderingConsumeAction(String name) {
+        if ("Smouldering pile of flesh".equalsIgnoreCase(name)) {
+            return "Eat-from";
+        }
+        if ("Smouldering gland".equalsIgnoreCase(name)) {
+            return "Crush";
+        }
+        return null;
     }
 
     private void scatterCarriedAshes() {

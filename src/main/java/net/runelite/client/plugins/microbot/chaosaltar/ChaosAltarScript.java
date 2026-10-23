@@ -23,7 +23,6 @@ import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import java.util.Comparator;
 import java.util.concurrent.TimeUnit;
 
-import static net.runelite.api.ItemID.DRAGON_BONES;
 import static net.runelite.api.NpcID.CHAOS_FANATIC;
 import static net.runelite.client.plugins.microbot.util.walker.Rs2Walker.walkTo;
 
@@ -44,6 +43,7 @@ public class ChaosAltarScript extends Script {
     public static boolean didWeDie = false;
 
     public boolean run(ChaosAltarConfig config, ChaosAltarPlugin plugin) {
+        this.config = config;
         Microbot.enableAutoRunOn = false;
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
@@ -193,6 +193,9 @@ public class ChaosAltarScript extends Script {
     }
 
     private void handleBanking() {
+        final int boneId = config.boneType().getItemId();
+        final String boneName = config.boneType().getItemName();
+
         if (Rs2Inventory.contains(Rs2ItemModel.matches(false, "Burning amulet"))) {
             Rs2Inventory.wear("Burning amulet");
         }
@@ -208,8 +211,8 @@ public class ChaosAltarScript extends Script {
         log.info("Depositing All");
         Rs2Bank.depositAll();
 
-        if (!Rs2Bank.hasItem(DRAGON_BONES)) {
-            Microbot.log("NO BONES, SHUTTING DOWN");
+        if (!Rs2Bank.hasItem(boneId)) {
+            Microbot.log("NO " + boneName.toUpperCase() + ", SHUTTING DOWN");
             shutdown();
             return;
         }
@@ -228,10 +231,10 @@ public class ChaosAltarScript extends Script {
             Rs2Inventory.waitForInventoryChanges(2000);
         }
 
-        // If no bones in inventory, withdraw 28
-        if (!Rs2Inventory.contains(DRAGON_BONES)) {
+        // If no bones in inventory, withdraw all
+        if (!Rs2Inventory.contains(boneId)) {
             log.info("Withdrawing bones");
-            Rs2Bank.withdrawAll(DRAGON_BONES);
+            Rs2Bank.withdrawAll(boneId);
             Rs2Inventory.waitForInventoryChanges(2000);
         }
 
@@ -260,20 +263,16 @@ public class ChaosAltarScript extends Script {
         if (!inWilderness && !hasBones) {
             return State.BANK;
         }
-        if (!inWilderness && hasBones) {
+        if (!inWilderness) {
             return State.TELEPORT_TO_WILDERNESS;
         }
-        if (inWilderness && hasAnyBones && !atAltar) {
+        if (hasAnyBones && !atAltar) {
             return State.WALK_TO_ALTAR;
         }
-        if (inWilderness && hasAnyBones && atAltar) {
+        if (hasAnyBones) {
             return State.OFFER_BONES;
         }
-        if (inWilderness && !hasAnyBones) {
-            return State.DIE_TO_NPC;
-        }
-
-        return State.UNKNOWN;
+        return State.DIE_TO_NPC;
     }
 
     @Override

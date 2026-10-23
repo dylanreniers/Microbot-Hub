@@ -41,6 +41,18 @@ public interface CustomTormentedDemonConfig extends Config {
         return MODE.FULL_AUTO;
     }
 
+    @ConfigItem(
+            keyName = "walkMethod",
+            name = "Walk Method",
+            description = "How to travel to the demons: POH (house -> jewellery box -> Tears of Guthix, then climb down) "
+                    + "or Teleport Scroll (use a Guthixian temple teleport from your inventory to the chasm, then climb the walls).",
+            section = generalSettings,
+            position = 1
+    )
+    default WalkMethod walkMethod() {
+        return WalkMethod.POH;
+    }
+
     @ConfigSection(
             name = "Tormented Demon Settings",
             description = "Settings for Tormented Demon boss helper",
@@ -268,11 +280,34 @@ public interface CustomTormentedDemonConfig extends Config {
     }
 
     @ConfigItem(
+            keyName = "useRangeSpec",
+            name = "Use Range Special Attack",
+            description = "Use the equipped range weapon's special attack when attacking with range (when the spec bar has enough energy)",
+            section = gearSettingsSection,
+            position = 3
+    )
+    default boolean useRangeSpec() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "rangeSpecPercent",
+            name = "Range Spec Cost %",
+            description = "Special attack energy (%) the equipped range weapon needs, e.g. 50 for a Scorching bow",
+            section = gearSettingsSection,
+            position = 4
+    )
+    @Range(min = 1, max = 100)
+    default int rangeSpecPercent() {
+        return 50;
+    }
+
+    @ConfigItem(
             keyName = "useMagicStyle",
             name = "Use Magic Style",
             description = "Toggle to use magic gear and style",
             section = gearSettingsSection,
-            position = 3
+            position = 5
     )
     default boolean useMagicStyle() {
         return true;
@@ -283,10 +318,33 @@ public interface CustomTormentedDemonConfig extends Config {
             name = "Magic Gear",
             description = "Inventory setup to equip when using magic",
             section = gearSettingsSection,
-            position = 4
+            position = 6
     )
     default InventorySetup magicGear() {
         return null;
+    }
+
+    @ConfigItem(
+            keyName = "useMagicSpec",
+            name = "Use Magic Special Attack",
+            description = "Use the equipped magic weapon's special attack when attacking with magic (when the spec bar has enough energy)",
+            section = gearSettingsSection,
+            position = 7
+    )
+    default boolean useMagicSpec() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "magicSpecPercent",
+            name = "Magic Spec Cost %",
+            description = "Special attack energy (%) the equipped magic weapon needs",
+            section = gearSettingsSection,
+            position = 8
+    )
+    @Range(min = 1, max = 100)
+    default int magicSpecPercent() {
+        return 50;
     }
 
     @ConfigItem(
@@ -294,7 +352,7 @@ public interface CustomTormentedDemonConfig extends Config {
             name = "Use Melee Style",
             description = "Toggle to use melee gear and style",
             section = gearSettingsSection,
-            position = 5
+            position = 9
     )
     default boolean useMeleeStyle() {
         return true;
@@ -305,15 +363,43 @@ public interface CustomTormentedDemonConfig extends Config {
             name = "Melee Gear",
             description = "Inventory setup to equip when using melee",
             section = gearSettingsSection,
-            position = 6
+            position = 10
     )
     default InventorySetup meleeGear() {
         return null;
     }
 
+    @ConfigItem(
+            keyName = "useMeleeSpec",
+            name = "Use Melee Special Attack",
+            description = "Use the equipped melee weapon's special attack when attacking with melee (when the spec bar has enough energy)",
+            section = gearSettingsSection,
+            position = 11
+    )
+    default boolean useMeleeSpec() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "meleeSpecPercent",
+            name = "Melee Spec Cost %",
+            description = "Special attack energy (%) the equipped melee weapon needs, e.g. 50 for Dragon claws",
+            section = gearSettingsSection,
+            position = 12
+    )
+    @Range(min = 1, max = 100)
+    default int meleeSpecPercent() {
+        return 50;
+    }
+
     enum MODE {
         FULL_AUTO,
         COMBAT_ONLY
+    }
+
+    enum WalkMethod {
+        POH,
+        TELEPORT_SCROLL
     }
 
     @Getter

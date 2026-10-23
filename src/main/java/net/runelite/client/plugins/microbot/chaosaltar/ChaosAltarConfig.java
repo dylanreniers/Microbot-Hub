@@ -9,11 +9,21 @@ import net.runelite.client.config.ConfigItem;
 @ConfigInformation("  For best results:<br>\n" +
         "    - Activate Player Monitor in LITE_MODE<br>\n" +
         "    - Enable AutoLogin<br>\n" +
-        "    - Keep Burning Amulets and dragon bones in the bank<br>\n" +
-        "    - ONLY WORKS WITH Dragon Bones<br>\n" +
+        "    - Keep Burning Amulets and the selected bones in the bank<br>\n" +
+        "    - Select the bone type you want to offer below<br>\n" +
         "    - If you have an alt, consider teleporting to the Lava Maze spot first to distract PKers or bots who can auto-attack when you teleport<br>\n" +
         "    (Note: Microbot currently can't log out fast enough for when someone is waiting for you after teleport)\n")
 public interface ChaosAltarConfig extends Config {
+
+    @ConfigItem(
+            keyName = "boneType",
+            name = "Bone Type",
+            description = "Which bones to withdraw and offer at the Chaos Altar",
+            position = 0
+    )
+    default BoneType boneType() {
+        return BoneType.DRAGON_BONES_TYPE;
+    }
 
     @ConfigItem(
             keyName = "f2pHop",
