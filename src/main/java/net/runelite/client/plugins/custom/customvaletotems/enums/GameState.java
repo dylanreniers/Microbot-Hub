@@ -13,6 +13,7 @@ public enum GameState {
     FLETCHING("Fletching"),
     DECORATING_TOTEM("Decorating the totem with fletched bows"),
     COLLECTING_REWARDS("Claiming offerings from the pile"),
+    RESUPPLYING("Resupplying mid-lap at the Nemus Retreat bank buffalo"),
     RETURNING_TO_BANK("Walking back to bank after completing all totems"),
     ERROR("An error occurred, bot needs attention"),
     STOPPING("Critical error occurred, stopping bot gracefully"),

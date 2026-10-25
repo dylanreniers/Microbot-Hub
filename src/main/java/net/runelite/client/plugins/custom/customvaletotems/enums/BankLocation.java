@@ -6,8 +6,9 @@ import net.runelite.api.coords.WorldPoint;
  * Enum representing banking locations and related positions in the Vale of Anima
  */
 public enum BankLocation {
-    BANK_BOOTH(new WorldPoint(1414, 3353, 0), "Bank booth object location"),
-    PLAYER_STANDING_TILE(new WorldPoint(1413, 3353, 0), "Optimal tile for player to stand on when banking");
+    BANK_BOOTH(new WorldPoint(1414, 3353, 0), "Auburnvale bank booth object location"),
+    PLAYER_STANDING_TILE(new WorldPoint(1413, 3353, 0), "Optimal tile for player to stand on when banking at Auburnvale"),
+    NEMUS_STANDING(new WorldPoint(1387, 3309, 0), "Tile in front of the Nemus Retreat bank buffalo");
 
     private final WorldPoint location;
     private final String description;

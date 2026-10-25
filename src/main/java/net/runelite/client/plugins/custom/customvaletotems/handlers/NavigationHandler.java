@@ -47,6 +47,11 @@ public class NavigationHandler {
     
     // Track if we've already walked over ent trails during this navigation session
     private static boolean hasWalkedOverEntTrailsThisNavigation = false;
+
+    // When set (direct/bow-mode navigation), ent-trail detours that would move the player
+    // farther from this destination than they already are get skipped, preventing the
+    // backwards-detour loop. Null = no guard (legacy fletch-while-walking navigation).
+    private static WorldPoint entTrailDestinationGuard = null;
     
     // Timer-based cooldowns for camera and walking actions (non-blocking)
     private static long lastCameraTurnTime = 0;
@@ -137,6 +142,13 @@ public class NavigationHandler {
         try {
             if (totemLocation == null) {
                 return false;
+            }
+
+            // Bow modes never fletch, so the fletch-while-walking navigator below (with its far
+            // look-ahead canvas clicks and backwards ent-trail detours) just gets stuck recovering.
+            // Use the robust web-walker for a plain, reliable walk instead.
+            if (!InventoryUtils.isFletchingMode()) {
+                return navigateToTotemDirect(totemLocation);
             }
 
             // Configure pathfinder to use agility shortcuts before generating the path
@@ -315,6 +327,122 @@ public class NavigationHandler {
     }
 
     /**
+     * Direct navigation to a totem used by ready-made bow modes (no fletch-while-walking).
+     * Delegates to {@link #walkToWithAgilityShortcuts(WorldPoint, int)} so agility shortcuts and
+     * doors on the path are actually taken, with a short on-screen look-ahead (avoids the far-click
+     * off-clip stray) and backwards ent-trail detours suppressed via {@link #entTrailDestinationGuard}.
+     * @param totemLocation the target totem location
+     * @return true if successfully arrived at the location
+     */
+    private static boolean navigateToTotemDirect(TotemLocation totemLocation) {
+        try {
+            if (CoordinateUtils.isAtTotemLocation(totemLocation, ARRIVAL_TOLERANCE)) {
+                return true;
+            }
+
+            System.out.println("Navigating to " + totemLocation.getDescription() + " (direct walk w/ shortcuts)");
+            walkToWithAgilityShortcuts(totemLocation.getLocation(), ARRIVAL_TOLERANCE);
+
+            boolean arrived = CoordinateUtils.isAtTotemLocation(totemLocation, ARRIVAL_TOLERANCE);
+            if (arrived) {
+                System.out.println("Successfully arrived at " + totemLocation.getDescription());
+            } else {
+                System.err.println("Failed to reach totem: " + totemLocation.getDescription());
+            }
+            return arrived;
+
+        } catch (Exception e) {
+            System.err.println("Error navigating directly to totem: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Robust point-to-point walk that actively uses agility shortcuts and doors, for ready-made
+     * bow modes (totem legs and the Nemus Retreat resupply). Unlike a plain {@link Rs2Walker#walkTo},
+     * this drives transports explicitly via {@link #handlePathTransports} (the same mechanism the
+     * fletch-mode navigator uses), walking in short on-screen segments so transports get their turn
+     * and the walker never falls back to an off-clip minimap click. Backwards ent-trail detours are
+     * suppressed via {@link #entTrailDestinationGuard}; opportunistic on-route trails are still taken.
+     *
+     * @param destination the world point to reach
+     * @param tolerance   arrival distance in tiles
+     * @return true if the player ended within {@code tolerance} of the destination
+     */
+    public static boolean walkToWithAgilityShortcuts(WorldPoint destination, int tolerance) {
+        try {
+            // Sync the pathfinder config so agility-shortcut transports are enabled on the path
+            checkPathfinderSettings();
+            clearProcessedEntTrails();
+            entTrailDestinationGuard = destination;
+
+            try {
+                List<WorldPoint> path = Rs2Walker.getWalkPath(destination);
+                long startTime = System.currentTimeMillis();
+
+                while (CoordinateUtils.getPlayerLocation().distanceTo(destination) > tolerance &&
+                        System.currentTimeMillis() - startTime < WALK_TIMEOUT_MS) {
+
+                    if (path == null || path.isEmpty()) {
+                        path = Rs2Walker.getWalkPath(destination);
+                        if (path == null || path.isEmpty()) {
+                            // Pathfinder gave nothing usable - fall back to the stock walker and bail
+                            Rs2Walker.walkTo(destination, tolerance);
+                            break;
+                        }
+                    }
+
+                    // Opportunistic ent-trail detour (guard skips pairs that lead away from destination)
+                    if (checkAndWalkOverEntTrails()) {
+                        path = Rs2Walker.getWalkPath(destination);
+                        continue;
+                    }
+
+                    int currentIndexOnPath = Rs2Walker.getClosestTileIndex(path);
+
+                    // Drive agility shortcuts / doors on the path - this is what plain walkTo skipped here
+                    if (handlePathTransports(path, currentIndexOnPath)) {
+                        path = Rs2Walker.getWalkPath(destination);
+                        continue;
+                    }
+
+                    // Recover if we have drifted off the path
+                    if (isTooFarFromPath(path, 15)) {
+                        path = Rs2Walker.getWalkPath(destination);
+                        continue;
+                    }
+
+                    // Keep run going / sip stamina if the feature is enabled
+                    if (InventoryUtils.isStaminaSupportEnabled()) {
+                        int energy = Rs2Player.getRunEnergy();
+                        if (energy < InventoryUtils.getStaminaThreshold() && !Rs2Player.hasStaminaBuffActive()) {
+                            if (InventoryUtils.drinkStaminaOrEnergyPotion()) {
+                                InventoryUtils.dropEmptyVials();
+                            }
+                        }
+                    }
+
+                    // Short, on-screen look-ahead (8-12 tiles) so the checkpoint stays clickable on
+                    // canvas/minimap and the walker can't pick a wrong-direction off-clip fallback.
+                    int tilesForward = 8 + RandomUtils.nextInt(0, 5);
+                    WorldPoint checkpoint = path.get(Math.min(currentIndexOnPath + tilesForward, path.size() - 1));
+                    walkWithRunEnergyCheck(checkpoint);
+                    sleepGaussian(550, 150);
+                }
+            } finally {
+                entTrailDestinationGuard = null;
+            }
+
+            return CoordinateUtils.getPlayerLocation().distanceTo(destination) <= tolerance;
+
+        } catch (Exception e) {
+            System.err.println("Error during shortcut walk: " + e.getMessage());
+            entTrailDestinationGuard = null;
+            return false;
+        }
+    }
+
+    /**
      * Navigate back to the bank from current location
      * @return true if successfully arrived at bank
      */
@@ -383,6 +511,19 @@ public class NavigationHandler {
             // Store locations as they might disappear
             WorldPoint firstTrailLocation = firstTrail.getWorldLocation();
             WorldPoint secondTrailLocation = secondTrail.getWorldLocation();
+
+            // Skip detours that would take us away from the destination (backwards ent trails).
+            // Only applied when a destination guard is set (direct/bow-mode navigation).
+            if (entTrailDestinationGuard != null) {
+                int playerToDest = playerLocation.distanceTo(entTrailDestinationGuard);
+                int trailToDest = Math.min(
+                        firstTrailLocation.distanceTo(entTrailDestinationGuard),
+                        secondTrailLocation.distanceTo(entTrailDestinationGuard));
+                if (trailToDest > playerToDest) {
+                    return false; // trail pair is behind us relative to the totem - don't detour
+                }
+            }
+
             String pairId = createTrailPairId(firstTrailLocation, secondTrailLocation);
             
             // Check if we've already processed this pair

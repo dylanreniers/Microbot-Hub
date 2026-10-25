@@ -16,6 +16,7 @@ import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.misc.Rs2Potion;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
+import net.runelite.api.coords.WorldPoint;
 
 import java.util.List;
 
@@ -214,7 +215,7 @@ public class BankingHandler {
      */
     private static boolean withdrawBowsAndBaseLogs() {
         try {
-            int totems = InventoryUtils.STANDARD_ROUTE_TOTEMS;
+            int totems = InventoryUtils.HALF_LAP_TOTEMS;
 
             // Base logs first (fewer items, keeps them from being crowded out of the inventory)
             int logId = InventoryUtils.getLogId();
@@ -333,11 +334,12 @@ public class BankingHandler {
             }
             Microbot.log("[Banking] Bank opened successfully");
 
-            // The log basket only holds logs, so the extended route is logs-only.
-            // Ready-made bow modes always run the standard route.
+            // Logs mode: a log basket (if present) unlocks the 8-site extended route, else standard.
+            // Ready-made bow modes always run the full 8-site lap, resupplying at the Nemus Retreat
+            // bank buffalo halfway (after site 4) since bows can't go in a log basket.
             TotemLocation.RouteType detectedRouteType = InventoryUtils.isFletchingMode()
                     ? detectRouteTypeWithBankOpen()
-                    : TotemLocation.RouteType.STANDARD;
+                    : TotemLocation.RouteType.EXTENDED;
 
             // Update game session with detected route type
             if (gameSession.getCurrentRouteType() != detectedRouteType) {
@@ -345,7 +347,7 @@ public class BankingHandler {
             }
 
             // Handle random AFK
-            handleRandomAFK();
+            //handleRandomAFK();
 
             boolean bankingSuccess = false;
 
@@ -466,6 +468,80 @@ public class BankingHandler {
     }
 
     /**
+     * Mid-lap resupply for ready-made bow modes at the Nemus Retreat bank buffalo (after site 4).
+     * Walks to the buffalo tile, banks on the buffalo game object, then tops the inventory back up
+     * to a half-lap of materials (4 base logs + 16 bows). Same account bank as Auburnvale, so stock
+     * is shared. Does not reset the route — the caller continues straight on to site 5.
+     * @param gameSession the game session (set to STOPPING on a hard material shortage)
+     * @return true if the resupply completed and we can continue the lap
+     */
+    public static boolean resupplyAtNemus(GameSession gameSession) {
+        try {
+            WorldPoint buffaloTile = BankLocation.NEMUS_STANDING.getLocation();
+
+            // Walk to the buffalo tile if we're not already next to it. Use the shortcut-aware
+            // walker so agility shortcuts across the bridge to Nemus Retreat are actually taken.
+            if (CoordinateUtils.getPlayerLocation().distanceTo(buffaloTile) > 4) {
+                Microbot.log("[Nemus] Walking to bank buffalo at " + buffaloTile);
+                NavigationHandler.walkToWithAgilityShortcuts(buffaloTile, 3);
+            }
+
+            if (!openNemusBank()) {
+                Microbot.log("[Nemus] Failed to open bank on the buffalo");
+                return false;
+            }
+
+            // Keep the knife, dump everything else (offerings included), then restock the second half
+            if (!ensureKnifeInInventory(gameSession)) {
+                Microbot.log("[Nemus] Failed to ensure knife availability");
+                return false;
+            }
+            if (!depositAllExceptKnife()) {
+                Microbot.log("[Nemus] Failed to deposit items");
+                return false;
+            }
+            if (!hasSufficientBows(1)) {
+                Microbot.log("[Nemus] Not enough bows/base logs for the second half - stopping bot");
+                gameSession.setState(GameState.STOPPING);
+                return false;
+            }
+            if (!withdrawRequiredItems(gameSession)) {
+                Microbot.log("[Nemus] Failed to withdraw bows and base logs");
+                return false;
+            }
+            if (!handleStaminaPotionWithdrawal()) {
+                Microbot.log("[Nemus] Warning: failed to handle stamina potions - continuing without");
+            }
+
+            Rs2Bank.closeBank();
+            fixZoom();
+            Microbot.log("[Nemus] Resupply complete - continuing to the second half of the lap");
+            return true;
+
+        } catch (Exception e) {
+            Microbot.log("[Nemus] Error during resupply: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Open the bank interface via the Nemus Retreat bank buffalo game object.
+     * @return true once the bank interface is open
+     */
+    private static boolean openNemusBank() {
+        if (Rs2Bank.isOpen()) {
+            return true;
+        }
+        Microbot.log("[Nemus] Banking on buffalo (object id=" + GameObjectId.BANK_BUFFALO.getId() + ")");
+        boolean interacted = GameObjectUtils.findAndInteract(GameObjectId.BANK_BUFFALO.getId(), "Bank");
+        if (!interacted) {
+            Microbot.log("[Nemus] Could not interact with bank buffalo");
+            return false;
+        }
+        return sleepUntil(Rs2Bank::isOpen, (int) BANK_TIMEOUT_MS);
+    }
+
+    /**
      * Check if the bank (plus inventory) holds enough ready-made bows for the standard route.
      * @param roundsPlanned number of standard-route rounds planned (20 bows each)
      * @return true if sufficient bows are available
@@ -477,12 +553,12 @@ public class BankingHandler {
                 return false;
             }
 
-            int bowsNeeded = roundsPlanned * InventoryUtils.STANDARD_ROUTE_TOTEMS * InventoryUtils.DECORATIONS_PER_TOTEM; // 5 totems * 4 bows
+            int bowsNeeded = roundsPlanned * InventoryUtils.HALF_LAP_TOTEMS * InventoryUtils.DECORATIONS_PER_TOTEM; // 4 totems * 4 bows
             int bowId = InventoryUtils.getBowId();
             int totalBowsAvailable = InventoryUtils.getBowCount() + Rs2Bank.count(bowId);
 
             // The base of every totem is built from a raw log, so bow modes also need base logs
-            int baseLogsNeeded = roundsPlanned * InventoryUtils.STANDARD_ROUTE_TOTEMS * InventoryUtils.BASE_LOGS_PER_TOTEM; // 5 totems * 1 log
+            int baseLogsNeeded = roundsPlanned * InventoryUtils.HALF_LAP_TOTEMS * InventoryUtils.BASE_LOGS_PER_TOTEM; // 4 totems * 1 log
             int logId = InventoryUtils.getLogId();
             int totalBaseLogsAvailable = InventoryUtils.getLogCount() + Rs2Bank.count(logId);
 

@@ -8,7 +8,8 @@ package net.runelite.client.plugins.custom.customvaletotems.enums;
 public enum GameObjectId {
     // Banking
     BANK_BOOTH(57330, "bank", "Bank booth for depositing/withdrawing items"),
-    
+    BANK_BUFFALO(55199, "buffalo", "Nemus Retreat bank buffalo (mid-lap resupply for bow modes)"),
+
     // Totem construction states
     TOTEM_SITE(57064, "totem", "Empty site for totem construction - Action: Build"),
     EMPTY_TOTEM(57080, "totem", "Built totem ready for carving"),

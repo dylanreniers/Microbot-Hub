@@ -110,6 +110,9 @@ public class CustomValeTotemScript extends Script {
             case COLLECTING_REWARDS:
                 handleRewardCollectionState();
                 break;
+            case RESUPPLYING:
+                handleResupplyingState();
+                break;
             case RETURNING_TO_BANK:
                 handleReturningToBankState();
                 break;
@@ -289,8 +292,28 @@ public class CustomValeTotemScript extends Script {
             gameSession.setState(GameState.RETURNING_TO_BANK);
         } else {
             gameSession.setNavigationInProgress(false); // Reset navigation tracking
-            gameSession.moveToNextTotem();
+
+            // Ready-made bow modes run the full 8-site lap with a mid-lap resupply: after site 4
+            // we divert to the Nemus Retreat bank buffalo before continuing to sites 5-8.
+            boolean resupplyMidLap = !InventoryUtils.isFletchingMode()
+                    && currentTotem.getOrder() == InventoryUtils.HALF_LAP_TOTEMS
+                    && !currentTotem.isLast();
+
+            gameSession.moveToNextTotem(); // advance to the next site now (so we go to it after resupplying)
+            gameSession.setState(resupplyMidLap ? GameState.RESUPPLYING : GameState.NAVIGATING_TO_TOTEM);
+        }
+    }
+
+    /**
+     * Handle the mid-lap resupply at the Nemus Retreat bank buffalo (ready-made bow modes).
+     * On success we continue straight to the next totem; the route is not reset.
+     */
+    private void handleResupplyingState() {
+        if (BankingHandler.resupplyAtNemus(gameSession)) {
             gameSession.setState(GameState.NAVIGATING_TO_TOTEM);
+        } else if (gameSession.getCurrentState() == GameState.RESUPPLYING) {
+            // resupplyAtNemus sets STOPPING on a hard shortage; only error if it was a soft failure
+            gameSession.addError("Nemus resupply failed");
         }
     }
 

@@ -29,7 +29,7 @@ import java.awt.*;
 @Slf4j
 @UnderDevelopment
 public class CustomValeTotemPlugin extends Plugin {
-    static final String version = "1.1.0";
+    static final String version = "1.2.1";
 
     @Inject
     private CustomValeTotemConfig config;

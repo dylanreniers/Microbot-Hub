@@ -33,6 +33,9 @@ public class InventoryUtils {
     public static final int BASE_LOGS_PER_TOTEM = 1;
     public static final int DECORATIONS_PER_TOTEM = 4;
     public static final int LOGS_PER_TOTEM = BASE_LOGS_PER_TOTEM + DECORATIONS_PER_TOTEM; // 5
+    // Ready-made bow modes run the full 8-site lap but resupply halfway at the Nemus Retreat bank
+    // buffalo, so each bank stop only carries materials for 4 sites (4 base logs + 16 decorations).
+    public static final int HALF_LAP_TOTEMS = 4;
     // Configuration-dependent item IDs will be retrieved via methods
     private static CustomValeTotemConfig config;
 
