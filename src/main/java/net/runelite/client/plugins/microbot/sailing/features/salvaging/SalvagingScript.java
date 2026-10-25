@@ -354,6 +354,11 @@ public class SalvagingScript {
                 return;
             }
 
+            if (player.getWorldLocation() == null) {
+                log.info("Player location unavailable, skipping salvaging tick");
+                return;
+            }
+
             if (isCargoHoldTrackingEnabled(config) && (cargoHoldProcessing || shouldProcessCargoHold())) {
                 if (handleCargoHoldMode(config, player)) {
                     return;
@@ -1377,7 +1382,11 @@ public class SalvagingScript {
     }
 
     private boolean isWithinSalvageArea(WorldPoint playerLocation, Rs2TileObjectModel wreck) {
-        return playerLocation.distanceTo(wreck.getWorldLocation()) <= SIZE_SALVAGEABLE_AREA;
+        WorldPoint wreckLocation = wreck.getWorldLocation();
+        if (playerLocation == null || wreckLocation == null) {
+            return false;
+        }
+        return playerLocation.distanceTo(wreckLocation) <= SIZE_SALVAGEABLE_AREA;
     }
 
     /**
