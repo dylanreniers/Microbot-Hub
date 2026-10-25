@@ -24,6 +24,8 @@ import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
+import net.runelite.client.plugins.microbot.util.magic.thralls.Rs2Thrall;
+import net.runelite.client.plugins.microbot.util.magic.thralls.ThrallType;
 import net.runelite.client.plugins.microbot.util.misc.Rs2Potion;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
@@ -32,6 +34,7 @@ import net.runelite.client.plugins.skillcalculator.skills.MagicAction;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
+import net.runelite.client.plugins.microbot.util.world.Rs2WorldUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -100,10 +103,26 @@ public class CustomTormentedDemonScript extends Script {
     private static final WorldPoint DEMON_LOCATION = new WorldPoint(4041, 4452, 0);
     /** Guthixian temple teleport scroll — the "Teleport Scroll" walk method teleports to the chasm with it. */
     private static final int GUTHIXIAN_TEMPLE_TELEPORT = 29684;
+    /** "Teleport to house" tablet — used instead of the spell when thralls force us onto the Arceuus spellbook. */
+    private static final int HOUSE_TELEPORT_TABLET = 8013;
+
+    /**
+     * Thralls in strongest-first order (Greater > Superior > Lesser). {@link #maybeCastThrall} filters this to
+     * the configured {@link ThrallType} and casts the strongest tier of that type the player can afford.
+     */
+    private static final Rs2Thrall[] THRALLS_STRONGEST_FIRST = {
+            Rs2Thrall.GREATER_ZOMBIE, Rs2Thrall.GREATER_SKELETON, Rs2Thrall.GREATER_GHOST,
+            Rs2Thrall.SUPERIOR_ZOMBIE, Rs2Thrall.SUPERIOR_SKELETON, Rs2Thrall.SUPERIOR_GHOST,
+            Rs2Thrall.LESSER_ZOMBIE, Rs2Thrall.LESSER_SKELETON, Rs2Thrall.LESSER_GHOST
+    };
     /** Time the light creature takes to carry us into the chasm before the walls are reachable. */
     private static final int CHASM_TRAVEL_WAIT_MS = 15000;
     /** How close (tiles) to {@link #DEMON_LOCATION} counts as "already at the demons". */
     private static final int NEAR_DEMONS_DISTANCE = 20;
+    /** On arrival, hop worlds until no other player is within this many tiles. */
+    private static final int SOLO_CHECK_RADIUS = 20;
+    /** Safety cap on consecutive world hops while trying to find an empty world. */
+    private static final int MAX_SOLO_HOPS = 15;
     /** Spot in Juna's cave to stand on before using the lantern, so a light creature is in range. */
     private static final WorldPoint LANTERN_APPROACH_POINT = new WorldPoint(3228, 9527, 0);
     /**
@@ -183,6 +202,24 @@ public class CustomTormentedDemonScript extends Script {
         rangeSetup = resolveSetup(config.rangeGear());
         magicSetup = resolveSetup(config.magicGear());
         meleeSetup = resolveSetup(config.meleeGear());
+        warnIfMissingThrallHouseTablets(config);
+    }
+
+    /**
+     * One-time startup heads-up: thralls force us onto the Arceuus spellbook, so POH travel relies on
+     * "Teleport to house" tablets rather than the spell. Warn if the banking setup has none configured, since
+     * the bot otherwise can't teleport home to bank/restock.
+     */
+    private void warnIfMissingThrallHouseTablets(CustomTormentedDemonConfig config) {
+        if (!config.castThralls() || bankingSetup == null) {
+            return;
+        }
+        boolean setupHasHouseTablet = bankingSetup.getInventoryItems().stream()
+                .anyMatch(item -> item != null && item.getId() == HOUSE_TELEPORT_TABLET);
+        if (!setupHasHouseTablet) {
+            logOnceToChat("Thralls are enabled (Arceuus spellbook) but your banking setup has no 'Teleport to "
+                    + "house' tablets — add some or the bot can't teleport to the POH to bank.");
+        }
     }
 
     /** Build an {@link Rs2InventorySetup} resolved live by the setup's name (never the stale config snapshot). */
@@ -215,7 +252,7 @@ public class CustomTormentedDemonScript extends Script {
         switch (bankingStep) {
             case TELE_HOUSE_TO_FEROX:
                 Microbot.status = "Teleporting to house...";
-                if (teleportToHouse()) {
+                if (teleportToHouse(config)) {
                     Rs2Player.toggleRunEnergy(true);
                     disableAllPrayers();
                     if (bankingSetup != null && !bankingSetup.doesEquipmentMatch()) {
@@ -249,7 +286,7 @@ public class CustomTormentedDemonScript extends Script {
 
             case TELE_HOUSE_TO_TOG:
                 Microbot.status = "Teleporting to house...";
-                if (teleportToHouse()) {
+                if (teleportToHouse(config)) {
                     bankingStep = BankingStep.JEWELLERY_TO_TOG;
                 }
                 break;
@@ -314,15 +351,14 @@ public class CustomTormentedDemonScript extends Script {
         }, 10000);
     }
 
-    /** Casts the standard-spellbook Teleport to House and waits until we're inside the POH. */
-    private boolean teleportToHouse() {
+    /** Teleports to the POH (spell or tablet) and waits until we're inside. */
+    private boolean teleportToHouse(CustomTormentedDemonConfig config) {
         if (PohTeleports.isInHouse()) {
             Rs2Player.toggleRunEnergy(true);
             disableAllPrayers();
             return true;
         }
-        if (!Rs2Magic.cast(MagicAction.TELEPORT_TO_HOUSE)) {
-            logOnceToChat("Could not cast Teleport to House (missing runes / not on the standard spellbook?)");
+        if (!castOrBreakHouseTeleport(config)) {
             return false;
         }
         boolean arrived = sleepUntil(PohTeleports::isInHouse, 8000);
@@ -331,6 +367,26 @@ public class CustomTormentedDemonScript extends Script {
             disableAllPrayers();
         }
         return arrived;
+    }
+
+    /**
+     * Teleports to the POH. With thralls enabled we're on the Arceuus spellbook and can't cast the standard
+     * Teleport to House spell, so a "Teleport to house" tablet is broken instead (tablets work on any
+     * spellbook); otherwise the spell is cast as before.
+     */
+    private boolean castOrBreakHouseTeleport(CustomTormentedDemonConfig config) {
+        if (config.castThralls()) {
+            if (!Rs2Inventory.hasItem(HOUSE_TELEPORT_TABLET)) {
+                logOnceToChat("No 'Teleport to house' tablets — required because thralls run the Arceuus spellbook.");
+                return false;
+            }
+            return Rs2Inventory.interact(HOUSE_TELEPORT_TABLET, "Break");
+        }
+        if (!Rs2Magic.cast(MagicAction.TELEPORT_TO_HOUSE)) {
+            logOnceToChat("Could not cast Teleport to House (missing runes / not on the standard spellbook?)");
+            return false;
+        }
+        return true;
     }
 
     /** Drinks at the pool (Ferox Pool of Refreshment) until HP and Prayer are back to full. */
@@ -446,6 +502,8 @@ public class CustomTormentedDemonScript extends Script {
                 Microbot.status = "Approaching Tormented Demon location...";
                 if (Rs2Walker.walkTo(DEMON_LOCATION, 3)) {
                     sleepUntil(() -> DEMON_LOCATION.distanceTo(Rs2Player.getWorldLocation()) <= 5, 8000);
+                    // Arrived at the demons — hop worlds until nobody else is nearby before fighting.
+                    hopUntilSoloWorld(config);
                     travelStep = TravelStep.CLIMB_ROCKS; // reset for the next trip
                     BOT_STATUS = State.FIGHTING;
                 }
@@ -478,6 +536,51 @@ public class CustomTormentedDemonScript extends Script {
     private boolean isNearDemons() {
         WorldPoint location = Rs2Player.getWorldLocation();
         return location != null && DEMON_LOCATION.distanceTo(location) <= NEAR_DEMONS_DISTANCE;
+    }
+
+    /**
+     * Hops worlds until no other player is within {@link #SOLO_CHECK_RADIUS} tiles, so we fight uncontested.
+     * Called once on arrival at the demons. Bounded by {@link #MAX_SOLO_HOPS} so it can't loop forever when
+     * every world is busy; each hop waits for the client to finish hopping and log back in before re-checking.
+     */
+    private void hopUntilSoloWorld(CustomTormentedDemonConfig config) {
+        if (!config.hopWhenPlayersNearby()) {
+            return;
+        }
+        for (int attempt = 0; attempt < MAX_SOLO_HOPS; attempt++) {
+            if (!isPlayerWithinRadius(SOLO_CHECK_RADIUS)) {
+                return; // world is clear
+            }
+            int targetWorld = Rs2WorldUtil.getRandomAccessibleWorld(true, true, true);
+            if (targetWorld <= 0) {
+                logOnceToChat("Player nearby but no suitable world to hop to — staying put.");
+                return;
+            }
+            logOnceToChat("Player within " + SOLO_CHECK_RADIUS + " tiles — hopping to world " + targetWorld + ".");
+            if (!Microbot.hopToWorld(targetWorld)) {
+                sleep(2000);
+                continue;
+            }
+            sleepUntil(() -> !Microbot.isHopping(), 15000);
+            sleepUntil(Microbot::isLoggedIn, 15000);
+            sleep(1500, 2500); // let the new world's players render in before re-checking
+        }
+        logOnceToChat("Gave up finding an empty world after " + MAX_SOLO_HOPS + " hops — continuing.");
+    }
+
+    /** True if any player other than us is within {@code radius} tiles. */
+    private boolean isPlayerWithinRadius(int radius) {
+        WorldPoint me = Rs2Player.getWorldLocation();
+        if (me == null) {
+            return false;
+        }
+        return Microbot.getRs2PlayerCache().query()
+                .where(p -> p != null
+                        && p.getPlayer() != Microbot.getClient().getLocalPlayer()
+                        && p.getWorldLocation() != null
+                        && p.getWorldLocation().distanceTo(me) <= radius)
+                .toListOnClientThread()
+                .size() > 0;
     }
 
     /** Called by the plugin's chat listener when the game reports the light creature is too far away. */
@@ -553,7 +656,7 @@ public class CustomTormentedDemonScript extends Script {
             if (isOutOfConsumables()) {
                 if (config.mode() == CustomTormentedDemonConfig.MODE.FULL_AUTO) {
                     logOnceToChat("Out of food or prayer potions — resupplying before the next kill.");
-                    retreatToResupply();
+                    retreatToResupply(config);
                 } else {
                     logOnceToChat("Out of food or prayer potions — stopping before the next kill.");
                     disableAllPrayers();
@@ -592,7 +695,7 @@ public class CustomTormentedDemonScript extends Script {
         if (CustomTormentedDemonPlugin.isDodgeActive()) return;
 
         if (config.mode() == CustomTormentedDemonConfig.MODE.FULL_AUTO && shouldRetreat(config)) {
-            retreatToResupply();
+            retreatToResupply(config);
             return;
         }
 
@@ -680,6 +783,83 @@ public class CustomTormentedDemonScript extends Script {
 
         if (!CustomTormentedDemonPlugin.isDodgeActive()) {
             maybeUseSpecialAttack(config);
+            maybeCastThrall(config);
+        }
+    }
+
+    /**
+     * Resurrects a thrall during combat when enabled and none is active/on cooldown. Summons the thrall for
+     * the "third" style — the one that is neither the style we're attacking with nor the style the demon's
+     * overhead protects — so the thrall always deals unprotected damage with the style we aren't using. Casts
+     * the strongest tier of that type the player can afford; {@link Rs2Thrall#canCast} enforces the Arceuus
+     * spellbook, Book of the Dead, level and rune requirements, so this is a safe no-op when they aren't met.
+     */
+    private void maybeCastThrall(CustomTormentedDemonConfig config) {
+        if (!config.castThralls() || Rs2Thrall.isActive()) {
+            return;
+        }
+        ThrallType desiredType = desiredThrallType();
+        if (desiredType == null) {
+            return; // can't resolve our attack style / the demon's overhead yet
+        }
+        for (Rs2Thrall thrall : THRALLS_STRONGEST_FIRST) {
+            if (thrall.getThrallType() == desiredType && Rs2Thrall.canCast(thrall)) {
+                Rs2Thrall.cast(thrall);
+                return;
+            }
+        }
+    }
+
+    /**
+     * The thrall style to summon: the one style that is neither what we're attacking with (our counter to the
+     * demon's overhead) nor what the demon is protecting against. Since those two are always distinct, exactly
+     * one style remains. Returns null until both are known.
+     */
+    private ThrallType desiredThrallType() {
+        ThrallType attackType = thrallTypeOfSetup(intendedGearSetup);
+        ThrallType protectedType = thrallTypeOfHeadIcon(currentOverheadIcon);
+        if (attackType == null || protectedType == null || attackType == protectedType) {
+            return null;
+        }
+        for (ThrallType type : ThrallType.values()) {
+            if (type != attackType && type != protectedType) {
+                return type;
+            }
+        }
+        return null;
+    }
+
+    /** Maps the gear setup we're attacking with to its combat style. */
+    private ThrallType thrallTypeOfSetup(Rs2InventorySetup setup) {
+        if (setup == null) {
+            return null; // guard: an unconfigured style setup is also null, which would false-match below
+        }
+        if (setup == rangeSetup) {
+            return ThrallType.RANGED;
+        }
+        if (setup == magicSetup) {
+            return ThrallType.MAGIC;
+        }
+        if (setup == meleeSetup) {
+            return ThrallType.MELEE;
+        }
+        return null;
+    }
+
+    /** Maps the demon's overhead protection prayer to the combat style it blocks. */
+    private ThrallType thrallTypeOfHeadIcon(HeadIcon icon) {
+        if (icon == null) {
+            return null;
+        }
+        switch (icon) {
+            case MELEE:
+                return ThrallType.MELEE;
+            case RANGED:
+                return ThrallType.RANGED;
+            case MAGIC:
+                return ThrallType.MAGIC;
+            default:
+                return null;
         }
     }
 
@@ -858,20 +1038,35 @@ public class CustomTormentedDemonScript extends Script {
         if (!Rs2Inventory.isFull() || !wearingWeaponAndShield() || !setupUsesTwoHandedWeapon(target)) {
             return;
         }
+        if (!freeOneInventorySlot()) {
+            logOnceToChat("Need to equip a 2h weapon but inventory is full with no ashes or food to free a slot.");
+        }
+    }
+
+    /**
+     * Frees a single inventory slot, preferring to scatter a pile of ashes (free, and gives prayer xp) and
+     * only eating a piece of food when no ashes are carried. Returns true once a slot is free. Shared by the
+     * loot pass and the 2h-swap space check so both honour the scatter-before-eat preference.
+     */
+    private boolean freeOneInventorySlot() {
+        if (!Rs2Inventory.isFull()) {
+            return true;
+        }
         if (Rs2Inventory.hasItem("Infernal ashes")) {
-            logOnceToChat("Inventory full — scattering ashes to free a slot so the 2h weapon can be equipped.");
+            logOnceToChat("Inventory full — scattering ashes to free a slot.");
             Rs2Inventory.interact("Infernal ashes", "Scatter");
-            sleepUntil(() -> !Rs2Inventory.isFull(), 1800);
-            return;
+            if (sleepUntil(() -> !Rs2Inventory.isFull(), 1800)) {
+                return true;
+            }
         }
         List<Rs2ItemModel> foods = Rs2Inventory.getInventoryFood();
         if (foods.isEmpty()) {
-            logOnceToChat("Need to equip a 2h weapon but inventory is full with no ashes or food to free a slot.");
-            return;
+            return false;
         }
-        logOnceToChat("Inventory full — eating to free a slot so the 2h weapon can be equipped.");
-        Rs2Inventory.interact(foods.get(0), "Eat");
-        sleepUntil(() -> !Rs2Inventory.isFull(), 1800);
+        Rs2ItemModel food = foods.get(0);
+        logOnceToChat("Inventory full — eating " + food.getName() + " to free a slot.");
+        Rs2Inventory.interact(food, "Eat");
+        return sleepUntil(() -> !Rs2Inventory.isFull(), 1800);
     }
 
     /** True while both the weapon and shield slots are filled (a 1h+shield loadout — a shield rules out a 2h). */
@@ -1042,7 +1237,7 @@ public class CustomTormentedDemonScript extends Script {
     }
 
     /** Abandons the current fight and kicks off the FULL_AUTO restock trip (POH -> Ferox -> bank -> back). */
-    private void retreatToResupply() {
+    private void retreatToResupply(CustomTormentedDemonConfig config) {
         currentTarget = null;
         currentOverheadIcon = null;
         intendedGearSetup = null;
@@ -1051,7 +1246,7 @@ public class CustomTormentedDemonScript extends Script {
         // Start the restock trip from the top: teleport home, jewellery box to Ferox, restore, resupply.
         bankingStep = BankingStep.TELE_HOUSE_TO_FEROX;
         BOT_STATUS = State.BANKING;
-        teleportToHouse();
+        teleportToHouse(config);
     }
 
     public void disableAllPrayers() {
@@ -1171,30 +1366,8 @@ public class CustomTormentedDemonScript extends Script {
     }
 
     private boolean makeSpaceForLoot() {
-        if (!Rs2Inventory.isFull()) {
-            return true;
-        }
-
-        if (Rs2Player.eatAt(100, true)) {
-            logOnceToChat("Inventory full — eating to make space for loot");
-            sleep(600, 1000);
-            if (!Rs2Inventory.isFull()) {
-                return true;
-            }
-        }
-
-        List<Rs2ItemModel> foods = Rs2Inventory.getInventoryFood();
-        if (foods.isEmpty()) {
-            return false;
-        }
-
-        Rs2ItemModel food = foods.get(0);
-        if (food != null) {
-            logOnceToChat("Inventory full — eating " + food.getName() + " to make space for loot");
-            Rs2Inventory.interact(food, "Eat");
-            return sleepUntil(() -> !Rs2Inventory.isFull(), 1800);
-        }
-        return false;
+        // Scatter ashes first (free), eating food only as a fallback — see freeOneInventorySlot().
+        return freeOneInventorySlot();
     }
 
     private boolean hasLootableDrops(CustomTormentedDemonConfig config) {

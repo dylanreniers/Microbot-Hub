@@ -53,6 +53,17 @@ public interface CustomTormentedDemonConfig extends Config {
         return WalkMethod.POH;
     }
 
+    @ConfigItem(
+            keyName = "hopWhenPlayersNearby",
+            name = "Hop If Players Nearby",
+            description = "On arrival at the demons, hop worlds until no other player is within 20 tiles.",
+            section = generalSettings,
+            position = 2
+    )
+    default boolean hopWhenPlayersNearby() {
+        return true;
+    }
+
     @ConfigSection(
             name = "Tormented Demon Settings",
             description = "Settings for Tormented Demon boss helper",
@@ -104,6 +115,18 @@ public interface CustomTormentedDemonConfig extends Config {
     )
     default int dodgeDelay() {
         return 200;
+    }
+
+    @ConfigItem(
+            keyName = "castThralls",
+            name = "Cast Thralls",
+            description = "Resurrect a thrall during combat (highest tier you can cast). Requires the Arceuus "
+                    + "spellbook, the Book of the Dead, and the thrall runes in your setup.",
+            section = tormentedDemonSection,
+            position = 6
+    )
+    default boolean castThralls() {
+        return false;
     }
 
 

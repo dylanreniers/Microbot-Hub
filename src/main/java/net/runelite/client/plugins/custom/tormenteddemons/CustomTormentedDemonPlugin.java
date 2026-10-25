@@ -52,7 +52,7 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 @UnderDevelopment
 public class CustomTormentedDemonPlugin extends Plugin {
 
-    public static final String version = "1.2.2";
+    public static final String version = "1.4.0";
 
     // Tormented Demon (LUC2_UNDEAD_DEMON) per-attack animations — each is set the tick the demon launches
     // that attack, so they tell us the style of the incoming hit.
