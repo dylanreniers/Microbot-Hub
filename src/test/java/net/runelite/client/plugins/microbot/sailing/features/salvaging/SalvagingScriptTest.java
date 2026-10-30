@@ -36,7 +36,7 @@ class SalvagingScriptTest {
     }
 
     private static boolean isWithinSalvageArea(WorldPoint playerLocation, Rs2TileObjectModel wreck) throws Exception {
-        var script = new SalvagingScript(null, null, null);
+        var script = new SalvagingScript(null, null, null, null);
         Method method = SalvagingScript.class.getDeclaredMethod("isWithinSalvageArea", WorldPoint.class, Rs2TileObjectModel.class);
         method.setAccessible(true);
         return (boolean) method.invoke(script, playerLocation, wreck);

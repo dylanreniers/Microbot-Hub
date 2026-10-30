@@ -55,6 +55,7 @@ public class FeroxService {
         if (poolOfRefreshment.isPresent()) {
             poolOfRefreshment.get().click(DRINK);
             sleepUntil(this::isPrayerAndRunSufficient, 15000); //takes a bit longer to run to the pool
+            sleep(1200, 2000);
         } else {
             log.info("Pool of Refreshment not found.");
         }
