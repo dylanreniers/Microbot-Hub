@@ -36,10 +36,13 @@ import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntSupplier;
+import java.util.function.Predicate;
 
 /**
  * Handles full Tier 2 automated preparation for The Gauntlet:
@@ -72,6 +75,11 @@ public class CustomGauntletPrepScript extends Script {
     private static final int FRONTIER_SEARCH_TILES = 48; // fallback when cornered: reach for a far unlit node several rooms out
     private static final int GATHER_SEARCH_TILES = 48; // reach resources/mobs several rooms out; game click-to-walk paths there
     private static final int DEMIBOSS_PRAYER_RANGE = 10; // keep the right protection prayer up within this many tiles of a demiboss
+    // The maze is 7x7 rooms of 16 tiles around the base (3,3), so the inner 5x5 ends 2.5 rooms = 40 tiles from
+    // the base centre and the outer rim (demiboss rooms) lies beyond. Phase 1 never targets anything past this
+    // offset; the 2-tile margin keeps rim-doorway nodes (on the 40 boundary) out even if the anchor is slightly off.
+    private static final int RIM_SAFE_OFFSET = 38;
+    private static final long PRAYER_TOGGLE_PENDING_MS = 1200; // ~2 ticks for a prayer click to register
     public static final Set<Integer> NODE_IDS = Set.of(35998, 35999, 36101, 36102);
     public static final Set<Integer> LIT_NODE_IDS = Set.of(35992, 36095);
 
@@ -104,10 +112,13 @@ public class CustomGauntletPrepScript extends Script {
     private PrepPhase currentPhase = PrepPhase.PHASE_1_RESOURCES;
 
     private boolean initialized = false;
+    private boolean anchorMissingLogged = false;
 
     // Remaining-count supplier for the resource we last clicked. Continuous gather actions don't stop on
     // their own, so once this hits 0 we break the action (step off) instead of overshooting the target.
     private IntSupplier activeGatherRemaining = null;
+
+    private final Map<Rs2PrayerEnum, Long> lastPrayerToggle = new EnumMap<>(Rs2PrayerEnum.class);
 
     @Inject
     public CustomGauntletPrepScript(CustomGauntletPlugin plugin, CustomGauntletConfig config) {
@@ -145,6 +156,7 @@ public class CustomGauntletPrepScript extends Script {
                 // and the lobby has no nodes/resources (so otherwise the script just idles here).
                 TileObject lobbyEntry = findTileObject(GAUNTLET_ENTRY_IDS, 10);
                 if (lobbyEntry != null) {
+                    resetForNewRun();
                     if (!Rs2Player.isMoving()) {
                         Microbot.log("[Prep] In Gauntlet lobby - entering to begin prep");
                         if (!Rs2GameObject.interact(lobbyEntry, "Enter-corrupted")
@@ -156,16 +168,10 @@ public class CustomGauntletPrepScript extends Script {
                     return; // wait until we're inside before initializing the base
                 }
 
-                // Initialize base location once inside dungeon
+                // Anchor the base room once its stations are in view. Doesn't gate the loop: if the plugin was
+                // started away from base we keep going, just without the rim filter until the base is seen.
                 if (!initialized) {
-                    WorldPoint playerLocation = Rs2Player.getWorldLocation();
-                    if (playerLocation != null) {
-                        grid.setBaseCenterPoint(playerLocation);
-                        initialized = true;
-                        Microbot.log("[Prep] Initialized starting base at " + playerLocation);
-                    } else {
-                        return;
-                    }
+                    initialized = initBaseAnchor();
                 }
 
                 // Survival: keep the correct protection prayer up near any demiboss, in every phase. They
@@ -192,6 +198,21 @@ public class CustomGauntletPrepScript extends Script {
             }
         }, 0, 300, TimeUnit.MILLISECONDS);
         return true;
+    }
+
+    /**
+     * Back in the lobby = the previous run is over. Forget everything tied to it: the phase (it ended at
+     * COMPLETE), the checklist's spent shards / dropped-fish counts, and the room grid and base anchor (a new
+     * run is a new instance). Runs every loop while in the lobby, which is harmless.
+     */
+    private void resetForNewRun() {
+        currentPhase = PrepPhase.PHASE_1_RESOURCES;
+        checklist = new GauntletChecklist();
+        grid = new GauntletGrid();
+        initialized = false;
+        anchorMissingLogged = false;
+        activeGatherRemaining = null;
+        lastPrayerToggle.clear();
     }
 
     @Override
@@ -251,7 +272,7 @@ public class CustomGauntletPrepScript extends Script {
         //    unreachable one). Frames drop from the kill, looted above.
         if (checklist.getWeaponFrameCount() == 0) {
             Rs2NpcModel weakMob = Microbot.getRs2NpcCache().query()
-                    .where(npc -> WEAK_MOB_IDS.contains(npc.getId())).nearest();
+                    .where(npc -> WEAK_MOB_IDS.contains(npc.getId()) && isInsideRim(npc.getLocalLocation())).nearest();
             if (weakMob != null && !weakMob.isDead() && npcTileDist(weakMob) <= GATHER_SEARCH_TILES) {
                 if (!Rs2Player.isInteracting()) {
                     Microbot.log("[Prep] Attacking weak mob for weapon frame");
@@ -292,11 +313,8 @@ public class CustomGauntletPrepScript extends Script {
 
     /**
      * Pass through the nearest barrier (37339 etc., not the Hunllef barrier) into an adjacent room.
-     * NOTE: previously this tried to avoid "outer rim" rooms via a grid-cell calculation, but the
-     * gauntlet instance does not map cleanly onto the 7x7 / 16-tile-room grid assumption, so it
-     * mis-classified inner rooms as rim and rejected every barrier -> the bot stalled and never reached
-     * the fishing room. Demiboss safety is now handled by updateDemibossProtectionPrayer() (10-tile
-     * protection prayer), which is the real fix, so this just takes the nearest barrier again.
+     * In phase 1 rim barriers are skipped (isInsideRim). An earlier rim check mis-classified inner rooms
+     * because it measured in template coords, which are stitched per room; isInsideRim uses instance coords.
      */
     private boolean passNearestBarrier() {
         TileObject door = findNearestPassableBarrier();
@@ -323,6 +341,7 @@ public class CustomGauntletPrepScript extends Script {
                 int dist = tileDist(obj); // instance-safe local distance
                 if (dist > 25) continue;
                 if (!isPassableBarrier(obj, client)) continue;
+                if (!isInsideRim(obj.getLocalLocation())) continue;
                 if (dist < bestDist) {
                     bestDist = dist;
                     best = obj;
@@ -359,7 +378,8 @@ public class CustomGauntletPrepScript extends Script {
      * tiles - Magic for the Dragon, Range for the Dark beast, Melee for the Bear. They attack from a
      * distance, so this runs every loop in all prep phases (previously we only prayed once we chose to
      * engage, which is why Phase-1 wandering near the rim got us killed). The nearest demiboss wins if
-     * several are close; when none are near, protection prayers are turned back off to save prayer.
+     * several are close. With no demiboss near, a scorpion/wolf/unicorn (all melee) targeting us gets
+     * Protect from Melee; otherwise protection prayers are turned back off to save prayer.
      */
     private void updateDemibossProtectionPrayer() {
         Rs2PrayerEnum needed = null;
@@ -377,9 +397,26 @@ public class CustomGauntletPrepScript extends Script {
         d = npcTileDist(bear);
         if (d <= DEMIBOSS_PRAYER_RANGE && d < best) { best = d; needed = Rs2PrayerEnum.PROTECT_MELEE; }
 
-        togglePrayerIfNeeded(Rs2PrayerEnum.PROTECT_MAGIC, needed == Rs2PrayerEnum.PROTECT_MAGIC);
-        togglePrayerIfNeeded(Rs2PrayerEnum.PROTECT_RANGE, needed == Rs2PrayerEnum.PROTECT_RANGE);
-        togglePrayerIfNeeded(Rs2PrayerEnum.PROTECT_MELEE, needed == Rs2PrayerEnum.PROTECT_MELEE);
+        if (needed == null && isTargetedByMediumMob()) {
+            needed = Rs2PrayerEnum.PROTECT_MELEE;
+        }
+
+        if (needed != null) {
+            // Protection prayers are mutually exclusive in-game: switching one on drops the other, so a
+            // single click switches styles (toggling the old one off first would be a wasted, racing click).
+            togglePrayerIfNeeded(needed, true);
+        } else {
+            togglePrayerIfNeeded(Rs2PrayerEnum.PROTECT_MAGIC, false);
+            togglePrayerIfNeeded(Rs2PrayerEnum.PROTECT_RANGE, false);
+            togglePrayerIfNeeded(Rs2PrayerEnum.PROTECT_MELEE, false);
+        }
+    }
+
+    /** A living scorpion, wolf or unicorn is targeting us. */
+    private boolean isTargetedByMediumMob() {
+        return Microbot.getRs2NpcCache().query()
+                .where(n -> MEDIUM_MOB_IDS.contains(n.getId()) && !n.isDead() && n.isInteractingWithPlayer())
+                .nearest() != null;
     }
 
     /** Nearest non-dead NPC of the given ids, or null. */
@@ -388,11 +425,79 @@ public class CustomGauntletPrepScript extends Script {
         return (npc != null && !npc.isDead()) ? npc : null;
     }
 
-    /** Toggle a prayer only when it isn't already in the desired state (avoids click spam / flicker). */
+    /**
+     * Toggle a prayer only when it isn't already in the desired state (avoids click spam / flicker). Uses the
+     * non-blocking 1-arg toggle - the 2-arg one sleeps up to 10s when a click doesn't land, freezing prep - and
+     * holds off re-clicking for ~2 ticks so a click that hasn't registered yet isn't flipped straight back.
+     */
     private void togglePrayerIfNeeded(Rs2PrayerEnum prayer, boolean on) {
-        if (Rs2Prayer.isPrayerActive(prayer) != on) {
-            Rs2Prayer.toggle(prayer, on);
+        if (Rs2Prayer.isPrayerActive(prayer) == on) return;
+        long now = System.currentTimeMillis();
+        Long last = lastPrayerToggle.get(prayer);
+        if (last != null && now - last < PRAYER_TOGGLE_PENDING_MS) return;
+        lastPrayerToggle.put(prayer, now);
+        Rs2Prayer.toggle(prayer);
+    }
+
+    /**
+     * Anchors the base room centre from the base stations (Singing Bowl, pump, range, tool storage) - they only
+     * exist in the starting room, so this works wherever in the base we start. Stored in instance-space world
+     * coords ({@link WorldPoint#fromLocal}), which are contiguous across the maze and stable across scene
+     * reloads; template coords ({@link Rs2Player#getWorldLocation()}) are stitched per room and mis-place rooms.
+     *
+     * @return true once anchored
+     */
+    private boolean initBaseAnchor() {
+        WorldPoint anchor = Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            Client client = Microbot.getClient();
+            long sumX = 0, sumY = 0;
+            int n = 0;
+            boolean hasBowl = false;
+            for (TileObject obj : collectAllTileObjects()) {
+                if (obj == null || tileDist(obj) > 20) continue;
+                int id = obj.getId();
+                if (!SINGING_BOWL_IDS.contains(id) && !WATER_PUMP_IDS.contains(id)
+                        && !RANGE_STOVE_IDS.contains(id) && !TOOL_STORAGE_IDS.contains(id)) continue;
+                hasBowl |= SINGING_BOWL_IDS.contains(id);
+                WorldPoint wp = WorldPoint.fromLocal(client, obj.getLocalLocation());
+                sumX += wp.getX();
+                sumY += wp.getY();
+                n++;
+            }
+            if (!hasBowl) return null;
+            return new WorldPoint((int) Math.round((double) sumX / n), (int) Math.round((double) sumY / n),
+                    client.getTopLevelWorldView().getPlane());
+        }).orElse(null);
+
+        if (anchor == null) {
+            if (!anchorMissingLogged) {
+                anchorMissingLogged = true;
+                Microbot.log("[Prep] Base stations not in view - rim avoidance disabled until the base is seen");
+            }
+            return false;
         }
+        grid.setBaseCenterPoint(anchor);
+        Microbot.log("[Prep] Anchored base centre at " + anchor + " (instance coords); player offset "
+                + rimOffset(Microbot.getClient().getLocalPlayer().getLocalLocation()));
+        return true;
+    }
+
+    /** Chebyshev tile offset of a local point from the base centre, or -1 if the base isn't anchored. */
+    private int rimOffset(LocalPoint lp) {
+        WorldPoint base = grid.getBaseCenterPoint();
+        if (base == null || lp == null) return -1;
+        WorldPoint wp = WorldPoint.fromLocal(Microbot.getClient(), lp);
+        return Math.max(Math.abs(wp.getX() - base.getX()), Math.abs(wp.getY() - base.getY()));
+    }
+
+    /**
+     * Phase-1 target filter: false for anything on the outer rim, so resource gathering never walks us into
+     * (or opens) a demiboss room. Later phases hunt the demibosses on the rim, so they're unrestricted; so is
+     * an unanchored base, where we can't tell where the rim is.
+     */
+    private boolean isInsideRim(LocalPoint lp) {
+        if (currentPhase != PrepPhase.PHASE_1_RESOURCES) return true;
+        return rimOffset(lp) <= RIM_SAFE_OFFSET; // -1 (unanchored) passes
     }
 
     /**
@@ -659,11 +764,15 @@ public class CustomGauntletPrepScript extends Script {
 
     /** Nearest tile object with one of {@code ids} within {@code maxTiles} (local/scene distance), or null. */
     private TileObject findTileObject(Set<Integer> ids, int maxTiles) {
+        return findTileObject(ids, maxTiles, o -> true);
+    }
+
+    private TileObject findTileObject(Set<Integer> ids, int maxTiles, Predicate<TileObject> filter) {
         return Microbot.getClientThread().runOnClientThreadOptional(() -> {
             TileObject closest = null;
             int closestDist = Integer.MAX_VALUE;
             for (TileObject obj : collectAllTileObjects()) { // already on the client thread here
-                if (obj == null || !ids.contains(obj.getId())) continue;
+                if (obj == null || !ids.contains(obj.getId()) || !filter.test(obj)) continue;
                 int dist = tileDist(obj);
                 if (dist <= maxTiles && dist < closestDist) {
                     closestDist = dist;
@@ -725,7 +834,7 @@ public class CustomGauntletPrepScript extends Script {
         if (Rs2Inventory.isFull() && !stacksIntoExisting) return false;
         // Search several rooms out (CG rooms connect via open doorways), and let the game's click-to-walk
         // path us there — instance-safe, unlike a manual WorldPoint walk.
-        TileObject obj = findTileObject(objectIds, GATHER_SEARCH_TILES);
+        TileObject obj = findTileObject(objectIds, GATHER_SEARCH_TILES, o -> isInsideRim(o.getLocalLocation()));
         if (obj == null) return false;
         // Click once, then WAIT while the gather runs. Resource nodes are game objects (not NPCs), so the
         // engine's isInteracting() flag stays false while mining/chopping/picking — only the animation tells
@@ -863,6 +972,7 @@ public class CustomGauntletPrepScript extends Script {
                 int dist = tileDist(obj);
                 if (dist > maxTiles) continue;
                 if (!isUnlitNode(obj, client)) continue;
+                if (!isInsideRim(obj.getLocalLocation())) continue; // a rim-doorway node would open a demiboss room
                 if (dist < nearestDist) {
                     nearestDist = dist;
                     nearest = obj;
