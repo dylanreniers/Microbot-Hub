@@ -79,11 +79,24 @@ public class CustomGauntletScript extends Script {
     private static final int SIM_TICKS_AFTER_ARRIVAL = 2; // keep simulating the tornado chase this long after a run ends
     private static final int CRITICAL_HP = 45;            // below this, eat even while a dodge move is in progress
     private static final int FLEE_MAX_TILES = 4;
+    private static final int CLICK_LATENCY_TICKS = 1;
+    private static final int LOOP_MIN_RING = HUNLLEF_RADIUS + 1; // smallest ring: the tiles touching the footprint
+    private static final int LOOP_MAX_RING = HUNLLEF_RADIUS + 3;
+    private static final double LOOP_MAX_SAFE_FRACTION = 0.4;   // enter loop mode once hazards cover 60%+ of the arena
+    private static final int LOOP_LOOKAHEAD = 5;      // click this many ring tiles ahead (fewer if a straight leg isn't safe)
+    private static final int LOOP_SIM_TICKS = 6;      // ticks of running simulated when choosing the direction
+    private static final int EAT_CONFIRM_TICKS = 2;       // ticks to wait for an eat's heal before eating again
+    private static final int EAT_BIG_HIT = 15;            // ...unless HP dropped this much since the eat     // tornado steps before a fresh walk click moves us
     private static final long HIT_EXPECTED_MS = 1800;     // ~3 ticks: how long a predicted unavoidable hit unlocks normal eating          // farther than this, cross the hazards via escapeAcrossDanger instead // prefer escaping to a lane at least this long (room to dodge)
-    private static final int MID_RUN_ATTACK_MIN_LANE = 11; // only attack mid-run on lanes longer than 10 tiles
-    private static final int MID_RUN_ATTACK_TILES = 6;     // tiles run since the last attack / run start before attacking again
+    private static final int MID_RUN_ATTACK_MIN_LANE = 8;  // only attack mid-run on lanes of 8+ tiles
+    private static final int MID_RUN_ATTACK_TILES = 4;     // tiles run since the last attack / run start before attacking again
     private static final int MID_RUN_ATTACK_PAUSE_TICKS = 2; // ticks an attack click stands us still mid-run
     private static final int MID_RUN_ATTACK_MIN_TICKS = 4; // bow/staff attack speed: don't pause for an attack that can't fire yet
+    private static final int ATTACK_RECLICK_TICKS = 2;     // anti-spam between attack clicks while the weapon is ready
+    private static final int TOPUP_HP_MARGIN = 12;         // between tornado phases, eat once HP is this far below max
+    private static final int TOPUP_MIN_FISH = 5;           // ...but only while more fish than this are left
+    // Player attack animations (bow, staff, halberd jab/swipe): mark the tick the weapon actually fired.
+    private static final Set<Integer> PLAYER_ATTACK_ANIMS = Set.of(426, 1167, 428, 440);
     // Barrier objects enclosing the Hunllef arena (4 of them). The id differs between normal and
     // corrupted, and the same id is scattered across the maze — so we also filter by distance to the boss.
     private static final Set<Integer> BARRIER_IDS = Set.of(
@@ -231,7 +244,14 @@ public class CustomGauntletScript extends Script {
     private int lastAttackTick = -5;
     private int[] fleeTarget = null;      // committed "get off this hazard" tile; clicked once, kept until reached
     private long fleeClickAt = -1;
-    private int fleePickTick = -1;        // tick the current flee target was picked (one re-pick per tick)
+    private int fleePickTick = -1;
+    private int routeBlockedLogTick = -1; // once-per-tick log guard for tornado-blocked routes
+    private boolean loopMode = false;     // circling a fully safe ring around the Hunllef instead of lane shuttling
+    private int loopDir = 1;              // +1 / -1 along the ring order
+    private int loopRingSize = -1;        // ring distance from the boss centre while in loop mode
+    private int lastEatTick = -1;         // tick of the last eat click and the HP then (double-eat guard)
+    private int lastEatHp = 0;
+    private boolean outOfFoodLogged = false;        // tick the current flee target was picked (one re-pick per tick)
     private long lastWalkClickAt = -1;    // loop timestamp (now) of the last walk click
     private long lastEatClickAt = -1;     // loop timestamp (now) of the last eat/drink click
     private volatile long hitExpectedUntil = -1;  // a dodge move predicted an unavoidable hit: eat at the normal threshold until then
@@ -241,6 +261,9 @@ public class CustomGauntletScript extends Script {
     private volatile boolean movementCritical = false; // dodge is mid flee/evade or a tornado is within 3: don't eat
     private int[] evadeTarget = null;     // committed tornado-evasion tile (both lane directions were cut off)
     private int runAnchorX = -1, runAnchorY = -1; // where the current run started / we last attacked (scene coords)
+    private volatile int lastAttackFiredTick = -100;     // tick our attack animation last started (weapon cooldown)
+    private volatile int unknownPlayerAnim = -1;         // last unrecognised player animation, logged from the script thread
+    private int loggedUnknownAnim = -1;
     private int midRunAttackTick = -1;            // tick a mid-run attack was clicked; the run resumes the tick after
     private int lastWalkTargetX = -1;
     private int lastWalkTargetY = -1;
@@ -325,6 +348,11 @@ public class CustomGauntletScript extends Script {
                         if (now - timeHunllefLog > CD_HUNLLEF_LOG) {
                             logHunllefLocation();
                             logArenaInfo();
+                        }
+
+                        if (unknownPlayerAnim != loggedUnknownAnim) {
+                            loggedUnknownAnim = unknownPlayerAnim;
+                            Microbot.log(String.format("[Attack] Player animation %d is not counted as an attack", loggedUnknownAnim));
                         }
 
                         //Fast Section
@@ -703,6 +731,10 @@ public class CustomGauntletScript extends Script {
                 fleeTarget = null;
             }
 
+            // Late in the fight the safe floor shrinks to a ring around the Hunllef. Lanes along it are short dead
+            // ends (a corner stop cost 35-38 HP a tick), but the ring is a loop: run around it instead.
+            if (loopRun(px, py, bossX, bossY, tornadoes)) return true;
+
             // Committed tornado evasion (both lane directions were cut off): finish it before picking a new lane,
             // otherwise the lane logic would immediately route us back toward the tornadoes.
             if (evadeTarget != null) {
@@ -738,13 +770,18 @@ public class CustomGauntletScript extends Script {
             // corner waypoint was treated as a lane endpoint, so reaching it sprinted straight at the lane end.
             if (inTransition) {
                 if (!isPlayerOnSafeLane(px, py) && transitionEntryTile != null) {
-                    return walkSafeRoute(px, py, transitionEntryTile[0], transitionEntryTile[1], bossX, bossY)
+                    return walkSafeRoute(px, py, transitionEntryTile[0], transitionEntryTile[1], bossX, bossY, tornadoes)
+                            || evadeTornadoes(px, py, bossX, bossY, tornadoes)
                             || escapeAcrossDanger(px, py, bossX, bossY, tornadoes);
                 }
                 inTransition = false;
                 transitionEntryTile = null;
                 transitionWaypoints = new ArrayList<>();
                 currentShuttleTarget = pickRunEnd(px, py, tornadoes);
+                if (currentShuttleTarget == null) {
+                    if (evadeTornadoes(px, py, bossX, bossY, tornadoes)) return true;
+                    currentShuttleTarget = pickLessBadRunEnd(px, py, tornadoes);
+                }
                 setRunAnchor(px, py);
                 Microbot.log(String.format("[Action] Reached safe lane at (%d,%d) - shuttling toward (%d,%d)",
                         px, py, currentShuttleTarget[0], currentShuttleTarget[1]));
@@ -753,6 +790,10 @@ public class CustomGauntletScript extends Script {
             // Determine initial sprint target endpoint (furthest from tornadoes) if not set
             if (currentShuttleTarget == null) {
                 currentShuttleTarget = pickRunEnd(px, py, tornadoes);
+                if (currentShuttleTarget == null) {
+                    if (evadeTornadoes(px, py, bossX, bossY, tornadoes)) return true;
+                    currentShuttleTarget = pickLessBadRunEnd(px, py, tornadoes);
+                }
             }
 
             int distToTarget = Math.max(Math.abs(currentShuttleTarget[0] - px), Math.abs(currentShuttleTarget[1] - py));
@@ -770,9 +811,9 @@ public class CustomGauntletScript extends Script {
                     // Standing clear at endpoint: Attack boss & pre-hover next move
                     boolean canAttackBoss = config.autoAttack() && hunllef != null
                             && (isBowEquipped() || isStaffEquipped() || (isHalberdEquipped() && Math.max(Math.abs(px - bossX), Math.abs(py - bossY)) <= 2));
-                    boolean passed5Ticks = (gameTickCount - lastAttackTick >= 5) || (now - timeAttack >= 3000);
-
-                    if (passed5Ticks && canAttackBoss && !isAttackingBoss()) {
+                    // Click only once the weapon is off cooldown: a click before that waits for the cooldown, and the
+                    // next run away cancelled it before it fired.
+                    if (weaponReady() && canAttackBoss && !isAttackingBoss()) {
                         Microbot.log(String.format("[Action] Standing clear at endpoint (gap %d > 3) - attacking Hunllef", nearest));
                         hunllef.click("attack");
                         timeAttack = now;
@@ -830,14 +871,40 @@ public class CustomGauntletScript extends Script {
                 // in the same tick would replace it) and pick the run back up on the next one.
                 // ...but if the attack makes the game walk us anywhere but the lane end (toward the boss), take
                 // the run back at once instead.
-                if (midRunAttackTick == gameTickCount && !walkingElsewhere) return true;
+                if ((midRunAttackTick == gameTickCount || holdingForAttack()) && !walkingElsewhere && nearest > 2) return true;
                 if (tryMidRunAttack(px, py, bossX, bossY, nearest, distToTarget, tornadoes)) return true;
-                if (walkSafeRoute(px, py, currentShuttleTarget[0], currentShuttleTarget[1], bossX, bossY)) {
+                if (walkSafeRoute(px, py, currentShuttleTarget[0], currentShuttleTarget[1], bossX, bossY, tornadoes)) {
                     return true;
                 }
-                // No safe route to the endpoint: snap back onto the lane, but only along a safe leg.
+                // No safe route to the endpoint: snap back onto the lane, but only along a safe, tornado-free leg.
+                // On the lane with the way to this end cut off by a tornado: turn around or take a cross lane now,
+                // while the tornado is still a few tiles off. (The snap below used to pick the tile we stood on,
+                // and we stood still 4 ticks while a tornado closed from 4 to 1.)
+                if (isPlayerOnSafeLane(px, py)) {
+                    int[] opposite = (currentShuttleTarget[0] == safeLaneTileA[0] && currentShuttleTarget[1] == safeLaneTileA[1])
+                            ? safeLaneTileB : safeLaneTileA;
+                    if ((opposite[0] != px || opposite[1] != py)
+                            && walkSafeRoute(px, py, opposite[0], opposite[1], bossX, bossY, tornadoes)) {
+                        Microbot.log(String.format("[Action] Way to (%d,%d) cut off - turning to the other end (%d,%d) %s",
+                                currentShuttleTarget[0], currentShuttleTarget[1], opposite[0], opposite[1], vitalsTag()));
+                        currentShuttleTarget = opposite;
+                        setRunAnchor(px, py);
+                        lastWalkTargetX = opposite[0];
+                        lastWalkTargetY = opposite[1];
+                        return true;
+                    }
+                    if (switchToPerpendicularLane(px, py, bossX, bossY, tornadoes)) {
+                        setRunAnchor(px, py);
+                        lastWalkTargetX = currentShuttleTarget[0];
+                        lastWalkTargetY = currentShuttleTarget[1];
+                        walkExactTile(currentShuttleTarget[0], currentShuttleTarget[1]);
+                        return true;
+                    }
+                }
                 int[] snap = findClosestSafeLaneTile(px, py, bossX, bossY);
-                if (snap != null && isStraightPathFullySafe(px, py, snap[0], snap[1], bossX, bossY)) {
+                if (snap != null && (snap[0] != px || snap[1] != py)
+                        && isStraightPathFullySafe(px, py, snap[0], snap[1], bossX, bossY)
+                        && (tornadoes.isEmpty() || simulateRun(px, py, snap, tornadoes, CLICK_LATENCY_TICKS, 0)[0] >= 1)) {
                     if (!isAlreadyWalkingTo(snap[0], snap[1])) {
                         lastWalkTargetX = snap[0];
                         lastWalkTargetY = snap[1];
@@ -846,7 +913,8 @@ public class CustomGauntletScript extends Script {
                     }
                     return true;
                 }
-                return escapeAcrossDanger(px, py, bossX, bossY, tornadoes);
+                return evadeTornadoes(px, py, bossX, bossY, tornadoes)
+                        || escapeAcrossDanger(px, py, bossX, bossY, tornadoes);
             }
         }).orElse(false);
 
@@ -859,23 +927,37 @@ public class CustomGauntletScript extends Script {
      * the farthest tile on it still reachable by one safe leg - i.e. the next corner waypoint. Called every loop,
      * so each leg is re-planned from where we stand and re-validated as the floors change.
      *
-     * @return true if a safe walk toward the target is under way; false if no safe route exists
+     * With tornadoes up, a leg is only taken if the tornado simulation says we're not caught on the way (the walk
+     * to a lane once routed straight into a group of three: 55 damage in one tick). The farthest clean leg wins.
+     *
+     * @return true if a safe walk toward the target is under way; false if no safe (or tornado-free) route exists
      */
-    private boolean walkSafeRoute(int px, int py, int tx, int ty, int bossX, int bossY) {
-        int[] leg = null;
+    private boolean walkSafeRoute(int px, int py, int tx, int ty, int bossX, int bossY, List<int[]> tornadoes) {
+        List<int[]> legs = new ArrayList<>();
         if (isStraightPathFullySafe(px, py, tx, ty, bossX, bossY)) {
-            leg = new int[]{tx, ty};
+            legs.add(new int[]{tx, ty});
         } else {
             List<int[]> path = findCardinalSafePath(px, py, tx, ty, bossX, bossY);
             if (path.size() <= 1) return false;
             for (int i = path.size() - 1; i >= 1; i--) {
                 int[] candidate = path.get(i);
-                if (isStraightPathFullySafe(px, py, candidate[0], candidate[1], bossX, bossY)) {
-                    leg = candidate;
-                    break;
-                }
+                if (isStraightPathFullySafe(px, py, candidate[0], candidate[1], bossX, bossY)) legs.add(candidate);
             }
-            if (leg == null) leg = path.get(1); // adjacent cardinal step on a safe tile
+            if (legs.isEmpty()) legs.add(path.get(1)); // adjacent cardinal step on a safe tile
+        }
+        int[] leg = null;
+        for (int[] candidate : legs) {
+            if (tornadoes.isEmpty()) { leg = candidate; break; }
+            // Already walking there: no click latency. Only the way there counts; at the leg's end we re-plan.
+            int latency = isAlreadyWalkingTo(candidate[0], candidate[1]) ? 0 : CLICK_LATENCY_TICKS;
+            if (simulateRun(px, py, candidate, tornadoes, latency, 0)[0] >= 1) { leg = candidate; break; }
+        }
+        if (leg == null) {
+            if (routeBlockedLogTick != gameTickCount) {
+                routeBlockedLogTick = gameTickCount;
+                Microbot.log(String.format("[Action] Route to (%d,%d) runs into a tornado - not taking it %s", tx, ty, vitalsTag()));
+            }
+            return false;
         }
         if (!isAlreadyWalkingTo(leg[0], leg[1])) {
             lastWalkTargetX = leg[0];
@@ -1252,11 +1334,181 @@ public class CustomGauntletScript extends Script {
     }
 
     /**
+     * Loop mode: when hazards cover most of the arena and a square ring around the Hunllef is fully safe, circle it
+     * with the tornadoes trailing behind, so there's never a lane end to stop at. The direction is picked by
+     * simulating a run both ways and only flipped when the other way is clearly better. Each pass clicks the
+     * farthest ring tile up to {@link #LOOP_LOOKAHEAD} ahead that a straight safe leg reaches, so corners are taken
+     * as part of the run. Client thread.
+     *
+     * @return true if loop mode handled movement this pass; false to fall back to the lanes
+     */
+    private boolean loopRun(int px, int py, int bossX, int bossY, List<int[]> tornadoes) {
+        int ringD = -1;
+        for (int d = LOOP_MAX_RING; d >= LOOP_MIN_RING; d--) {
+            if (isRingFullySafe(bossX, bossY, d)) { ringD = d; break; }
+        }
+        if (ringD < 0) {
+            if (loopMode) Microbot.log("[Loop] Safe ring around the Hunllef broke - back to lanes");
+            loopMode = false;
+            loopRingSize = -1;
+            return false;
+        }
+        if (!loopMode) {
+            // Enter only once the floor is mostly hazard; while in loop mode, stay while a ring exists (no flapping).
+            int safe = 0, total = 0;
+            for (int x = arenaMinX; x <= arenaMaxX; x++) {
+                for (int y = arenaMinY; y <= arenaMaxY; y++) {
+                    total++;
+                    if (isTileFullySafe(x, y, bossX, bossY)) safe++;
+                }
+            }
+            if (total == 0 || (double) safe / total > LOOP_MAX_SAFE_FRACTION) return false;
+            loopMode = true;
+            Microbot.log(String.format("[Loop] Safe ring around the Hunllef (distance %d, %d tiles, %d%% of arena safe) - circling it",
+                    ringD, ringD * 8, safe * 100 / total));
+        }
+        if (ringD != loopRingSize && loopRingSize > 0) {
+            Microbot.log(String.format("[Loop] Ring changed to distance %d", ringD));
+        }
+        loopRingSize = ringD;
+        evadeTarget = null;
+
+        List<int[]> ring = ringTiles(bossX, bossY, ringD);
+        int n = ring.size();
+        int idx = -1;
+        for (int i = 0; i < n; i++) {
+            if (ring.get(i)[0] == px && ring.get(i)[1] == py) { idx = i; break; }
+        }
+        if (idx < 0) {
+            // Not on the ring (just entered loop mode, or the boss moved): get onto its nearest tile.
+            int[] nearest = null;
+            int best = Integer.MAX_VALUE;
+            for (int[] t : ring) {
+                int d = Math.max(Math.abs(t[0] - px), Math.abs(t[1] - py));
+                if (d < best) { best = d; nearest = t; }
+            }
+            return nearest != null && walkSafeRoute(px, py, nearest[0], nearest[1], bossX, bossY, tornadoes);
+        }
+
+        if (!tornadoes.isEmpty()) {
+            int[] cur = simulateLoop(ring, idx, loopDir, tornadoes);
+            int[] other = simulateLoop(ring, idx, -loopDir, tornadoes);
+            boolean flip = (cur[0] < 1 && other[0] >= 1)
+                    || (cur[0] < 1 && other[0] < 1 && other[1] < cur[1]);
+            if (flip) {
+                loopDir = -loopDir;
+                Microbot.log(String.format("[Loop] Reversing - tornado ahead (closest pass %d -> %d) %s",
+                        cur[0], other[0], vitalsTag()));
+                cur = other;
+            }
+            if (cur[0] < 1) hitExpectedUntil = now + HIT_EXPECTED_MS;
+
+            // Attack from the ring while the tornadoes are far behind: hold still for the shot, then keep circling.
+            int gap = minTornadoDistance(px, py, tornadoes);
+            if (holdingForAttack() && gap > 2) return true;
+            if (config.autoAttack() && hunllef != null && (isBowEquipped() || isStaffEquipped())
+                    && weaponReady() && gap > 3
+                    && simulateLoop(ring, idx, loopDir, tornadoesAfterPause(px, py, tornadoes))[0] >= 2) {
+                Microbot.log(String.format("[Loop] Attacking from the ring (tornado gap %d)", gap));
+                hunllef.click("attack");
+                timeAttack = now;
+                lastAttackTick = gameTickCount;
+                midRunAttackTick = gameTickCount;
+                return true;
+            }
+        }
+
+        int[] target = null;
+        for (int k = LOOP_LOOKAHEAD; k >= 1; k--) {
+            int[] t = ring.get(Math.floorMod(idx + loopDir * k, n));
+            if (walkLineStaysOnRing(px, py, t, bossX, bossY, ringD)
+                    && isStraightPathFullySafe(px, py, t[0], t[1], bossX, bossY)) { target = t; break; }
+        }
+        if (target == null) return false;
+
+        // Keep the current walk while it's still heading along the ring our way and has room left; else re-click.
+        LocalPoint dest = Microbot.getClient().getLocalDestinationLocation();
+        if (dest != null && !(dest.getSceneX() == target[0] && dest.getSceneY() == target[1])) {
+            for (int k = 3; k <= LOOP_LOOKAHEAD; k++) {
+                int[] t = ring.get(Math.floorMod(idx + loopDir * k, n));
+                if (t[0] == dest.getSceneX() && t[1] == dest.getSceneY()) return true;
+            }
+        }
+        if (!isAlreadyWalkingTo(target[0], target[1])) {
+            lastWalkTargetX = target[0];
+            lastWalkTargetY = target[1];
+            walkExactTile(target[0], target[1]);
+        }
+        return true;
+    }
+
+    /** True if the game's walk from (px,py) to t never leaves the ring (no corner shortcut off it). */
+    private static boolean walkLineStaysOnRing(int px, int py, int[] t, int bx, int by, int d) {
+        int[] pos = {px, py};
+        while (pos[0] != t[0] || pos[1] != t[1]) {
+            stepToward(pos, t[0], t[1]);
+            if (Math.max(Math.abs(pos[0] - bx), Math.abs(pos[1] - by)) != d) return false;
+        }
+        return true;
+    }
+
+    /** True if every tile at Chebyshev distance d from the boss centre is fully safe (a closed loop). */
+    private boolean isRingFullySafe(int bossX, int bossY, int d) {
+        for (int[] t : ringTiles(bossX, bossY, d)) {
+            if (!isTileFullySafe(t[0], t[1], bossX, bossY)) return false;
+        }
+        return true;
+    }
+
+    /** The 8d tiles at Chebyshev distance d from (bx,by), in order around the square. */
+    private static List<int[]> ringTiles(int bx, int by, int d) {
+        List<int[]> ring = new ArrayList<>(8 * d);
+        for (int x = bx - d; x < bx + d; x++) ring.add(new int[]{x, by - d});
+        for (int y = by - d; y < by + d; y++) ring.add(new int[]{bx + d, y});
+        for (int x = bx + d; x > bx - d; x--) ring.add(new int[]{x, by + d});
+        for (int y = by + d; y > by - d; y--) ring.add(new int[]{bx - d, y});
+        return ring;
+    }
+
+    /**
+     * Simulates running around the ring from index idx in direction dir for {@link #LOOP_SIM_TICKS} ticks, with
+     * tornadoes chasing (one free step first for the click latency).
+     *
+     * @return {closest end-of-tick gap (0 = hit), tornado hits}
+     */
+    private int[] simulateLoop(List<int[]> ring, int idx, int dir, List<int[]> tornadoes) {
+        int n = ring.size();
+        List<int[]> tz = new ArrayList<>();
+        for (int[] t : tornadoes) tz.add(new int[]{t[0], t[1]});
+        int[] pos = ring.get(idx);
+        int margin = Integer.MAX_VALUE, hits = 0;
+        for (int tick = 0; tick < CLICK_LATENCY_TICKS + LOOP_SIM_TICKS; tick++) {
+            if (tick >= CLICK_LATENCY_TICKS) {
+                idx = Math.floorMod(idx + dir * runSpeed, n);
+                pos = ring.get(idx);
+            }
+            for (int[] t : tz) stepToward(t, pos[0], pos[1]);
+            int gap = minTornadoDistance(pos[0], pos[1], tz);
+            margin = Math.min(margin, gap);
+            hits += tornadoesOn(pos[0], pos[1], tz);
+        }
+        return new int[]{margin, hits};
+    }
+
+    /**
      * The lane end to run to: a clean run (never caught) first, then the most room from the tornadoes on the way,
-     * then the fewest hits, then the most room at the end. Picking the end merely farthest from the tornadoes once
-     * sent us down a lane that passed one at gap 1.
+     * then the most room at the end. Picking the end merely farthest from the tornadoes once sent us down a lane
+     * that passed one at gap 1. Returns null when neither end is clean - then the evade, which weighs every tile,
+     * decides (picking the less-bad end once ran us 11 tiles through two tornadoes sitting on the lane).
      */
     private int[] pickRunEnd(int px, int py, List<int[]> tornadoes) {
+        if (tornadoes.isEmpty()) return safeLaneTileA;
+        int[] end = pickLessBadRunEnd(px, py, tornadoes);
+        return outrunsTornadoes(px, py, end, tornadoes) ? end : null;
+    }
+
+    /** The lane end whose run the simulation scores best, clean or not: margin, then fewest hits, then end gap. */
+    private int[] pickLessBadRunEnd(int px, int py, List<int[]> tornadoes) {
         if (tornadoes.isEmpty()) return safeLaneTileA;
         int[] a = simulateRun(px, py, safeLaneTileA, tornadoes);
         int[] b = simulateRun(px, py, safeLaneTileB, tornadoes);
@@ -1280,9 +1532,14 @@ public class CustomGauntletScript extends Script {
      * {@link #SIM_TICKS_AFTER_ARRIVAL} extra ticks standing on {@code end}, so a tile they'd catch us on right
      * after we stop also scores badly. Tornadoes moving after us is the conservative order.
      *
-     * @return {min end-of-tick gap over the whole run (0 = hit), gap at the end of the simulation, ticks hit}
+     * @return {min end-of-tick gap over the whole run (0 = hit), gap at the end of the simulation, tornado hits}
      */
     private int[] simulateRun(int px, int py, int[] end, List<int[]> tornadoes) {
+        return simulateRun(px, py, end, tornadoes, CLICK_LATENCY_TICKS, SIM_TICKS_AFTER_ARRIVAL);
+    }
+
+    /** {@link #simulateRun} with explicit click-latency ticks and ticks simulated standing on {@code end}. */
+    private int[] simulateRun(int px, int py, int[] end, List<int[]> tornadoes, int latencyTicks, int afterTicks) {
         if (tornadoes.isEmpty()) return new int[]{Integer.MAX_VALUE, Integer.MAX_VALUE, 0};
         List<int[]> line = new ArrayList<>();
         int[] pos = {px, py};
@@ -1294,7 +1551,15 @@ public class CustomGauntletScript extends Script {
         for (int[] t : tornadoes) tz.add(new int[]{t[0], t[1]});
 
         int cx = px, cy = py, idx = 0, margin = Integer.MAX_VALUE, gap = Integer.MAX_VALUE, hits = 0;
-        int ticks = (line.size() + runSpeed - 1) / runSpeed + SIM_TICKS_AFTER_ARRIVAL;
+        // The click lands mid-tick, so the tornadoes step before we do (seen: 1 tile in the first tick after a
+        // click with an adjacent tornado, then hit). Modelling it keeps every outrun check honest.
+        for (int l = 0; l < latencyTicks; l++) {
+            for (int[] t : tz) stepToward(t, cx, cy);
+            gap = minTornadoDistance(cx, cy, tz);
+            margin = Math.min(margin, gap);
+            hits += tornadoesOn(cx, cy, tz);
+        }
+        int ticks = (line.size() + runSpeed - 1) / runSpeed + afterTicks;
         for (int tick = 0; tick < ticks; tick++) {
             for (int k = 0; k < runSpeed && idx < line.size(); k++, idx++) {
                 cx = line.get(idx)[0];
@@ -1303,9 +1568,16 @@ public class CustomGauntletScript extends Script {
             for (int[] t : tz) stepToward(t, cx, cy);
             gap = minTornadoDistance(cx, cy, tz);
             margin = Math.min(margin, gap);
-            if (gap == 0) hits++;
+            hits += tornadoesOn(cx, cy, tz);
         }
         return new int[]{margin, gap, hits};
+    }
+
+    /** Tornadoes ending the tick on (x,y): each one hits, so a bunched group on our tile counts several times. */
+    private static int tornadoesOn(int x, int y, List<int[]> tz) {
+        int n = 0;
+        for (int[] t : tz) if (t[0] == x && t[1] == y) n++;
+        return n;
     }
 
     /** Moves {@code pos} one tile toward (tx,ty) the way the game walks: major axis straight, then diagonal. */
@@ -1451,7 +1723,7 @@ public class CustomGauntletScript extends Script {
                 if (walkLineCrossesBoss(px, py, x, y, bossX, bossY)) continue;
                 int hits = simulateRun(px, py, new int[]{x, y}, tornadoes)[2];
                 boolean nearBoss = isUnderBoss(x, y, bossX, bossY, 1);
-                int hazards = hazardsOnWalkLine(px, py, x, y, bossX, bossY);
+                int hazards = hazardLandings(px, py, x, y);
                 int dist = Math.max(Math.abs(x - px), Math.abs(y - py));
                 boolean better = best == null
                         || (hits != bestHits ? hits < bestHits
@@ -1472,7 +1744,8 @@ public class CustomGauntletScript extends Script {
 
     private int[] pickFleeTile(int px, int py, int bossX, int bossY, List<int[]> tornadoes, boolean avoidTornadoes) {
         int[] best = null;
-        int bestDist = Integer.MAX_VALUE, bestOffAxis = Integer.MAX_VALUE, bestHazards = Integer.MAX_VALUE;
+        int bestLandings = Integer.MAX_VALUE, bestDist = Integer.MAX_VALUE, bestOffAxis = Integer.MAX_VALUE,
+                bestHazards = Integer.MAX_VALUE;
         for (int x = arenaMinX; x <= arenaMaxX; x++) {
             for (int y = arenaMinY; y <= arenaMaxY; y++) {
                 if (x == px && y == py) continue;
@@ -1483,19 +1756,40 @@ public class CustomGauntletScript extends Script {
                 int adx = Math.abs(x - px), ady = Math.abs(y - py);
                 int dist = Math.max(adx, ady);
                 int offAxis = Math.min(adx, ady);
-                if (dist > bestDist || (dist == bestDist && offAxis > bestOffAxis)) continue;
+                // Floor damage lands on the tiles where a tick ends: fewest of those on hazard first (closest-first
+                // fled 4 tiles across the hazard for 12-14 damage a tick), then the closest, straightest tile.
+                int landings = hazardLandings(px, py, x, y);
+                int hazards = hazardsOnWalkLine(px, py, x, y, bossX, bossY);
+                boolean better = best == null
+                        || (landings != bestLandings ? landings < bestLandings
+                        : dist != bestDist ? dist < bestDist
+                        : offAxis != bestOffAxis ? offAxis < bestOffAxis
+                        : hazards < bestHazards);
+                if (!better) continue;
                 // The nearest safe tile is worthless if the run there ends a tick on a tornado: a flee once
                 // headed 2 tiles straight at one and the player stood in it on the hazard (65 damage in 3 ticks).
                 if (avoidTornadoes && !tornadoes.isEmpty() && simulateRun(px, py, new int[]{x, y}, tornadoes)[0] < 1) continue;
-                int hazards = hazardsOnWalkLine(px, py, x, y, bossX, bossY);
-                if (dist == bestDist && offAxis == bestOffAxis && hazards >= bestHazards) continue;
                 best = new int[]{x, y};
+                bestLandings = landings;
                 bestDist = dist;
                 bestOffAxis = offAxis;
                 bestHazards = hazards;
             }
         }
         return best;
+    }
+
+    /** Hazard tiles we'd end a tick on running (runSpeed tiles a tick) the game's walk from (fx,fy) to (tx,ty). */
+    private int hazardLandings(int fx, int fy, int tx, int ty) {
+        int n = 0, step = 0;
+        int[] pos = {fx, fy};
+        while (pos[0] != tx || pos[1] != ty) {
+            stepToward(pos, tx, ty);
+            step++;
+            boolean landing = step % runSpeed == 0 || (pos[0] == tx && pos[1] == ty);
+            if (landing && isOnDangerousTile(pos[0], pos[1])) n++;
+        }
+        return n;
     }
 
     /** True if the game's walk from (fx,fy) to (tx,ty) would pass through the Hunllef's footprint. */
@@ -1785,6 +2079,13 @@ public class CustomGauntletScript extends Script {
     private void recalculateSafeLaneAndRoute(int px, int py, int bossX, int bossY, List<int[]> tornadoes) {
         // Any failure below drops the lane: keeping the old (now unsafe) one left the dodge with no safe route
         // and no fallback, so it stood still on the hazard. With no lane the dodge escapes across danger instead.
+        // A floor change doesn't break a lane we're running on: keep it while it's still fully safe. Re-picking
+        // here once swapped a clear run north for a lane with two tornadoes between us and its far end.
+        if (safeLaneTileA != null && safeLaneTileB != null && !inTransition && isPlayerOnSafeLane(px, py)
+                && isSegmentFullySafe(safeLaneTileA, safeLaneTileB, bossX, bossY)) {
+            return;
+        }
+
         List<SafeSegment> allSegments = findAllSafeSegments(bossX, bossY);
         if (allSegments.isEmpty()) { dropLane(); return; }
 
@@ -2102,6 +2403,8 @@ public class CustomGauntletScript extends Script {
         currentShuttleTarget = null;
         safeLaneTileA = null;
         safeLaneTileB = null;
+        loopMode = false;
+        loopRingSize = -1;
         currentLaneTiles = new ArrayList<>();
         transitionWaypoints = new ArrayList<>();
         transitionWaypointIndex = 0;
@@ -2342,6 +2645,36 @@ public class CustomGauntletScript extends Script {
 
     public void projMageBlastEnd() {
         magicBlastEnd = System.currentTimeMillis();
+    }
+
+    /** Client thread (AnimationChanged): no logging here. */
+    public void onPlayerAnimation(int anim) {
+        if (anim == -1) return;
+        if (PLAYER_ATTACK_ANIMS.contains(anim)) lastAttackFiredTick = gameTickCount;
+        else unknownPlayerAnim = anim;
+    }
+
+    /** The weapon is off cooldown (last shot 4+ ticks ago), so an attack click fires on the next tick. */
+    private boolean weaponReady() {
+        return gameTickCount - lastAttackFiredTick >= MID_RUN_ATTACK_MIN_TICKS
+                && gameTickCount - lastAttackTick >= ATTACK_RECLICK_TICKS;
+    }
+
+    /** True while a mid-run/loop attack click is still waiting for its shot (hold the run for it, up to the pause). */
+    private boolean holdingForAttack() {
+        return midRunAttackTick >= 0 && lastAttackFiredTick < midRunAttackTick
+                && gameTickCount - midRunAttackTick < MID_RUN_ATTACK_PAUSE_TICKS;
+    }
+
+    /** Tornado positions after they chase (px,py) for the ticks an attack click stands us still. */
+    private static List<int[]> tornadoesAfterPause(int px, int py, List<int[]> tornadoes) {
+        List<int[]> afterPause = new ArrayList<>();
+        for (int[] t : tornadoes) {
+            int[] moved = {t[0], t[1]};
+            for (int i = 0; i < MID_RUN_ATTACK_PAUSE_TICKS; i++) stepToward(moved, px, py);
+            afterPause.add(moved);
+        }
+        return afterPause;
     }
 
     public void projMagicSeen() {
@@ -2591,6 +2924,11 @@ public class CustomGauntletScript extends Script {
 
         if (currentHp < config.lowHpEatValue() || currentHp < CRITICAL_HP) {
             eatFood();
+        } else if (!tornadoesActive && isPlayerOnSafeTile()
+                && currentHp <= Microbot.getClient().getRealSkillLevel(Skill.HITPOINTS) - TOPUP_HP_MARGIN
+                && Rs2Inventory.count("Paddlefish") > TOPUP_MIN_FISH) {
+            // Top up between tornado phases: a phase that opens on 60-66 HP left a 4-tornado stack at 1 HP.
+            eatFood();
         }
     }
 
@@ -2598,8 +2936,22 @@ public class CustomGauntletScript extends Script {
         if (!config.enableFood()) return;
         if (now - timeEatAttempted < CD_RECENTLY) return;
         int currentHp = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
-        Microbot.log(String.format("[Action] Eat food: Paddlefish | hp=%d/%d", currentHp, config.lowHpEatValue()));
+        // Out of food: every eat click still held walk clicks back 600ms, which slowed the final dodges.
+        int fish = Rs2Inventory.count("Paddlefish");
+        if (fish <= 0) {
+            if (!outOfFoodLogged) Microbot.log(String.format("[Action] Out of food (Paddlefish) | hp=%d", currentHp));
+            outOfFoodLogged = true;
+            return;
+        }
+        outOfFoodLogged = false;
+        // The last eat hasn't healed yet: a second click may eat a second fish for the same hit. Wait for the heal
+        // (HP rises) or EAT_CONFIRM_TICKS, unless a big hit landed since.
+        if (lastEatTick >= 0 && gameTickCount - lastEatTick < EAT_CONFIRM_TICKS
+                && currentHp <= lastEatHp && currentHp > lastEatHp - EAT_BIG_HIT) return;
+        Microbot.log(String.format("[Action] Eat food: Paddlefish | hp=%d/%d | fish left=%d", currentHp, config.lowHpEatValue(), fish - 1));
         Rs2Inventory.interact("Paddlefish", "Eat");
+        lastEatTick = gameTickCount;
+        lastEatHp = currentHp;
         timeEatAttempted = now;
         lastEatClickAt = now;
         // Don't queue an attack off the back of eating while kiting — it would path us toward the boss
@@ -2649,17 +3001,11 @@ public class CustomGauntletScript extends Script {
         if (runAnchorX < 0) setRunAnchor(px, py);
         int ran = Math.max(Math.abs(px - runAnchorX), Math.abs(py - runAnchorY));
         if (ran < MID_RUN_ATTACK_TILES) return false;
-        if (gameTickCount - lastAttackTick < MID_RUN_ATTACK_MIN_TICKS) return false;
+        if (!weaponReady()) return false;
         if (nearestTornado <= 3 || distToTarget <= 2) return false;
         // The attack click stops us for about 2 ticks while the tornadoes keep chasing. A gap-5 attack once let
         // them close to gap 1 by the lane end, so only attack if the rest of the run still keeps 2 tiles clear.
-        List<int[]> afterPause = new ArrayList<>();
-        for (int[] t : tornadoes) {
-            int[] moved = {t[0], t[1]};
-            for (int i = 0; i < MID_RUN_ATTACK_PAUSE_TICKS; i++) stepToward(moved, px, py);
-            afterPause.add(moved);
-        }
-        if (simulateRun(px, py, currentShuttleTarget, afterPause)[0] < 2) return false;
+        if (simulateRun(px, py, currentShuttleTarget, tornadoesAfterPause(px, py, tornadoes))[0] < 2) return false;
 
         Microbot.log(String.format("[Action] Mid-run attack after %d tiles (lane %d, tornado gap %d)", ran, laneTiles, nearestTornado));
         hunllef.click("attack");

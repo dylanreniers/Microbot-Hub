@@ -58,7 +58,7 @@ import static net.runelite.client.plugins.microbot.Microbot.log;
 )
 @UnderDevelopment
 public class CustomGauntletPlugin extends Plugin {
-    public static final String version = "1.9.15";
+    public static final String version = "1.9.20";
 
     private static final int RANGE_PROJECTILE_MINIBOSS = 1705;
     private static final int MAGE_PROJECTILE_MINIBOSS = 1701;
@@ -200,6 +200,10 @@ public class CustomGauntletPlugin extends Plugin {
 
     @Subscribe
     public void onAnimationChanged(AnimationChanged event) {
+        if (event.getActor() == client.getLocalPlayer()) {
+            script.onPlayerAnimation(event.getActor().getAnimation());
+            return;
+        }
         if (!(event.getActor() instanceof NPC)) return;
 
         NPC npc = (NPC) event.getActor();
