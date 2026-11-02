@@ -4246,7 +4246,7 @@ public class CustomGauntletScript extends Script {
                         runEatAt + EAT_PER_EXPECTED_HIT * evadeExpectedHits);
             }
             if (hpNow < runEatAt && isPlayerInFlight() && !hand.isPending("walk")) {
-                eatFood();
+                eatFood(runEatAt);
                 return;
             }
             // A flee/evade or a close tornado needs the next click to be a walk; an eat now delays it 600ms. Below
@@ -4264,13 +4264,13 @@ public class CustomGauntletScript extends Script {
         int currentHp = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
         if (currentHp <= 0) return;
 
+        int topUpBelow = Microbot.getClient().getRealSkillLevel(Skill.HITPOINTS) - TOPUP_HP_MARGIN + 1;
         if (currentHp < config.lowHpEatValue() || currentHp < CRITICAL_HP) {
-            eatFood();
-        } else if (!tornadoesActive && isPlayerOnSafeTile()
-                && currentHp <= Microbot.getClient().getRealSkillLevel(Skill.HITPOINTS) - TOPUP_HP_MARGIN
+            eatFood(Math.max(config.lowHpEatValue(), CRITICAL_HP));
+        } else if (!tornadoesActive && isPlayerOnSafeTile() && currentHp < topUpBelow
                 && Rs2Inventory.count("Paddlefish") > TOPUP_MIN_FISH) {
             // Top up between tornado phases: a phase that opens on 60-66 HP left a 4-tornado stack at 1 HP.
-            eatFood();
+            eatFood(topUpBelow);
         }
     }
 
@@ -4295,18 +4295,18 @@ public class CustomGauntletScript extends Script {
                         eatAt + EAT_PER_EXPECTED_HIT * evadeExpectedHits);
             }
             if (hp < eatAt && isPlayerInFlight() && !hand.isPending("walk")) {
-                eatFood();
+                eatFood(eatAt);
                 return;
             }
             // As normal eating: don't hold a needed walk click back, unless low or a hit is coming anyway.
             if (hp >= CRITICAL_HP && movementCritical && now >= hitExpectedUntil) return;
-            if (hp < eatAt || hp < CRITICAL_HP) eatFood();
+            if (hp < eatAt || hp < CRITICAL_HP) eatFood(Math.max(eatAt, CRITICAL_HP));
         } else {
             if (hp < CRITICAL_HP) {
-                eatFood(); // emergency: on a hazard too, while fleeing it
+                eatFood(CRITICAL_HP); // emergency: on a hazard too, while fleeing it
                 return;
             }
-            if (hpTopUpPending && isPlayerOnSafeTile()) eatFood();
+            if (hpTopUpPending && isPlayerOnSafeTile()) eatFood(target);
         }
     }
 
@@ -4324,10 +4324,16 @@ public class CustomGauntletScript extends Script {
         return Math.min(config.tornadoTopUpHp(), Microbot.getClient().getRealSkillLevel(Skill.HITPOINTS));
     }
 
-    private void eatFood() {
+    /**
+     * Queues one paddlefish if HP is still below {@code eatBelow} (the threshold that asked for it). HP is read again
+     * here and once more when the hand gets to the click: a fish queued at 76 HP (top-up to 80) was eaten at 96 after
+     * the previous fish healed in between.
+     */
+    private void eatFood(int eatBelow) {
         if (!config.enableFood()) return;
         if (now - timeEatAttempted < CD_RECENTLY) return;
         int currentHp = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
+        if (currentHp >= eatBelow) return;
         // A tornado this close while we stand (or a walk is waiting) needs the next click to be the dodge walk: an eat
         // went first and we stood 2 ticks while a 4-tornado stack walked onto us. Eating on the run is fine (it doesn't
         // stop us), and below CRITICAL_HP the eat always goes.
@@ -4350,9 +4356,11 @@ public class CustomGauntletScript extends Script {
         int eatRef = Math.max(lastEatTick, hand.lastLandedTick("eat"));
         if (eatRef >= 0 && gameTickCount - eatRef < EAT_CONFIRM_TICKS
                 && currentHp <= lastEatHp && currentHp > lastEatHp - EAT_BIG_HIT) return;
-        Microbot.log(String.format("[Action] Eat food: Paddlefish | hp=%d/%d | fish left=%d", currentHp, config.lowHpEatValue(), fish - 1));
+        Microbot.log(String.format("[Action] Eat food: Paddlefish | hp=%d (eating below %d) | fish left=%d", currentHp, eatBelow, fish - 1));
         hand.submit(ClickHand.Kind.EAT, "eat", ClickHand.Tab.INVENTORY, () -> Rs2Inventory.interact("Paddlefish", "Eat"),
-                () -> Rs2Inventory.contains("Paddlefish"), "eat Paddlefish", () -> itemCenter("Paddlefish", -1));
+                () -> Rs2Inventory.contains("Paddlefish")
+                        && Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS) < eatBelow,
+                "eat Paddlefish", () -> itemCenter("Paddlefish", -1));
         lastEatTick = gameTickCount;
         lastEatHp = currentHp;
         timeEatAttempted = now;
