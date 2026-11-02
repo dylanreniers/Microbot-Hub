@@ -16,12 +16,16 @@ import java.util.List;
 public class GauntletGrid {
 
     public static final int GRID_SIZE = 7;
-    public static final int BASE_X = 3;
-    public static final int BASE_Y = 3;
+    // The Hunllef room is the centre of the 7x7 maze; the starting base is one room beside it.
+    public static final int HUNLLEF_X = 3;
+    public static final int HUNLLEF_Y = 3;
     public static final int ROOM_TILE_SIZE = 16;
 
     private final GauntletRoom[][] rooms = new GauntletRoom[GRID_SIZE][GRID_SIZE];
     private WorldPoint baseCenterPoint = null;
+    private WorldPoint hunllefCenterPoint = null; // null until we know which side of the base the Hunllef room is
+    private int baseGridX = -1;
+    private int baseGridY = -1;
 
     public GauntletGrid() {
         for (int x = 0; x < GRID_SIZE; x++) {
@@ -37,7 +41,38 @@ public class GauntletGrid {
     }
 
     public GauntletRoom getBaseRoom() {
-        return rooms[BASE_X][BASE_Y];
+        return getRoom(baseGridX, baseGridY);
+    }
+
+    /**
+     * Places the Hunllef room one room from the base in direction (dirX, dirY) and puts it at the grid centre, so the
+     * base sits on its opposite side.
+     */
+    public void setHunllefDirection(int dirX, int dirY) {
+        hunllefCenterPoint = new WorldPoint(baseCenterPoint.getX() + dirX * ROOM_TILE_SIZE,
+                baseCenterPoint.getY() + dirY * ROOM_TILE_SIZE, baseCenterPoint.getPlane());
+        baseGridX = HUNLLEF_X - dirX;
+        baseGridY = HUNLLEF_Y - dirY;
+        GauntletRoom base = getBaseRoom();
+        base.setRoomType(GauntletRoom.RoomType.STARTING_BASE);
+        base.setState(GauntletRoom.ExplorationState.EXPLORED);
+    }
+
+    /** Ring of a room around the Hunllef room: 1 = the 8 rooms touching it (the base among them), 3 = the outer rim. */
+    public static int ringOf(int gx, int gy) {
+        return Math.max(Math.abs(gx - HUNLLEF_X), Math.abs(gy - HUNLLEF_Y));
+    }
+
+    /** All rooms in rings 1..ring (never the Hunllef room). */
+    public List<GauntletRoom> getRoomsWithinRing(int ring) {
+        List<GauntletRoom> list = new ArrayList<>();
+        for (int x = 0; x < GRID_SIZE; x++) {
+            for (int y = 0; y < GRID_SIZE; y++) {
+                int r = ringOf(x, y);
+                if (r >= 1 && r <= ring) list.add(rooms[x][y]);
+            }
+        }
+        return list;
     }
 
     /** Returns all adjacent orthogonal rooms (North, South, East, West). */
@@ -57,25 +92,23 @@ public class GauntletGrid {
         return adjacent;
     }
 
-    /** Returns rooms adjacent to base (the initial scout ring). */
-    public List<GauntletRoom> getBaseAdjacentRooms() {
-        return getAdjacentRooms(BASE_X, BASE_Y);
-    }
-
     /**
-     * Converts a WorldPoint in the dungeon to the corresponding grid coordinate [x, y].
+     * Grid coordinate [x, y] of an instance-coords WorldPoint ({@code WorldPoint.fromLocal}), measured from the Hunllef
+     * room. Null while the Hunllef room isn't placed yet, or for a point outside the maze.
      */
     public int[] getGridCoordinates(WorldPoint point) {
-        if (baseCenterPoint == null || point == null) return new int[]{BASE_X, BASE_Y};
-        int diffX = point.getX() - baseCenterPoint.getX();
-        int diffY = point.getY() - baseCenterPoint.getY();
-
-        int gx = BASE_X + Math.round((float) diffX / ROOM_TILE_SIZE);
-        int gy = BASE_Y + Math.round((float) diffY / ROOM_TILE_SIZE);
-
-        gx = Math.max(0, Math.min(GRID_SIZE - 1, gx));
-        gy = Math.max(0, Math.min(GRID_SIZE - 1, gy));
+        if (hunllefCenterPoint == null || point == null) return null;
+        int gx = HUNLLEF_X + Math.round((float) (point.getX() - hunllefCenterPoint.getX()) / ROOM_TILE_SIZE);
+        int gy = HUNLLEF_Y + Math.round((float) (point.getY() - hunllefCenterPoint.getY()) / ROOM_TILE_SIZE);
+        if (gx < 0 || gx >= GRID_SIZE || gy < 0 || gy >= GRID_SIZE) return null;
         return new int[]{gx, gy};
+    }
+
+    /** Centre (instance coords) of a grid room, or null while the Hunllef room isn't placed. */
+    public WorldPoint getRoomCenter(int gx, int gy) {
+        if (hunllefCenterPoint == null) return null;
+        return new WorldPoint(hunllefCenterPoint.getX() + (gx - HUNLLEF_X) * ROOM_TILE_SIZE,
+                hunllefCenterPoint.getY() + (gy - HUNLLEF_Y) * ROOM_TILE_SIZE, hunllefCenterPoint.getPlane());
     }
 
     /** Finds the highest progression score room among currently scouted/accessible rooms. */

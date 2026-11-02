@@ -33,7 +33,7 @@ public class GauntletRoom {
 
     private final int gridX;
     private final int gridY;
-    private final RoomType roomType;
+    private RoomType roomType;
 
     private ExplorationState state = ExplorationState.UNEXPLORED;
     private DemibossType demiboss = DemibossType.NONE;
@@ -51,13 +51,16 @@ public class GauntletRoom {
     // Center tile of the room
     private WorldPoint centerPoint;
 
+    // Contents at the last scan that found anything, so a re-scan only logs what changed
+    private String lastScanSummary = null;
+
     public GauntletRoom(int gridX, int gridY) {
         this.gridX = gridX;
         this.gridY = gridY;
 
-        if (gridX == 3 && gridY == 3) {
-            this.roomType = RoomType.STARTING_BASE;
-            this.state = ExplorationState.EXPLORED;
+        // The Hunllef room is the centre of the maze; the base is one of its 4 neighbours (set once known).
+        if (gridX == GauntletGrid.HUNLLEF_X && gridY == GauntletGrid.HUNLLEF_Y) {
+            this.roomType = RoomType.HUNLLEF;
         } else if (isOuterDemibossLocation(gridX, gridY)) {
             this.roomType = RoomType.OUTER_DEMIBOSS;
         } else {

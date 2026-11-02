@@ -10,6 +10,8 @@ import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GroundObjectDespawned;
 import net.runelite.api.events.GroundObjectSpawned;
+import net.runelite.api.events.HitsplatApplied;
+import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.ProjectileMoved;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.client.callback.ClientThread;
@@ -58,7 +60,7 @@ import static net.runelite.client.plugins.microbot.Microbot.log;
 )
 @UnderDevelopment
 public class CustomGauntletPlugin extends Plugin {
-    public static final String version = "1.9.20";
+    public static final String version = "1.13.2";
 
     private static final int RANGE_PROJECTILE_MINIBOSS = 1705;
     private static final int MAGE_PROJECTILE_MINIBOSS = 1701;
@@ -174,18 +176,23 @@ public class CustomGauntletPlugin extends Plugin {
         switch (projectileId) {
             case MAGE_PROJECTILE:
             case CG_MAGE_PROJECTILE:
+                script.onBossProjectile(event.getProjectile(), Rs2PrayerEnum.PROTECT_MAGIC, "attack");
+                // fall through
             case MAGE_PROJECTILE_MINIBOSS:
                 script.animMagicSeen();
                 break;
 
             case RANGE_PROJECTILE:
             case CG_RANGE_PROJECTILE:
+                script.onBossProjectile(event.getProjectile(), Rs2PrayerEnum.PROTECT_RANGE, "attack");
+                // fall through
             case RANGE_PROJECTILE_MINIBOSS:
                 script.animRangeSeen();
                 break;
 
             case CG_DEACTIVATE_MAGE_PROJECTILE:
             case DEACTIVATE_MAGE_PROJECTILE:
+                script.onBossProjectile(event.getProjectile(), Rs2PrayerEnum.PROTECT_MAGIC, "prayer-disable");
                 projectileCount++;
                 if (projectileCount >= 56) {
                     script.projMageBlastEnd();
@@ -196,6 +203,17 @@ public class CustomGauntletPlugin extends Plugin {
                 break;
         }
 
+    }
+
+    @Subscribe
+    public void onNpcSpawned(NpcSpawned event) {
+        script.onNpcSpawned(event.getNpc());
+    }
+
+    @Subscribe
+    public void onHitsplatApplied(HitsplatApplied event) {
+        if (event.getActor() != client.getLocalPlayer()) return;
+        script.onPlayerHitsplat(event.getHitsplat());
     }
 
     @Subscribe

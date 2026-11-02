@@ -94,6 +94,30 @@ public interface CustomGauntletConfig extends Config {
     )
     default int lowHpEatValue() { return 65; }
 
+    @ConfigItem(
+            keyName = "eatDuringTornadoes",
+            name = "Eat/drink only during tornadoes",
+            description = "Keeps the calm phases for attacking. When tornadoes spawn: eat up to the top-up HP, then eat below "
+                    + "'Eat below HP' and restore prayer (health first). When they despawn: top up once more, then only "
+                    + "emergency eats/drinks until the next tornadoes.",
+            position = 2,
+            section = "foodSection"
+    )
+    default boolean eatDuringTornadoes() { return false; }
+
+    @ConfigItem(
+            keyName = "tornadoTopUpHp",
+            name = "Top up to HP:",
+            description = "With 'Eat/drink only during tornadoes': eat until at least this HP when tornadoes spawn and again when they despawn",
+            position = 3,
+            section = "foodSection"
+    )
+    @Range(
+            min = 1,
+            max = 99
+    )
+    default int tornadoTopUpHp() { return 90; }
+
 
 
     @ConfigItem(

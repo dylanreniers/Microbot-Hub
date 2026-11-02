@@ -3,8 +3,10 @@ package net.runelite.client.plugins.custom.customgauntlet.prep;
 import com.google.inject.Inject;
 import lombok.Getter;
 import lombok.Setter;
+import net.runelite.api.Actor;
 import net.runelite.api.Client;
 import net.runelite.api.GameObject;
+import net.runelite.api.NPC;
 import net.runelite.api.ObjectComposition;
 import net.runelite.api.Player;
 import net.runelite.api.Tile;
@@ -75,10 +77,14 @@ public class CustomGauntletPrepScript extends Script {
     private static final int FRONTIER_SEARCH_TILES = 48; // fallback when cornered: reach for a far unlit node several rooms out
     private static final int GATHER_SEARCH_TILES = 48; // reach resources/mobs several rooms out; game click-to-walk paths there
     private static final int DEMIBOSS_PRAYER_RANGE = 10; // keep the right protection prayer up within this many tiles of a demiboss
-    // The maze is 7x7 rooms of 16 tiles around the base (3,3), so the inner 5x5 ends 2.5 rooms = 40 tiles from
-    // the base centre and the outer rim (demiboss rooms) lies beyond. Phase 1 never targets anything past this
-    // offset; the 2-tile margin keeps rim-doorway nodes (on the 40 boundary) out even if the anchor is slightly off.
-    private static final int RIM_SAFE_OFFSET = 38;
+    // The maze is 7x7 rooms of 16 tiles around the HUNLLEF room (3,3); the base is one room beside it. Phase 1 scouts
+    // in rings around the Hunllef room: ring N ends N.5 rooms = 16N+8 tiles from its centre, and the outer rim (ring 3,
+    // demiboss rooms) is never entered. The 2-tile margin keeps the doorway nodes on a ring's outer edge (which open
+    // the next ring) out even if the anchor is slightly off.
+    private static final int SCOUT_EDGE_MARGIN = 2;
+    private static final int PHASE1_MAX_RING = 2;
+    private static final long HUNLLEF_LOCATE_RETRY_MS = 3000;
+    private static final int ROOM_SCAN_RANGE = 40; // room centres within this many tiles of us are fully in the 104-tile scene
     private static final long PRAYER_TOGGLE_PENDING_MS = 1200; // ~2 ticks for a prayer click to register
     public static final Set<Integer> NODE_IDS = Set.of(35998, 35999, 36101, 36102);
     public static final Set<Integer> LIT_NODE_IDS = Set.of(35992, 36095);
@@ -113,10 +119,18 @@ public class CustomGauntletPrepScript extends Script {
 
     private boolean initialized = false;
     private boolean anchorMissingLogged = false;
+    private boolean hunllefMissingLogged = false;
 
     // Remaining-count supplier for the resource we last clicked. Continuous gather actions don't stop on
     // their own, so once this hits 0 we break the action (step off) instead of overshooting the target.
     private IntSupplier activeGatherRemaining = null;
+
+    // Player animations from a fight (block, unarmed and weapon attacks): not a gather/light still running.
+    private static final Set<Integer> COMBAT_ANIMS = Set.of(420, 424, 422, 423, 426, 428, 440, 1167);
+    private int chosenTargetIndex = -1;   // index of the NPC we clicked Attack on; any other fight was started by the mob
+    private int loggedAttackerIndex = -1; // attacker last logged (one line per attacker)
+    private int scoutRing = 1;            // phase 1: rings around the Hunllef room we gather/scout in (widens to 2)
+    private long lastHunllefLocateAt = 0;
 
     private final Map<Rs2PrayerEnum, Long> lastPrayerToggle = new EnumMap<>(Rs2PrayerEnum.class);
 
@@ -173,10 +187,16 @@ public class CustomGauntletPrepScript extends Script {
                 if (!initialized) {
                     initialized = initBaseAnchor();
                 }
+                if (initialized && grid.getHunllefCenterPoint() == null
+                        && System.currentTimeMillis() - lastHunllefLocateAt > HUNLLEF_LOCATE_RETRY_MS) {
+                    lastHunllefLocateAt = System.currentTimeMillis();
+                    locateHunllefRoom();
+                }
 
                 // Survival: keep the correct protection prayer up near any demiboss, in every phase. They
                 // hit from range, so this must run regardless of what the current phase is doing.
                 updateDemibossProtectionPrayer();
+                handleUnchosenOpponent();
 
                 switch (currentPhase) {
                     case PHASE_1_RESOURCES:
@@ -211,8 +231,11 @@ public class CustomGauntletPrepScript extends Script {
         grid = new GauntletGrid();
         initialized = false;
         anchorMissingLogged = false;
+        hunllefMissingLogged = false;
         activeGatherRemaining = null;
         lastPrayerToggle.clear();
+        scoutRing = 1;
+        lastHunllefLocateAt = 0;
     }
 
     @Override
@@ -253,7 +276,7 @@ public class CustomGauntletPrepScript extends Script {
         //     next material's gate is blocked by us still being busy.
         if (activeGatherRemaining != null && activeGatherRemaining.getAsInt() == 0) {
             activeGatherRemaining = null;
-            if ((Rs2Player.isAnimating() || Rs2Player.isInteracting()) && !Rs2Player.isMoving()) {
+            if (busyWithOwnAction() && !Rs2Player.isMoving()) {
                 Microbot.log("[Prep] Resource target reached - stepping off to stop gathering");
                 stepOffCurrentTile();
                 return;
@@ -272,10 +295,11 @@ public class CustomGauntletPrepScript extends Script {
         //    unreachable one). Frames drop from the kill, looted above.
         if (checklist.getWeaponFrameCount() == 0) {
             Rs2NpcModel weakMob = Microbot.getRs2NpcCache().query()
-                    .where(npc -> WEAK_MOB_IDS.contains(npc.getId()) && isInsideRim(npc.getLocalLocation())).nearest();
+                    .where(npc -> WEAK_MOB_IDS.contains(npc.getId()) && inScoutArea(npc.getLocalLocation())).nearest();
             if (weakMob != null && !weakMob.isDead() && npcTileDist(weakMob) <= GATHER_SEARCH_TILES) {
-                if (!Rs2Player.isInteracting()) {
+                if (!busyWithOwnAction()) {
                     Microbot.log("[Prep] Attacking weak mob for weapon frame");
+                    chosenTargetIndex = weakMob.getIndex();
                     weakMob.click("Attack");
                 }
                 return;
@@ -308,18 +332,25 @@ public class CustomGauntletPrepScript extends Script {
         if (passNearestBarrier()) return;
         if (scoutFrontierNode()) return; // cornered: reach for a far unlit node to open the next room
 
+        // Nothing left that we need in this ring: widen the scout ring by one room (never onto the outer rim).
+        if (scoutRing < PHASE1_MAX_RING && grid.getHunllefCenterPoint() != null) {
+            scoutRing++;
+            Microbot.log(String.format("[Prep] Nothing more we need within ring %d around the Hunllef room - widening the scout ring to %d",
+                    scoutRing - 1, scoutRing));
+            return;
+        }
         Microbot.log("[Prep] Phase 1: nothing reachable to gather/light/pass right now - waiting for a path to open");
     }
 
     /**
      * Pass through the nearest barrier (37339 etc., not the Hunllef barrier) into an adjacent room.
-     * In phase 1 rim barriers are skipped (isInsideRim). An earlier rim check mis-classified inner rooms
-     * because it measured in template coords, which are stitched per room; isInsideRim uses instance coords.
+     * In phase 1 barriers outside the scout ring are skipped (inScoutArea). An earlier rim check mis-classified inner rooms
+     * because it measured in template coords, which are stitched per room; inScoutArea uses instance coords.
      */
     private boolean passNearestBarrier() {
         TileObject door = findNearestPassableBarrier();
         if (door == null) return false;
-        if (!Rs2Player.isMoving() && !Rs2Player.isInteracting()) {
+        if (!Rs2Player.isMoving() && !busyWithOwnAction()) {
             Microbot.log("[Prep] Passing barrier " + door.getId() + " into a new room");
             if (!Rs2GameObject.interact(door, "Quick-pass")
                     && !Rs2GameObject.interact(door, "Pass")
@@ -341,7 +372,7 @@ public class CustomGauntletPrepScript extends Script {
                 int dist = tileDist(obj); // instance-safe local distance
                 if (dist > 25) continue;
                 if (!isPassableBarrier(obj, client)) continue;
-                if (!isInsideRim(obj.getLocalLocation())) continue;
+                if (!inScoutArea(obj.getLocalLocation())) continue;
                 if (dist < bestDist) {
                     bestDist = dist;
                     best = obj;
@@ -412,6 +443,63 @@ public class CustomGauntletPrepScript extends Script {
         }
     }
 
+    /**
+     * True while our own last click is still running: a gather/light animation, or the fight with the NPC we chose
+     * to attack. A mob that attacked us (auto-retaliate makes it our target) and the block/attack animations of
+     * that fight don't count - treating them as busy held every step until the mob was dead.
+     */
+    private boolean busyWithOwnAction() {
+        Player me = Microbot.getClient().getLocalPlayer();
+        if (me == null) return false;
+        if (Rs2Player.isInteracting()) return unchosenOpponent() == null;
+        if (COMBAT_ANIMS.contains(me.getAnimation())) return false;
+        return Rs2Player.isAnimating();
+    }
+
+    /** An NPC we're fighting, read on the client thread (getInteracting() throws anywhere else). */
+    private static final class Opponent {
+        final int index, id;
+        final String name;
+
+        Opponent(NPC npc) {
+            index = npc.getIndex();
+            id = npc.getId();
+            name = npc.getName();
+        }
+    }
+
+    /** The NPC we're fighting that the script didn't click Attack on itself, or null. */
+    private Opponent unchosenOpponent() {
+        return Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            Player me = Microbot.getClient().getLocalPlayer();
+            if (me == null) return null;
+            Actor target = me.getInteracting();
+            if (!(target instanceof NPC)) return null;
+            NPC npc = (NPC) target;
+            return npc.getIndex() == chosenTargetIndex ? null : new Opponent(npc);
+        }).orElse(null);
+    }
+
+    /**
+     * A mob attacked us and we're fighting back. Keep fighting it when the kill is what we're after anyway (a weak
+     * mob while we still need a weapon frame, any shard mob while farming shards, a scorpion/wolf/unicorn that would
+     * chase us); otherwise ignore it - the next click walks us away from it.
+     */
+    private void handleUnchosenOpponent() {
+        Opponent opp = unchosenOpponent();
+        if (opp == null) return;
+        int id = opp.id;
+        boolean useful = (WEAK_MOB_IDS.contains(id) && currentPhase == PrepPhase.PHASE_1_RESOURCES && checklist.getWeaponFrameCount() == 0)
+                || MEDIUM_MOB_IDS.contains(id)
+                || (currentPhase == PrepPhase.PHASE_3_BOSS_PREP && WEAK_MOB_IDS.contains(id)
+                    && checklist.getTotalShardsEarned() < GauntletChecklist.TARGET_TOTAL_SHARDS);
+        if (useful) chosenTargetIndex = opp.index;
+        if (loggedAttackerIndex == opp.index) return;
+        loggedAttackerIndex = opp.index;
+        Microbot.log(String.format("[Prep] Attacked by %s - %s", opp.name,
+                useful ? "fighting it (the kill is useful)" : "ignoring it and continuing"));
+    }
+
     /** A living scorpion, wolf or unicorn is targeting us. */
     private boolean isTargetedByMediumMob() {
         return Microbot.getRs2NpcCache().query()
@@ -477,27 +565,67 @@ public class CustomGauntletPrepScript extends Script {
             return false;
         }
         grid.setBaseCenterPoint(anchor);
-        Microbot.log("[Prep] Anchored base centre at " + anchor + " (instance coords); player offset "
-                + rimOffset(Microbot.getClient().getLocalPlayer().getLocalLocation()));
+        Microbot.log("[Prep] Anchored base centre at " + anchor + " (instance coords)");
+        locateHunllefRoom();
         return true;
     }
 
-    /** Chebyshev tile offset of a local point from the base centre, or -1 if the base isn't anchored. */
-    private int rimOffset(LocalPoint lp) {
+    /**
+     * Finds which side of the base the Hunllef room is on from its arena barriers (loaded in the scene from the base)
+     * and places it at the grid centre. Without it the scout area stays 1 room around the base.
+     *
+     * @return true once placed
+     */
+    private boolean locateHunllefRoom() {
         WorldPoint base = grid.getBaseCenterPoint();
-        if (base == null || lp == null) return -1;
-        WorldPoint wp = WorldPoint.fromLocal(Microbot.getClient(), lp);
-        return Math.max(Math.abs(wp.getX() - base.getX()), Math.abs(wp.getY() - base.getY()));
+        if (base == null) return false;
+        int[] dir = Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            Client client = Microbot.getClient();
+            long sumX = 0, sumY = 0;
+            int n = 0;
+            for (TileObject obj : collectAllTileObjects()) {
+                if (obj == null || !HUNLLEF_BARRIER_IDS.contains(obj.getId())) continue;
+                WorldPoint wp = WorldPoint.fromLocal(client, obj.getLocalLocation());
+                sumX += wp.getX();
+                sumY += wp.getY();
+                n++;
+            }
+            if (n == 0) return null;
+            double dx = (double) sumX / n - base.getX(), dy = (double) sumY / n - base.getY();
+            if (Math.max(Math.abs(dx), Math.abs(dy)) < 4) return null; // barriers on top of the base: can't tell
+            return Math.abs(dx) >= Math.abs(dy) ? new int[]{(int) Math.signum(dx), 0} : new int[]{0, (int) Math.signum(dy)};
+        }).orElse(null);
+        if (dir == null) {
+            if (!hunllefMissingLogged) {
+                hunllefMissingLogged = true;
+                Microbot.log("[Prep] Hunllef arena barriers not found yet - scouting only 1 room around the base until they are");
+            }
+            return false;
+        }
+        grid.setHunllefDirection(dir[0], dir[1]);
+        String side = dir[1] > 0 ? "NORTH" : dir[1] < 0 ? "SOUTH" : dir[0] > 0 ? "EAST" : "WEST";
+        Microbot.log(String.format("[Prep] Hunllef room is %s of the base (base = room (%d,%d)) - phase 1 scouts ring %d around the Hunllef room, at most ring %d",
+                side, grid.getBaseGridX(), grid.getBaseGridY(), scoutRing, PHASE1_MAX_RING));
+        return true;
     }
 
     /**
-     * Phase-1 target filter: false for anything on the outer rim, so resource gathering never walks us into
-     * (or opens) a demiboss room. Later phases hunt the demibosses on the rim, so they're unrestricted; so is
-     * an unanchored base, where we can't tell where the rim is.
+     * Phase-1 target filter: true only inside the current scout ring around the Hunllef room, so gathering never
+     * walks us into (or opens) an outer-rim demiboss room. Before the Hunllef room is placed: 1 room around the base.
+     * Later phases hunt the demibosses on the rim, so they're unrestricted; so is an unanchored base.
      */
-    private boolean isInsideRim(LocalPoint lp) {
-        if (currentPhase != PrepPhase.PHASE_1_RESOURCES) return true;
-        return rimOffset(lp) <= RIM_SAFE_OFFSET; // -1 (unanchored) passes
+    private boolean inScoutArea(LocalPoint lp) {
+        if (currentPhase != PrepPhase.PHASE_1_RESOURCES || lp == null) return true;
+        WorldPoint wp = WorldPoint.fromLocal(Microbot.getClient(), lp);
+        WorldPoint centre = grid.getHunllefCenterPoint();
+        int ring = scoutRing;
+        if (centre == null) {
+            centre = grid.getBaseCenterPoint();
+            ring = 1;
+            if (centre == null) return true;
+        }
+        int offset = Math.max(Math.abs(wp.getX() - centre.getX()), Math.abs(wp.getY() - centre.getY()));
+        return offset <= ring * GauntletGrid.ROOM_TILE_SIZE + GauntletGrid.ROOM_TILE_SIZE / 2 - SCOUT_EDGE_MARGIN;
     }
 
     /**
@@ -547,8 +675,9 @@ public class CustomGauntletPrepScript extends Script {
         Rs2NpcModel dragon = Microbot.getRs2NpcCache().query().where(npc -> DRAGON_IDS.contains(npc.getId())).nearest();
         if (dragon != null && !dragon.isDead() && !checklist.hasOrb()) {
             // Protection prayer is handled globally by updateDemibossProtectionPrayer() based on distance.
-            if (!Rs2Player.isInteracting()) {
+            if (!busyWithOwnAction()) {
                 Microbot.log("[Prep] Engaging Corrupted Dragon (Protect from Magic)");
+                chosenTargetIndex = dragon.getIndex();
                 dragon.click("Attack");
             }
             return;
@@ -557,8 +686,9 @@ public class CustomGauntletPrepScript extends Script {
         Rs2NpcModel darkBeast = Microbot.getRs2NpcCache().query().where(npc -> DARK_BEAST_IDS.contains(npc.getId())).nearest();
         if (darkBeast != null && !darkBeast.isDead() && !checklist.hasBowstring()) {
             // Protection prayer is handled globally by updateDemibossProtectionPrayer() based on distance.
-            if (!Rs2Player.isInteracting()) {
+            if (!busyWithOwnAction()) {
                 Microbot.log("[Prep] Engaging Corrupted Dark Beast (Protect from Range)");
+                chosenTargetIndex = darkBeast.getIndex();
                 darkBeast.click("Attack");
             }
             return;
@@ -569,8 +699,9 @@ public class CustomGauntletPrepScript extends Script {
             Rs2NpcModel bear = Microbot.getRs2NpcCache().query().where(npc -> BEAR_IDS.contains(npc.getId())).nearest();
             if (bear != null && !bear.isDead()) {
                 // Protection prayer is handled globally by updateDemibossProtectionPrayer() based on distance.
-                if (!Rs2Player.isInteracting()) {
+                if (!busyWithOwnAction()) {
                     Microbot.log("[Prep] 2-Bear fallback active: engaging Bear for missing component");
+                    chosenTargetIndex = bear.getIndex();
                     bear.click("Attack");
                 }
                 return;
@@ -594,9 +725,10 @@ public class CustomGauntletPrepScript extends Script {
         if (checklist.getTotalShardsEarned() < GauntletChecklist.TARGET_TOTAL_SHARDS) {
             Rs2NpcModel mob = Microbot.getRs2NpcCache().query().where(npc -> MEDIUM_MOB_IDS.contains(npc.getId())).nearest();
             if (mob != null && !mob.isDead()) {
-                if (!Rs2Player.isInteracting()) {
+                if (!busyWithOwnAction()) {
                     Microbot.log(String.format("[Prep] Farming shards (%d/%d): attacking %s",
                             checklist.getTotalShardsEarned(), GauntletChecklist.TARGET_TOTAL_SHARDS, mob.getName()));
+                    chosenTargetIndex = mob.getIndex();
                     mob.click("Attack");
                 }
                 return;
@@ -834,12 +966,12 @@ public class CustomGauntletPrepScript extends Script {
         if (Rs2Inventory.isFull() && !stacksIntoExisting) return false;
         // Search several rooms out (CG rooms connect via open doorways), and let the game's click-to-walk
         // path us there — instance-safe, unlike a manual WorldPoint walk.
-        TileObject obj = findTileObject(objectIds, GATHER_SEARCH_TILES, o -> isInsideRim(o.getLocalLocation()));
+        TileObject obj = findTileObject(objectIds, GATHER_SEARCH_TILES, o -> inScoutArea(o.getLocalLocation()));
         if (obj == null) return false;
         // Click once, then WAIT while the gather runs. Resource nodes are game objects (not NPCs), so the
         // engine's isInteracting() flag stays false while mining/chopping/picking — only the animation tells
         // us we're busy. Re-clicking every loop (the old behaviour) just spam-restarts the action.
-        if (!Rs2Player.isAnimating() && !Rs2Player.isInteracting() && !Rs2Player.isMoving()) {
+        if (!busyWithOwnAction() && !Rs2Player.isMoving()) {
             Microbot.log("[Prep] Gathering (" + action + ") " + tileDist(obj) + " tiles away");
             Rs2GameObject.interact(obj, action);
             activeGatherRemaining = remaining; // remember what we're on so we can stop at target
@@ -926,8 +1058,7 @@ public class CustomGauntletPrepScript extends Script {
     }
 
     /**
-     * Scouts the 3 non-Hunllef rooms surrounding the starting base (3, 3).
-     * For each doorway, lights only 1 node on that doorway (max 3 nodes total).
+     * Lights the nearest unlit node in the current room (phase 1: inside the scout ring around the Hunllef room).
      */
     private boolean scoutBaseRooms() {
         return lightNode(NODE_SEARCH_TILES, "doorway node");
@@ -950,11 +1081,11 @@ public class CustomGauntletPrepScript extends Script {
     private boolean lightNode(int maxTiles, String label) {
         TileObject node = findDoorwayNodeToLight(maxTiles);
         if (node == null) return false;
-        if (!Rs2Player.isMoving() && !Rs2Player.isInteracting() && !Rs2Player.isAnimating()) {
+        if (!Rs2Player.isMoving() && !busyWithOwnAction()) {
             Microbot.log(String.format("[Scout] Lighting %s at %s", label, node.getWorldLocation()));
             Rs2GameObject.interact(node, "Light");
             sleep(600);
-            scanBaseAdjacentRooms();
+            scanScoutRooms();
         }
         return true; // committed - either walking to it or just lit it
     }
@@ -972,7 +1103,7 @@ public class CustomGauntletPrepScript extends Script {
                 int dist = tileDist(obj);
                 if (dist > maxTiles) continue;
                 if (!isUnlitNode(obj, client)) continue;
-                if (!isInsideRim(obj.getLocalLocation())) continue; // a rim-doorway node would open a demiboss room
+                if (!inScoutArea(obj.getLocalLocation())) continue; // a node on the ring's outer edge opens the next ring
                 if (dist < nearestDist) {
                     nearestDist = dist;
                     nearest = obj;
@@ -992,65 +1123,66 @@ public class CustomGauntletPrepScript extends Script {
                 || (actions != null && Arrays.asList(actions).contains("Light"));
     }
 
-    private void scanBaseAdjacentRooms() {
-        for (GauntletRoom room : grid.getBaseAdjacentRooms()) {
-            scanRoomContents(room);
-        }
-    }
-
-    /** Scans visible resource objects and NPCs inside a room and populates GauntletRoom. */
-    private void scanRoomContents(GauntletRoom room) {
+    /**
+     * Scans the rooms in our scout ring (phase 1) or the whole maze (later) that are loaded around us, in one pass over
+     * the scene, and logs each room whose contents changed. Instance coords throughout ({@code WorldPoint.fromLocal}):
+     * object world locations are template coords there and put everything in the wrong room.
+     */
+    private void scanScoutRooms() {
+        if (grid.getHunllefCenterPoint() == null) return;
+        int ring = currentPhase == PrepPhase.PHASE_1_RESOURCES ? scoutRing : GauntletGrid.HUNLLEF_X;
         Microbot.getClientThread().runOnClientThreadOptional(() -> {
-            if (room == null || grid.getBaseCenterPoint() == null) return null;
-            WorldPoint base = grid.getBaseCenterPoint();
-            int roomCenterX = base.getX() + (room.getGridX() - GauntletGrid.BASE_X) * GauntletGrid.ROOM_TILE_SIZE;
-            int roomCenterY = base.getY() + (room.getGridY() - GauntletGrid.BASE_Y) * GauntletGrid.ROOM_TILE_SIZE;
-            WorldPoint center = new WorldPoint(roomCenterX, roomCenterY, base.getPlane());
-            room.setCenterPoint(center);
-
-            int minX = roomCenterX - 7;
-            int maxX = roomCenterX + 7;
-            int minY = roomCenterY - 7;
-            int maxY = roomCenterY + 7;
-
-            // Count resource game objects inside room boundaries
-            int ore = 0, bark = 0, linum = 0, leaf = 0, fish = 0;
-            List<TileObject> roomObjects = Rs2GameObject.getTileObjects(o -> {
-                if (o == null || o.getWorldLocation() == null) return false;
-                WorldPoint wp = o.getWorldLocation();
-                return wp.getX() >= minX && wp.getX() <= maxX && wp.getY() >= minY && wp.getY() <= maxY;
-            });
-
-            for (TileObject obj : roomObjects) {
+            Client client = Microbot.getClient();
+            Player me = client.getLocalPlayer();
+            if (me == null || me.getLocalLocation() == null) return null;
+            WorldPoint here = WorldPoint.fromLocal(client, me.getLocalLocation());
+            int[][][] counts = new int[GauntletGrid.GRID_SIZE][GauntletGrid.GRID_SIZE][5];
+            for (TileObject obj : collectAllTileObjects()) {
+                if (obj == null) continue;
                 int id = obj.getId();
-                if (ORE_DEPOSIT_IDS.contains(id)) ore++;
-                else if (PHREN_ROOTS_IDS.contains(id)) bark++;
-                else if (LINUM_TIRINUM_IDS.contains(id)) linum++;
-                else if (GRYM_ROOT_IDS.contains(id)) leaf++;
-                else if (FISHING_SPOT_IDS.contains(id)) fish++;
+                int kind = ORE_DEPOSIT_IDS.contains(id) ? 0 : PHREN_ROOTS_IDS.contains(id) ? 1 : LINUM_TIRINUM_IDS.contains(id) ? 2
+                        : GRYM_ROOT_IDS.contains(id) ? 3 : FISHING_SPOT_IDS.contains(id) ? 4 : -1;
+                if (kind < 0) continue;
+                int[] g = grid.getGridCoordinates(WorldPoint.fromLocal(client, obj.getLocalLocation()));
+                if (g != null) counts[g[0]][g[1]][kind]++;
             }
-            room.setOreNodes(ore);
-            room.setPhrenRoots(bark);
-            room.setLinumPlants(linum);
-            room.setGrymRoots(leaf);
-            room.setFishingSpots(fish);
-
-            // Check NPCs inside room boundaries
+            GauntletRoom.DemibossType[][] boss = new GauntletRoom.DemibossType[GauntletGrid.GRID_SIZE][GauntletGrid.GRID_SIZE];
+            boolean[][] weak = new boolean[GauntletGrid.GRID_SIZE][GauntletGrid.GRID_SIZE];
+            boolean[][] medium = new boolean[GauntletGrid.GRID_SIZE][GauntletGrid.GRID_SIZE];
             for (Rs2NpcModel npc : Microbot.getRs2NpcCache().query().toListOnClientThread()) {
-                if (npc == null || npc.getWorldLocation() == null) continue;
-                WorldPoint wp = npc.getWorldLocation();
-                if (wp.getX() >= minX && wp.getX() <= maxX && wp.getY() >= minY && wp.getY() <= maxY) {
-                    int id = npc.getId();
-                    if (DRAGON_IDS.contains(id)) room.setDemiboss(GauntletRoom.DemibossType.CORRUPTED_DRAGON);
-                    else if (DARK_BEAST_IDS.contains(id)) room.setDemiboss(GauntletRoom.DemibossType.CORRUPTED_DARK_BEAST);
-                    else if (BEAR_IDS.contains(id)) room.setDemiboss(GauntletRoom.DemibossType.CORRUPTED_BEAR);
-                    else if (WEAK_MOB_IDS.contains(id)) room.setHasWeakMob(true);
-                    else if (MEDIUM_MOB_IDS.contains(id)) room.setHasMediumMob(true);
-                }
+                if (npc == null || npc.getLocalLocation() == null) continue;
+                int[] g = grid.getGridCoordinates(WorldPoint.fromLocal(client, npc.getLocalLocation()));
+                if (g == null) continue;
+                int id = npc.getId();
+                if (DRAGON_IDS.contains(id)) boss[g[0]][g[1]] = GauntletRoom.DemibossType.CORRUPTED_DRAGON;
+                else if (DARK_BEAST_IDS.contains(id)) boss[g[0]][g[1]] = GauntletRoom.DemibossType.CORRUPTED_DARK_BEAST;
+                else if (BEAR_IDS.contains(id)) boss[g[0]][g[1]] = GauntletRoom.DemibossType.CORRUPTED_BEAR;
+                else if (WEAK_MOB_IDS.contains(id)) weak[g[0]][g[1]] = true;
+                else if (MEDIUM_MOB_IDS.contains(id)) medium[g[0]][g[1]] = true;
             }
-
-            Microbot.log(String.format("[Scout] Room (%d,%d) scanned: Ore=%d, Bark=%d, Linum=%d, Leaf=%d, Fish=%d, Demiboss=%s, WeakMob=%b",
-                    room.getGridX(), room.getGridY(), ore, bark, linum, leaf, fish, room.getDemiboss(), room.isHasWeakMob()));
+            for (GauntletRoom room : grid.getRoomsWithinRing(ring)) {
+                WorldPoint center = grid.getRoomCenter(room.getGridX(), room.getGridY());
+                room.setCenterPoint(center);
+                // Only rooms whose whole area is loaded around us; a room half outside the scene would read as emptied.
+                if (Math.max(Math.abs(center.getX() - here.getX()), Math.abs(center.getY() - here.getY())) > ROOM_SCAN_RANGE) continue;
+                int x = room.getGridX(), y = room.getGridY();
+                int[] c = counts[x][y];
+                room.setOreNodes(c[0]);
+                room.setPhrenRoots(c[1]);
+                room.setLinumPlants(c[2]);
+                room.setGrymRoots(c[3]);
+                room.setFishingSpots(c[4]);
+                if (boss[x][y] != null) room.setDemiboss(boss[x][y]); // a demiboss stays known once seen
+                room.setHasWeakMob(weak[x][y]);
+                room.setHasMediumMob(medium[x][y]);
+                if (room.getState() == GauntletRoom.ExplorationState.UNEXPLORED) room.setState(GauntletRoom.ExplorationState.SCOUTED);
+                boolean any = c[0] + c[1] + c[2] + c[3] + c[4] > 0 || room.hasDemiboss() || weak[x][y] || medium[x][y];
+                String summary = String.format("Ore=%d, Bark=%d, Linum=%d, Leaf=%d, Fish=%d, Demiboss=%s, WeakMob=%b",
+                        c[0], c[1], c[2], c[3], c[4], room.getDemiboss(), weak[x][y]);
+                if (!any || summary.equals(room.getLastScanSummary())) continue;
+                room.setLastScanSummary(summary);
+                Microbot.log(String.format("[Scout] Room (%d,%d) ring %d scanned: %s", x, y, GauntletGrid.ringOf(x, y), summary));
+            }
             return null;
         });
     }
