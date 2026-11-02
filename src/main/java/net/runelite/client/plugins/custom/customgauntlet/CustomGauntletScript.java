@@ -311,6 +311,9 @@ public class CustomGauntletScript extends Script {
     private boolean evadeExpectsHit = false;  // the committed evade was picked knowing it takes a hit
     private int evadePickTick = -1;
     private int[] evadeTarget = null;     // committed tornado-evasion tile (both lane directions were cut off)
+    // The planned second move after evadeTarget; clicked as we reach evadeTarget (the plan is scored that way).
+    private int[] evadeNext = null;
+    private int evadeNextHits = 0;
     private int evadeExpectedHits = 0;   // tornado hits the current evade expects
     private int[] lastEvade = null;       // last evade target picked (kept through drops, for EVADE_STICK_TICKS)
     private int lastEvadeTick = -100;
@@ -989,6 +992,7 @@ public class CustomGauntletScript extends Script {
 
             // Committed tornado evasion (both lane directions were cut off): finish it before picking a new lane,
             // otherwise the lane logic would immediately route us back toward the tornadoes.
+            if (evadeTarget != null && evadeNext != null && sendEvadeNextEarly(px, py, bossX, bossY, tornadoes)) return true;
             if (evadeTarget != null) {
                 boolean arrived = px == evadeTarget[0] && py == evadeTarget[1];
                 if (arrived || !isTileFullySafe(evadeTarget[0], evadeTarget[1], bossX, bossY)
@@ -2172,6 +2176,8 @@ public class CustomGauntletScript extends Script {
         if (bestMargin < 1) hitExpectedUntil = now + HIT_EXPECTED_MS;
         dropLane();
         evadeTarget = best;
+        evadeNext = plan != null && best == plan.first ? plan.second : null;
+        evadeNextHits = plan != null ? plan.hits2 : 0;
         if (lastEvade == null || lastEvade[0] != best[0] || lastEvade[1] != best[1]) lastEvadeTick = gameTickCount;
         lastEvade = best;
         evadeExpectsHit = bestMargin < 1;
@@ -2186,6 +2192,47 @@ public class CustomGauntletScript extends Script {
                 (bestMargin >= 1 ? "" : String.format(", WILL BE HIT x%d", bestHits)) + (noWayOut ? ", no clean run onward" : ""),
                 vitalsTag()));
         walkExactTile(best[0], best[1]);
+        return true;
+    }
+
+    /**
+     * Sends the plan's second move as we reach the first tile (one tick out or already there). The plan scored the
+     * second run as leaving right away; re-planning only after arriving cost 2 more ticks and a tornado stack 2 tiles
+     * away walked onto us (49 damage, x3). Checked again against the tornadoes now, both from the first tile and from
+     * where we are (the game may re-route from here). Client thread.
+     *
+     * @return true if the second move was clicked
+     */
+    private boolean sendEvadeNextEarly(int px, int py, int bossX, int bossY, List<int[]> tornadoes) {
+        int[] first = evadeTarget, next = evadeNext;
+        if (Math.max(Math.abs(first[0] - px), Math.abs(first[1] - py)) > runSpeed) return false;
+        evadeNext = null; // one try: a failed check falls back to a fresh plan from the first tile
+        if (!isTileFullySafe(next[0], next[1], bossX, bossY)) return false;
+        if (walkLineCrossesBoss(first[0], first[1], next[0], next[1], bossX, bossY)
+                || walkLineCrossesBoss(px, py, next[0], next[1], bossX, bossY)) return false;
+        int[] fromFirst = simulateRun(first[0], first[1], next, tornadoes);
+        int[] fromHere = simulateRun(px, py, next, tornadoes);
+        int hits = Math.max(fromFirst[2], fromHere[2]);
+        if (hits > evadeNextHits) {
+            Microbot.log(String.format("[Plan] Second move to (%d,%d) would now take x%d (planned x%d) - re-planning at (%d,%d)",
+                    next[0], next[1], hits, evadeNextHits, first[0], first[1]));
+            return false;
+        }
+        Microbot.log(String.format("[Plan] Reaching (%d,%d) - sending the second move to (%d,%d) now (pass %d%s) %s",
+                first[0], first[1], next[0], next[1], Math.min(fromFirst[0], fromHere[0]), hits > 0 ? ", hit x" + hits : "",
+                vitalsTag()));
+        evadeTarget = next;
+        lastEvade = next;
+        lastEvadeTick = gameTickCount;
+        evadePickTick = gameTickCount;
+        evadeExpectsHit = hits > 0;
+        evadeExpectedHits = hits;
+        evadeCrossesHazard = hazardLandings(px, py, next[0], next[1]) > 0;
+        if (hits > 0) hitExpectedUntil = now + HIT_EXPECTED_MS;
+        lastWalkTargetX = next[0];
+        lastWalkTargetY = next[1];
+        walkClickTick = -1; // a planned follow-up, not a second destination this tick
+        walkExactTile(next[0], next[1]);
         return true;
     }
 
@@ -3232,26 +3279,23 @@ public class CustomGauntletScript extends Script {
                 hand.abortCurrent("skipped - newer walk queued");
                 return;
             }
-            // Aim again now: the camera can turn during the 0.3-0.4s move, and the click then walked to the tile next
-            // to the one we meant (onto a hazard for 42 damage, and beside a tornado stack).
-            java.awt.Point aim = tileCanvasPoint(lp);
+            // Aim again now, ahead of the camera: it follows us while we run, so the tile slides across the screen and
+            // a click aimed where it was walked to the tile next to it (10 of 46 walks in one fight). The final click
+            // is a quick one from where the mouse already is: no second mouse move for the tile to slide away during.
+            java.awt.Point aim = leadAim(lp);
             if (aim == null) {
                 clickTileOffScreen(lp);
                 return;
             }
-            if (aim.distance(tilePoint) > 3 && Microbot.naturalMouse != null) Microbot.naturalMouse.moveTo(aim.x, aim.y);
             LocalPoint before = currentDestination();
             invokeWalk(aim);
             // Check where the game is taking us; one more click if it's the wrong tile.
-            LocalPoint dest = awaitDestination(sceneX, sceneY, before, 300);
+            LocalPoint dest = awaitDestination(sceneX, sceneY, before, 250);
             if (dest != null && (dest.getSceneX() != sceneX || dest.getSceneY() != sceneY) && !hand.isPending("walk")) {
-                java.awt.Point again = tileCanvasPoint(lp);
+                java.awt.Point again = leadAim(lp);
                 Microbot.log(String.format("[Walk] Click landed on (%d,%d) instead of (%d,%d) - %s", dest.getSceneX(),
                         dest.getSceneY(), sceneX, sceneY, again == null ? "tile off screen, not re-clicking" : "clicking again"));
-                if (again != null) {
-                    if (Microbot.naturalMouse != null) Microbot.naturalMouse.moveTo(again.x, again.y);
-                    invokeWalk(again);
-                }
+                if (again != null) invokeWalk(again);
             }
             return;
         }
@@ -3280,7 +3324,38 @@ public class CustomGauntletScript extends Script {
                 .identifier(0)
                 .itemId(-1)
                 .option("Walk here");
-        Microbot.doInvoke(entry, new Rectangle(p.x - 2, p.y - 2, 4, 4));
+        Microbot.doInvokeQuick(entry, new Rectangle(p.x, p.y, 1, 1));
+    }
+
+    private static final int AIM_SAMPLE_MS = 40;  // spans at least one rendered frame
+    private static final int AIM_LEAD_MS = 50;    // from aiming to the press reaching the game
+
+    /**
+     * Where the tile will be on screen when the click lands: two samples AIM_SAMPLE_MS apart give its screen
+     * velocity (the camera follows us while we run), extrapolated by AIM_LEAD_MS. Null if it's off screen.
+     */
+    private static java.awt.Point leadAim(LocalPoint lp) {
+        long t1 = System.nanoTime();
+        java.awt.Point p1 = tileCanvasPoint(lp);
+        try {
+            Thread.sleep(AIM_SAMPLE_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return p1;
+        }
+        long t2 = System.nanoTime();
+        java.awt.Point p2 = tileCanvasPoint(lp);
+        if (p2 == null || p1 == null) return p2;
+        double dt = (t2 - t1) / 1e6;
+        if (dt <= 0) return p2;
+        java.awt.Point lead = new java.awt.Point((int) Math.round(p2.x + (p2.x - p1.x) / dt * AIM_LEAD_MS),
+                (int) Math.round(p2.y + (p2.y - p1.y) / dt * AIM_LEAD_MS));
+        boolean inView = Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            Client client = Microbot.getClient();
+            return new Rectangle(client.getViewportXOffset(), client.getViewportYOffset(),
+                    client.getViewportWidth(), client.getViewportHeight()).contains(lead);
+        }).orElse(false);
+        return inView ? lead : p2;
     }
 
     /**
@@ -3382,6 +3457,7 @@ public class CustomGauntletScript extends Script {
     }
 
     private void clearDodge() {
+        evadeNext = null;
         dodgeActive = false;
         tornadoThreat = false;
         lastDodgeTick = -1;
