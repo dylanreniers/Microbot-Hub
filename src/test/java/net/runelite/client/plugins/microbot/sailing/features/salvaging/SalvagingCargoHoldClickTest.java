@@ -125,7 +125,7 @@ class SalvagingCargoHoldClickTest {
     }
 
     private boolean runWithMocks(String methodName) throws Exception {
-        SalvagingScript script = new SalvagingScript(null, null, null);
+        SalvagingScript script = new SalvagingScript(null, null, null, null);
         Method method = SalvagingScript.class.getDeclaredMethod(methodName);
         method.setAccessible(true);
         widgetLookupThreads.clear();
