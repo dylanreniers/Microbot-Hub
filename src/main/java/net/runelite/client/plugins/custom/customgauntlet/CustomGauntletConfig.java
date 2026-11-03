@@ -190,6 +190,19 @@ public interface CustomGauntletConfig extends Config {
         return true;
     }
 
+    @ConfigItem(
+            keyName = "doorSafeSpotHp",
+            name = "Door safe spots below boss HP",
+            description = "Once the Hunllef is below this HP, stand on a safe spot 3 tiles in from an arena door between "
+                    + "tornado phases and stay there until it turns dangerous or tornadoes come, instead of "
+                    + "repositioning. 0 = off.",
+            position = 6,
+            section = "featureSection"
+    )
+    default int doorSafeSpotHp() {
+        return 350;
+    }
+
 
 
     @ConfigItem(

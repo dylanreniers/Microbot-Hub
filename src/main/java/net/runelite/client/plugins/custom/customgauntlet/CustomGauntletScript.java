@@ -237,7 +237,16 @@ public class CustomGauntletScript extends Script {
     private String lastBossAttack = "none";      // style + tick of the last boss attack, for the hit log
     // Lines built on the client thread (logging there deadlocks) and logged by the script loop.
     private final java.util.concurrent.ConcurrentLinkedQueue<String> eventLog = new java.util.concurrent.ConcurrentLinkedQueue<>();
-    private HeadIcon bossHeadIcon = null;
+    private volatile HeadIcon bossHeadIcon = null;
+    // The Hunllef prays against our style after BOSS_HITS_TO_SWITCH of our attacks with a style it isn't praying
+    // against. Counting our own shots lets us swap weapons when the 6th fires, instead of after its icon changes
+    // (icon poll + weapon check + equip click left the next shot on the old weapon).
+    private static final int BOSS_HITS_TO_SWITCH = 6;
+    private static final int PREDICTED_SWITCH_TIMEOUT_TICKS = 6; // the 6th shot lands in 1-2 ticks
+    private volatile int bossHitsOnPrayer = 0;
+    private volatile HeadIcon predictedBossIcon = null;
+    private volatile int predictedAtTick = -1;
+    private volatile boolean weaponCheckNow = false;
     private Rs2NpcModel hunllef = null;
     // Every fight click goes through this one hand: one click at a time, human gaps, F5/ESC tab switches.
     private final ClickHand hand = new ClickHand(() -> this.gameTickCount,
@@ -340,6 +349,15 @@ public class CustomGauntletScript extends Script {
     private long repositionFailedAt = 0;
     private static final long REPOSITION_FAILED_MS = 10000;
     private long repositionClickAt = 0, repositionCheckAt = 0;
+    // Late in the fight the floor leaves safe spots DOOR_SPOT_INSET tiles in from each arena door (2 per door). Holding
+    // one between tornado phases replaces the repositioning walks, so the attack doesn't wait on extra clicks.
+    private static final int DOOR_SPOT_INSET = 3;
+    private static final int DOOR_SPOT_FLEE_RANGE = 3; // from a hazard, only run to a door spot this close
+    private volatile List<int[]> arenaDoorSpots = new ArrayList<>();
+    private volatile int bossHp = -1; // last health-bar reading; -1 = not seen yet this fight
+    private int[] doorSpotTarget = null;
+    private long doorSpotClickAt = 0;
+    private boolean doorSpotsAnnounced = false;
     private long lastPassAt = 0;
     private volatile String loopSection = "start";
     // Set by the tornado spawn event; the next game tick runs the dodge right there on the client thread.
@@ -488,6 +506,16 @@ public class CustomGauntletScript extends Script {
                         // Always on, tornadoes too: the toggle is a direct menu action (no mouse), so it costs no walk time.
                         if (now - timePrayOffence > CD_PRAYOFFENCE) checkAttackPrayers();
 
+                        // Weapon before anything that can end the pass (tornadoes, walks): equipping doesn't stop a
+                        // run, and every tornado-phase shot used to go out with the weapon the Hunllef prays against.
+                        loopSection = "weapon";
+                        updateBossIcon();
+                        expirePredictedSwitch();
+                        if (weaponCheckNow || now - timeWeapon > CD_WEAPON) {
+                            weaponCheckNow = false;
+                            checkWeapon();
+                        }
+
                         // Only simulate sleep on prayer changes when NOT kiting tornadoes!
                         // ...but never while standing on a hazard: prayer clicks every pass kept this break firing and the
                         // hazard flee below never ran (5 seconds on a hazard at the end of a fight).
@@ -548,8 +576,7 @@ public class CustomGauntletScript extends Script {
                         if ((tornado == null || tornado.isEmpty()) && handleSafespot())
                             break; //running to safety takes priority over gear/attack this loop
 
-                        loopSection = "weapon/attack";
-                        if (now - timeWeapon > CD_WEAPON) checkWeapon();
+                        loopSection = "attack";
                         checkAttack();
                         break;
 
@@ -583,7 +610,12 @@ public class CustomGauntletScript extends Script {
 
         hunllef = boss;
         bossHeadIcon = boss.getHeadIcon();
+        bossHitsOnPrayer = 0;
+        predictedBossIcon = null;
         arenaBoundsKnown = false; // new fight = new instance; re-derive the arena from its barriers
+        bossHp = -1;
+        doorSpotTarget = null;
+        doorSpotsAnnounced = false;
         // The Hunllef always opens with ranged. nextPrayer is stale here (null after the last fight, or
         // MAGIC from a prep miniboss's magic projectile), which would flip a pre-set Protect from Missiles
         // to Protect from Magic for the opening ranged attacks.
@@ -718,6 +750,23 @@ public class CustomGauntletScript extends Script {
             boolean safeHere = inArena(playerX, playerY) && isSafeFloor(playerX, playerY) && !onDanger
                     && !isUnderBoss(playerX, playerY, bossX, bossY, 0);
             if (!safeHere) repositionTarget = null;
+
+            // Late fight: hold a door safe spot instead of repositioning (fewer walks = fewer lost attacks).
+            int doorSpotHp = config.doorSafeSpotHp();
+            if (doorSpotHp > 0 && bossHp >= 0 && bossHp < doorSpotHp) {
+                if (!doorSpotsAnnounced) {
+                    doorSpotsAnnounced = true;
+                    StringBuilder s = new StringBuilder();
+                    for (int[] d : arenaDoorSpots) s.append("(").append(d[0]).append(",").append(d[1]).append(")");
+                    eventLog.add(String.format("[Position] Hunllef at ~%d HP (below %d) - holding the door safe spots %s",
+                            bossHp, doorSpotHp, s));
+                }
+                Boolean held = holdDoorSpot(playerX, playerY, bossX, bossY, onDanger);
+                if (held != null) return held;
+            } else {
+                doorSpotTarget = null;
+            }
+
             if (!onDanger && !config.runToSafespot()) {
                 return safeHere && config.dodgeTornadoes() && repositionOutOfPocket(playerX, playerY, bossX, bossY);
             }
@@ -3600,6 +3649,7 @@ public class CustomGauntletScript extends Script {
         int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
         int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
         int found = 0, total = 0;
+        List<int[]> barriers = new ArrayList<>();
         for (Tile tile : Rs2GameObject.getTiles()) {
             if (!tileHasBarrier(tile)) continue;
             total++;
@@ -3612,6 +3662,7 @@ public class CustomGauntletScript extends Script {
             maxX = Math.max(maxX, sx);
             minY = Math.min(minY, sy);
             maxY = Math.max(maxY, sy);
+            barriers.add(new int[]{sx, sy});
             found++;
         }
         barriersTotal = total;
@@ -3622,6 +3673,80 @@ public class CustomGauntletScript extends Script {
         arenaMinY = minY + 1;
         arenaMaxY = maxY - 1;
         arenaBoundsKnown = true;
+
+        // Each door's barrier tiles sit on the wall line just outside the arena: its safe spots are DOOR_SPOT_INSET
+        // tiles straight in from them (3 west of the eastern door, and so on).
+        List<int[]> spots = new ArrayList<>();
+        for (int[] b : barriers) {
+            int dx = b[0] == minX ? 1 : b[0] == maxX ? -1 : 0;
+            int dy = b[1] == minY ? 1 : b[1] == maxY ? -1 : 0;
+            if ((dx == 0) == (dy == 0)) continue; // a corner or a stray barrier: not a door
+            spots.add(new int[]{b[0] + dx * DOOR_SPOT_INSET, b[1] + dy * DOOR_SPOT_INSET});
+        }
+        arenaDoorSpots = spots;
+    }
+
+    /** The Hunllef's HP from its health bar (the last reading is kept while the bar isn't showing). */
+    private void updateBossHp() {
+        if (hunllef == null) return;
+        int ratio = hunllef.getHealthRatio(), scale = hunllef.getHealthScale();
+        if (ratio <= 0 || scale <= 0) return;
+        int maxHp = hunllef.getId() >= 9035 && hunllef.getId() <= 9038 ? 1000 : 600; // Corrupted / Crystalline
+        bossHp = ratio * maxHp / scale;
+    }
+
+    private boolean isDoorSpot(int x, int y) {
+        for (int[] s : arenaDoorSpots) if (s[0] == x && s[1] == y) return true;
+        return false;
+    }
+
+    /**
+     * Late fight (Hunllef below the configured HP): stay on a door safe spot between tornado phases instead of
+     * repositioning. Client thread.
+     *
+     * @return false = standing on a safe door spot (attack from here, no other positioning), true = walking to one
+     * (the attack waits), null = no usable door spot right now (the normal safespot logic decides)
+     */
+    private Boolean holdDoorSpot(int px, int py, int bossX, int bossY, boolean onDanger) {
+        if (isDoorSpot(px, py) && isTileFullySafe(px, py, bossX, bossY)) {
+            if (doorSpotTarget != null) attackNeeded.set(true); // just arrived
+            doorSpotTarget = null;
+            repositionTarget = null;
+            fleeTarget = null;
+            return false;
+        }
+        if (doorSpotTarget != null) {
+            int[] t = doorSpotTarget;
+            if (isTileFullySafe(t[0], t[1], bossX, bossY)) {
+                if (!isAlreadyWalkingTo(t[0], t[1]) && now - doorSpotClickAt > 1200) {
+                    doorSpotClickAt = now;
+                    walkExactTile(t[0], t[1]);
+                }
+                return true;
+            }
+            doorSpotTarget = null; // it burned or the Hunllef moved onto it: pick again
+        }
+        int[] best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (int[] s : arenaDoorSpots) {
+            if (!isTileFullySafe(s[0], s[1], bossX, bossY)) continue;
+            if (!isStraightPathFullySafe(px, py, s[0], s[1], bossX, bossY)) continue;
+            int dist = Math.max(Math.abs(s[0] - px), Math.abs(s[1] - py));
+            if (onDanger && dist > DOOR_SPOT_FLEE_RANGE) continue; // off the hazard first, the nearest way
+            if (dist < bestDist) {
+                best = s;
+                bestDist = dist;
+            }
+        }
+        if (best == null) return null;
+        eventLog.add(String.format("[Position] Hunllef at ~%d HP - moving to door safe spot (%d,%d) from (%d,%d)%s",
+                bossHp, best[0], best[1], px, py, onDanger ? " (off a hazard)" : ""));
+        doorSpotTarget = best;
+        doorSpotClickAt = now;
+        lastWalkTargetX = best[0];
+        lastWalkTargetY = best[1];
+        walkExactTile(best[0], best[1]);
+        return true;
     }
 
     /** True if the scene tile lies within the derived arena bounds. */
@@ -3656,9 +3781,10 @@ public class CustomGauntletScript extends Script {
             return;
         } else {
             ghState = State.FIGHTING;
+            updateBossHp();
         }
 
-        bossHeadIcon = hunllef.getHeadIcon();
+        updateBossIcon();
     }
 
 
@@ -3725,8 +3851,29 @@ public class CustomGauntletScript extends Script {
     /** Client thread (AnimationChanged): no logging here. */
     public void onPlayerAnimation(int anim) {
         if (anim == -1) return;
-        if (PLAYER_ATTACK_ANIMS.contains(anim)) lastAttackFiredTick = gameTickCount;
-        else unknownPlayerAnim = anim;
+        if (PLAYER_ATTACK_ANIMS.contains(anim)) {
+            lastAttackFiredTick = gameTickCount;
+            countShotOnBoss(styleOfAttackAnim(anim));
+        } else unknownPlayerAnim = anim;
+    }
+
+    /** Client thread (our attack animation): no logging here, lines go through eventLog. */
+    private void countShotOnBoss(HeadIcon style) {
+        if (style == null || ghState != State.FIGHTING || hunllef == null) return;
+        HeadIcon praying = effectiveBossIcon();
+        if (style == praying) return; // shots into its prayer don't count towards a switch
+        int n = ++bossHitsOnPrayer;
+        if (n < BOSS_HITS_TO_SWITCH) {
+            eventLog.add(String.format("[Weapon] %s shot %d/%d on a %s-praying Hunllef", iconName(style), n,
+                    BOSS_HITS_TO_SWITCH, iconName(praying)));
+            return;
+        }
+        bossHitsOnPrayer = 0;
+        predictedBossIcon = style;
+        predictedAtTick = gameTickCount;
+        weaponCheckNow = true;
+        eventLog.add(String.format("[Weapon] %s shot %d/%d - the Hunllef will pray %s once it lands: swapping weapon now",
+                iconName(style), n, BOSS_HITS_TO_SWITCH, iconName(style)));
     }
 
     /** The weapon is off cooldown (last shot 4+ ticks ago), so an attack click fires on the next tick. */
@@ -3779,6 +3926,7 @@ public class CustomGauntletScript extends Script {
         if (!isBowEquipped() && !isStaffEquipped()) return false;
         if (!weaponReady() || gameTickCount - lastAttackTick < TORNADO_ATTACK_INTERVAL_TICKS) return false;
         // From here on the weapon is ready: count why a shot didn't go out (once per tick) for the phase summary.
+        if (hand.isPending("equip") || wrongWeaponEquipped()) return shotSkipped("weapon swap pending");
         if (inTransition) return shotSkipped("lane transition");
         if (nearestTornado <= 1) return shotSkipped("tornado 1 tile away");
         if (isWarningTile(px, py) || isOnDangerousTile(px, py)) return shotSkipped("on warning/hazard tile");
@@ -4016,19 +4164,82 @@ public class CustomGauntletScript extends Script {
     }
 
     private void checkWeapon() {
-        if (bossHeadIcon == null) return;
+        HeadIcon icon = effectiveBossIcon();
+        if (icon == null) return;
         // Deliberately NOT gated on movement or tornadoes: wielding a weapon doesn't interrupt running,
         // so swapping while moving is safe and is required to keep DPS up (and to attack the Hunllef
         // on the move — crucial for Corrupted). The Hunllef's prayer can flip at any time, so we must
         // always be able to switch to the counter-weapon regardless of what the player is doing.
-        if (bossHeadIcon == HeadIcon.MELEE) {
+        if (icon == HeadIcon.MELEE) {
             handleMeleeHeadIcon();
         }
-        if (bossHeadIcon == HeadIcon.RANGED) {
+        if (icon == HeadIcon.RANGED) {
             handleRangedHeadIcon();
         }
-        if (bossHeadIcon == HeadIcon.MAGIC) {
+        if (icon == HeadIcon.MAGIC) {
             handleMagicHeadIcon();
+        }
+    }
+
+    /** The prayer the Hunllef has, or is about to switch to after our 6th shot. */
+    private HeadIcon effectiveBossIcon() {
+        HeadIcon predicted = predictedBossIcon;
+        return predicted != null ? predicted : bossHeadIcon;
+    }
+
+    /** True if the equipped weapon's style is the one the Hunllef prays against (or is about to) and we can swap. */
+    private boolean wrongWeaponEquipped() {
+        HeadIcon icon = effectiveBossIcon();
+        if (icon == HeadIcon.RANGED) return isBowEquipped() && (hasStaffInInventory() || hasHalberdInInventory());
+        if (icon == HeadIcon.MAGIC) return isStaffEquipped() && (hasBowInInventory() || hasHalberdInInventory());
+        if (icon == HeadIcon.MELEE) return isHalberdEquipped() && (hasStaffInInventory() || hasBowInInventory());
+        return false;
+    }
+
+    /** Reads the Hunllef's overhead and settles the shot counter when it changes. */
+    private void updateBossIcon() {
+        Rs2NpcModel boss = hunllef;
+        if (boss == null) return;
+        HeadIcon icon = boss.getHeadIcon();
+        HeadIcon old = bossHeadIcon;
+        if (icon == null || icon == old) return;
+        bossHeadIcon = icon;
+        HeadIcon predicted = predictedBossIcon;
+        predictedBossIcon = null;
+        if (predicted == icon) {
+            Microbot.log(String.format("[Weapon] Hunllef now prays %s, as predicted", iconName(icon)));
+        } else {
+            // A switch we didn't see coming: the shot count was off; start counting from this switch.
+            Microbot.log(String.format("[Weapon] Hunllef now prays %s (was %s) - not predicted (shots %d/%d%s), resyncing",
+                    iconName(icon), iconName(old), bossHitsOnPrayer, BOSS_HITS_TO_SWITCH,
+                    predicted == null ? "" : ", predicted " + iconName(predicted)));
+            bossHitsOnPrayer = 0;
+        }
+        weaponCheckNow = true;
+    }
+
+    /** A predicted switch that never showed: go back to what the icon says. */
+    private void expirePredictedSwitch() {
+        HeadIcon predicted = predictedBossIcon;
+        if (predicted == null || gameTickCount - predictedAtTick <= PREDICTED_SWITCH_TIMEOUT_TICKS) return;
+        predictedBossIcon = null;
+        bossHitsOnPrayer = 0;
+        weaponCheckNow = true;
+        Microbot.log(String.format("[Weapon] Predicted switch to %s didn't happen (still %s) - following the icon again",
+                iconName(predicted), iconName(bossHeadIcon)));
+    }
+
+    private static String iconName(HeadIcon icon) {
+        return icon == null ? "nothing" : icon == HeadIcon.RANGED ? "ranged" : icon == HeadIcon.MAGIC ? "magic"
+                : icon == HeadIcon.MELEE ? "melee" : icon.name().toLowerCase();
+    }
+
+    private static HeadIcon styleOfAttackAnim(int anim) {
+        switch (anim) {
+            case 426: return HeadIcon.RANGED; // bow
+            case 1167: return HeadIcon.MAGIC; // staff
+            case 428: case 440: return HeadIcon.MELEE; // halberd
+            default: return null;
         }
     }
 
@@ -4511,6 +4722,11 @@ public class CustomGauntletScript extends Script {
                 hand.abortCurrent("aborted before clicking (escape walk goes first)");
                 return;
             }
+            if (hand.isPending("equip") || wrongWeaponEquipped()) {
+                attackNeeded.set(true); // re-attack straight after the swap
+                hand.abortCurrent("aborted before clicking (weapon swap goes first)");
+                return;
+            }
             boss.click("attack");
         }, () -> hunllef != null, "attack Hunllef");
     }
@@ -4531,6 +4747,8 @@ public class CustomGauntletScript extends Script {
         if (!config.autoAttack()) return;
         if (hunllef == null) return;
         if (isAttackingBoss()) return; // already attacking it — the client auto-continues, don't re-click
+        // A swap is due: attacking first fires a shot into the Hunllef's prayer (the equip landed 2 ticks after it).
+        if (hand.isPending("equip") || wrongWeaponEquipped()) return;
         // Never from a hazard (or a tile about to be one): the attack stops us, and the flee must go first.
         if (!isPlayerOnSafeTile()) return;
         // We're stationary, not under a tornado, and NOT currently attacking the boss — i.e. the engagement
