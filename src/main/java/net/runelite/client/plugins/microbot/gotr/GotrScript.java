@@ -2,11 +2,13 @@ package net.runelite.client.plugins.microbot.gotr;
 
 import com.google.common.collect.ImmutableList;
 import net.runelite.api.*;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.tileobject.models.TileObjectType;
 import net.runelite.client.plugins.microbot.gotr.data.CellType;
 import net.runelite.client.plugins.microbot.gotr.data.GuardianPortalInfo;
 import net.runelite.client.plugins.microbot.gotr.data.Mode;
@@ -15,7 +17,6 @@ import net.runelite.client.plugins.microbot.util.Global;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
-import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
@@ -244,7 +245,7 @@ public class GotrScript extends Script {
     }
 
     private boolean waitingForGameToStart(int timeToStart) {
-        if (isInHugeMine()) return false;
+        if (isInHugeMine() || portalClock.isRoundRunning()) return false;
 
         if (getStartTimer() > Rs2Random.randomGaussian(35, Rs2Random.between(1, 5)) || getStartTimer() == -1 || timeToStart > 10) {
 
@@ -395,6 +396,16 @@ public class GotrScript extends Script {
         return fragments >= emptySlots + pouchCapacity;
     }
 
+    static boolean shouldMineLargeRemains(int fragments, int maxFragments, boolean roundRunning, int secondsSincePortal) {
+        if (fragments >= maxFragments) {
+            return false;
+        }
+        if (secondsSincePortal == -1) {
+            return !roundRunning;
+        }
+        return secondsSincePortal < 85;
+    }
+
     private boolean depositRunesIntoPool() {
         if (!config.shouldDepositRunes()
                 || !Rs2Inventory.hasItem(runeIds.stream().mapToInt(i -> i).toArray())
@@ -420,7 +431,7 @@ public class GotrScript extends Script {
         GameObject availableAltar = getAvailableAltars().stream().findFirst().orElse(null);
         if (availableAltar != null && !Rs2Player.isMoving()) {
             log("Entering with altar " + availableAltar.getId());
-            Rs2GameObject.interact(availableAltar);
+            new Rs2TileObjectModel(availableAltar).click();
             state = GotrState.ENTER_ALTAR;
             Global.sleepUntil(() -> !isInMainRegion() || !Objects.equals(getAvailableAltars().stream().findFirst().orElse(null), availableAltar), 5000);
             sleep(Rs2Random.randomGaussian(1000, 300));
@@ -584,7 +595,9 @@ public class GotrScript extends Script {
             leaveHugeMine();
             return;
         }
-        if (Rs2Player.getSkillRequirement(Skill.AGILITY, 56) && getTimeSincePortal() < 85 && !Rs2Inventory.hasItem(GUARDIAN_ESSENCE)) {
+        if (Rs2Player.getSkillRequirement(Skill.AGILITY, 56)
+                && shouldMineLargeRemains(Rs2Inventory.itemQuantity(GUARDIAN_FRAGMENTS), config.maxFragmentAmount(), portalClock.isRoundRunning(), portalClock.secondsSincePortal(Instant.now()))
+                && !Rs2Inventory.hasItem(GUARDIAN_ESSENCE)) {
             if (!isInLargeMine() && !isInHugeMine() && (!Rs2Inventory.hasItem(GUARDIAN_FRAGMENTS) || getStartTimer() == -1)) {
                 if (Rs2Walker.walkTo(new WorldPoint(3632, 9503, 0), 20)) {
                     log("Traveling to large mine...");
@@ -769,7 +782,7 @@ public class GotrScript extends Script {
     public static List<GameObject> getAvailableAltars() {
         int elementalPoints = elementalRewardPoints;
         int catalyticPoints = catalyticRewardPoints;
-        List<GameObject> availableAltars = Rs2GameObject.getGameObjects().stream()
+        List<GameObject> availableAltars = gameObjectsNearPlayer().stream()
                 .filter(x -> {
 
                     if (!guardianPortalInfo.containsKey(x.getId())) return false;
@@ -861,7 +874,7 @@ public class GotrScript extends Script {
      *
      * <p>The migrated Queryable API ({@code cache.query().interact(id, action)}) resolves
      * {@code nearestReachable()} and clicks at the player's current tile — it does NOT walk into
-     * range. Legacy {@code Rs2GameObject.interact(id, action)} auto-walked when the target was
+     * range. The legacy {@code interact(id, action)} auto-walked when the target was
      * more than 51 tiles away. After the query-API migration GOTR lost that auto-walk, so any
      * interaction issued while out of range silently no-ops every tick and the bot just stands
      * there (see docs/PLUGIN_DEBUGGING_NOTES.md §3). This restores the legacy behaviour: web-walk
@@ -923,5 +936,26 @@ public class GotrScript extends Script {
         sleepUntil( ()-> {return !(!isOutsideBarrier() && isInMainRegion());}, 200);
         GotrScript.isInMiniGame  = !isOutsideBarrier() && isInMainRegion();
         return !GotrScript.isInMiniGame;// Successfully left the minigame
+    }
+
+    private static List<GameObject> gameObjectsNearPlayer() {
+        WorldPoint playerLocation = Rs2Player.getWorldLocation();
+        if (playerLocation == null) return Collections.emptyList();
+        LocalPoint anchorLocal = LocalPoint.fromWorld(Microbot.getClient().getTopLevelWorldView(), playerLocation);
+        if (anchorLocal == null) {
+            Player player = Microbot.getClient().getLocalPlayer();
+            anchorLocal = player != null ? player.getLocalLocation() : null;
+            if (anchorLocal == null) return Collections.emptyList();
+        }
+        LocalPoint anchor = anchorLocal;
+        int maxDistance = (Constants.SCENE_SIZE / 2) * Perspective.LOCAL_TILE_SIZE;
+        return Microbot.getRs2TileObjectCache().query()
+                .fromWorldView()
+                .ofType(TileObjectType.GAME)
+                .toList().stream()
+                .map(o -> (GameObject) o.getTileObject())
+                .filter(o -> o.getLocalLocation().distanceTo(anchor) <= maxDistance)
+                .sorted(Comparator.comparingInt(o -> o.getLocalLocation().distanceTo(anchor)))
+                .collect(Collectors.toList());
     }
 }

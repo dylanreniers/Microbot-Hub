@@ -28,7 +28,7 @@ import java.awt.*;
 )
 @Slf4j
 public class AutoCookingPlugin extends Plugin {
-    public final static String version = "1.1.7";
+    public final static String version = "1.1.8";
     @Inject
     AutoCookingScript autoCookingScript;
     @Inject
