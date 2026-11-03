@@ -7,6 +7,7 @@ import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.tileobject.models.TileObjectType;
 import net.runelite.client.plugins.microbot.breakhandler.BreakHandlerScript;
 import net.runelite.client.plugins.microbot.shortestpath.ShortestPathPlugin;
 import net.runelite.client.plugins.microbot.tempoross.enums.HarpoonType;
@@ -20,7 +21,6 @@ import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.coords.Rs2WorldArea;
 import net.runelite.client.plugins.microbot.util.coords.Rs2WorldPoint;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
-import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
@@ -656,44 +656,43 @@ public class TemporossScript extends Script {
     }
 
     /**
-     * Resolves and interacts with an NPC as one client-thread operation. The executor only keeps the
-     * immutable identity/location snapshot; the live actor never escapes this callback.
+     * Resolves an NPC on the client thread and clicks it from the calling script thread, so the
+     * client's can't-reach recovery can walk. The executor only keeps the immutable identity/location
+     * snapshot; the live actor is never stored.
      */
     private static boolean clickNpc(TemporossNpcSnapshot snapshot, String action, boolean face) {
         if (snapshot == null) {
             return false;
         }
-        Supplier<Boolean> operation = () -> {
-            Rs2NpcModel npc = Microbot.getRs2NpcCache().query()
-                    .withId(snapshot.id)
-                    .where(candidate -> candidate.getIndex() == snapshot.index)
-                    .nearest();
-            if (npc == null || npc.getNpc() == null) {
-                return false;
-            }
-            if (face) {
-                faceIfNeeded(npc.getNpc());
-            }
-            return npc.click(action);
-        };
-        Boolean clicked = Microbot.getClientThread().invoke(operation);
-        return Boolean.TRUE.equals(clicked);
+        Supplier<Rs2NpcModel> lookup = () -> Microbot.getRs2NpcCache().query()
+                .withId(snapshot.id)
+                .where(candidate -> candidate.getIndex() == snapshot.index)
+                .nearest();
+        Rs2NpcModel npc = Microbot.getClientThread().invoke(lookup);
+        if (npc == null || npc.getNpc() == null) {
+            return false;
+        }
+        if (face) {
+            faceIfNeeded(npc.getNpc());
+        }
+        return npc.click(action);
     }
 
-    /** Resolves and clicks a tile object without retaining its live RuneLite wrapper. */
+    /**
+     * Resolves a tile object on the client thread and clicks it from the calling script thread, so the
+     * client's can't-reach recovery can walk. The live RuneLite wrapper is never stored.
+     */
     private static boolean clickObject(TemporossObjectSnapshot snapshot, String action) {
         if (snapshot == null) {
             return false;
         }
-        Supplier<Boolean> operation = () -> {
-            Rs2TileObjectModel object = Microbot.getRs2TileObjectCache().query()
-                    .withId(snapshot.id)
-                    .where(candidate -> snapshot.worldLocation != null
-                            && snapshot.worldLocation.equals(candidate.getWorldLocation()))
-                    .nearest();
-            return object != null && object.click(action);
-        };
-        return Boolean.TRUE.equals(Microbot.getClientThread().invoke(operation));
+        Supplier<Rs2TileObjectModel> lookup = () -> Microbot.getRs2TileObjectCache().query()
+                .withId(snapshot.id)
+                .where(candidate -> snapshot.worldLocation != null
+                        && snapshot.worldLocation.equals(candidate.getWorldLocation()))
+                .nearest();
+        Rs2TileObjectModel object = Microbot.getClientThread().invoke(lookup);
+        return object != null && object.click(action);
     }
 
     /** Runs an NPC lookup and copies every result before returning to the executor. */
@@ -1939,8 +1938,13 @@ public class TemporossScript extends Script {
     }
 
     public static void updateCloudData(){
-        List<GameObject> allClouds = Rs2GameObject.getGameObjects().stream()
-                .filter(obj -> obj.getId() == CLOUD_SHADOW || obj.getId() == CLOUD_SHADOW_SHORT)
+        List<GameObject> allClouds = Microbot.getRs2TileObjectCache().query()
+                .fromWorldView()
+                .ofType(TileObjectType.GAME)
+                .withIds(CLOUD_SHADOW, CLOUD_SHADOW_SHORT)
+                .within(Constants.SCENE_SIZE / 2)
+                .toList().stream()
+                .map(o -> (GameObject) o.getTileObject())
                 .collect(Collectors.toList());
         LocalPoint playerLocal = cachedPlayerLocal;
         if (playerLocal == null) {
