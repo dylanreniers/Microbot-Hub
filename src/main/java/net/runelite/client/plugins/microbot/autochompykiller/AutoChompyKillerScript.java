@@ -9,7 +9,6 @@ import net.runelite.api.gameval.ObjectID;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
-import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
@@ -50,8 +49,8 @@ public class AutoChompyKillerScript extends Script {
         return toadCount > 0;
     }
 
-    private boolean isDeadChompyNearby() {
-        long deadChompyCount = Microbot.getRs2NpcCache().query().withId(NpcID.CHOMPYBIRD_DEAD).where(element -> Rs2Player.getWorldLocation().distanceTo(element.getWorldLocation()) <= 5).count();
+    private boolean isDeadChompyNearby(WorldPoint playerLocation) {
+        long deadChompyCount = Microbot.getRs2NpcCache().query().withId(NpcID.CHOMPYBIRD_DEAD).where(element -> playerLocation.distanceTo(element.getWorldLocation()) <= 5).count();
 
         return deadChompyCount > 0;
     }
@@ -277,6 +276,10 @@ public class AutoChompyKillerScript extends Script {
                     log.info("Not logged in");
                     return;
                 }
+                WorldPoint playerLocation = Rs2Player.getWorldLocation();
+                if (playerLocation == null) {
+                    return;
+                }
 
                 long startTime = System.currentTimeMillis();
 
@@ -369,7 +372,7 @@ public class AutoChompyKillerScript extends Script {
                         }
 
                         WorldPoint bubbleLocation = bubble.getWorldLocation();
-                        if (Rs2Player.getWorldLocation().distanceTo(bubbleLocation) > BELLOWS_INTERACT_DISTANCE) {
+                        if (playerLocation.distanceTo(bubbleLocation) > BELLOWS_INTERACT_DISTANCE) {
                             // Non-blocking single-step approach; subsequent loop ticks continue the walk.
                             WalkerState walkState = Rs2Walker.walkStep(bubbleLocation, BELLOWS_INTERACT_DISTANCE - 1);
                             if (walkState == WalkerState.UNREACHABLE) {
@@ -382,7 +385,7 @@ public class AutoChompyKillerScript extends Script {
                         log.info("Sucking swamp bubbles (id {}) at {} - {}/{} ogre bellows unfilled",
                                 bubble.getId(), bubbleLocation, unfilledBefore, countBellows());
                         // One 'Suck' fills every ogre bellows in the inventory; confirm via the count.
-                        if (Rs2GameObject.interact(bubble, "Suck", false)) {
+                        if (bubble.click("Suck")) {
                             sleepUntil(() -> countUnfilledBellows() < unfilledBefore, ACTION_START_TIMEOUT_MS);
                         }
 
@@ -404,7 +407,7 @@ public class AutoChompyKillerScript extends Script {
                             break; // inflate/drop still resolving
                         }
 
-                        if (config.pluckChompys() && isDeadChompyNearby()) {
+                        if (config.pluckChompys() && isDeadChompyNearby(playerLocation)) {
                             log.info("Dead chompy nearby - switching to plucking");
                             changeState(AutoChompyKillerState.PLUCKING);
                             break;
@@ -461,7 +464,7 @@ public class AutoChompyKillerScript extends Script {
                             break; // attack still resolving
                         }
 
-                        if (config.pluckChompys() && isDeadChompyNearby()) {
+                        if (config.pluckChompys() && isDeadChompyNearby(playerLocation)) {
                             log.info("Dead chompy nearby - switching to plucking");
                             changeState(AutoChompyKillerState.PLUCKING);
                             break;
