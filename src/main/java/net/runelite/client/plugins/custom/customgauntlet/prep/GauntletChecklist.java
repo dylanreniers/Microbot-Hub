@@ -20,7 +20,7 @@ public class GauntletChecklist {
     public static final int TARGET_FISH_PHASE_1 = 16;       // required before Phase 2 can start
     public static final int TARGET_FISH_PHASE_1_SOFT = 12;  // soft cap: don't hog inventory with fish early...
     public static final int TARGET_FISH_TOTAL = 24;
-    public static final int TARGET_TOTAL_SHARDS = 550;
+    public static final int TARGET_TOTAL_SHARDS = 560; // everything, crushing, the vials and a 50-shard teleport crystal included
 
     // Item names (matched exactly). Covers both Corrupted and Crystalline variants where they differ; the
     // plant/wood/fish resources share a name across both gauntlets. Exact matching matters: "Paddlefish"
@@ -38,6 +38,11 @@ public class GauntletChecklist {
 
     // Tracking
     private int shardsSpent = 0;
+    // Materials the Singing Bowl used up: the targets are totals, so what went into the gear still counts (counting
+    // only the inventory sent us back out for linum after the basic armour used it).
+    private int oreSpent = 0;
+    private int barkSpent = 0;
+    private int linumSpent = 0;
     private int bearsKilled = 0;
     private boolean killedDragon = false;
     private boolean killedDarkBeast = false;
@@ -66,16 +71,31 @@ public class GauntletChecklist {
         return false;
     }
 
+    /** Ore gathered so far: carried plus used at the bowl. */
     public int getOreCount() {
-        return quantityOf(ORE_NAMES);
+        return quantityOf(ORE_NAMES) + oreSpent;
     }
 
     public int getBarkCount() {
-        return quantityOf(BARK_NAMES);
+        return quantityOf(BARK_NAMES) + barkSpent;
     }
 
     public int getLinumCount() {
-        return quantityOf(LINUM_NAMES);
+        return quantityOf(LINUM_NAMES) + linumSpent;
+    }
+
+    /** Carried shards, ore, bark and linum, to compare before and after a bowl press or crush. */
+    public int[] carriedMaterials() {
+        return new int[]{getInventoryShards(), quantityOf(ORE_NAMES), quantityOf(BARK_NAMES), quantityOf(LINUM_NAMES)};
+    }
+
+    /** Books whatever was used up since {@code before} (from {@link #carriedMaterials()}) as spent. */
+    public void recordSpent(int[] before) {
+        int[] now = carriedMaterials();
+        shardsSpent += Math.max(0, before[0] - now[0]);
+        oreSpent += Math.max(0, before[1] - now[1]);
+        barkSpent += Math.max(0, before[2] - now[2]);
+        linumSpent += Math.max(0, before[3] - now[3]);
     }
 
     public int getLeafCount() {

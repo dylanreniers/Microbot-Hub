@@ -174,6 +174,11 @@ public class ClickHand {
         return w != null && w.kind == Kind.FLEE;
     }
 
+    /** True while a click of this kind is waiting. */
+    public synchronized boolean isKindPending(Kind kind) {
+        return pending.values().stream().anyMatch(r -> r.kind == kind);
+    }
+
     /** True while a click with this key is waiting. */
     public synchronized boolean isPending(String key) {
         return pending.containsKey(key);

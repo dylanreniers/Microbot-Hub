@@ -60,7 +60,7 @@ import static net.runelite.client.plugins.microbot.Microbot.log;
 )
 @UnderDevelopment
 public class CustomGauntletPlugin extends Plugin {
-    public static final String version = "1.14.1";
+    public static final String version = "1.16.1";
 
     private static final int RANGE_PROJECTILE_MINIBOSS = 1705;
     private static final int MAGE_PROJECTILE_MINIBOSS = 1701;
@@ -70,6 +70,8 @@ public class CustomGauntletPlugin extends Plugin {
     private static final int CG_MAGE_PROJECTILE = 1708;
     private static final int DEACTIVATE_MAGE_PROJECTILE = 1713;
     private static final int CG_DEACTIVATE_MAGE_PROJECTILE = 1714;
+    private static final int OWN_MAGIC_PROJECTILE = 1723; // our staff's shot
+    private static final int OWN_RANGE_PROJECTILE = 249;  // our bow's shot
     private static final int MAGE_ANIMATION = 8754;
     private static final int RANGE_ANIMATION = 8755;
 
@@ -198,6 +200,10 @@ public class CustomGauntletPlugin extends Plugin {
                     script.projMageBlastEnd();
                     projectileCount = 0; // reset after the last hit
                 }
+                break;
+            case OWN_MAGIC_PROJECTILE:
+            case OWN_RANGE_PROJECTILE:
+                script.onOwnProjectile(event.getProjectile());
                 break;
             default:
                 break;

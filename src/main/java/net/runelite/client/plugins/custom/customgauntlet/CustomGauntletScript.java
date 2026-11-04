@@ -118,7 +118,9 @@ public class CustomGauntletScript extends Script {
     private static final int PLAN_SWITCH_MARGIN = 20;      // a new plan replaces a recent evade only if this much cheaper        // a new evade target replaces one this recent only if it's better
     private static final int EVADE_FOLLOW_UP_CANDIDATES = 20; // best clean evade targets checked for a clean run onward
     private static final int EQUIP_CONFIRM_TICKS = 3;      // ticks between weapon equip clicks
-    private static final int TORNADO_ATTACK_INTERVAL_TICKS = 5; // during tornadoes: one shot per ~3s, like clicking the boss by hand
+    private static final long TORNADO_SHOT_INTERVAL_MS = 3000; // during tornadoes: shoot when we haven't for this long...
+    private static final int TORNADO_SHOT_MIN_GAP = 4;         // ...from a safe tile with every tornado at least this far off
+    private static final long SHOT_WAIT_MAX_MS = 1500;         // wait this long for our projectile before the dodge takes over
     private static final int ATTACK_RECLICK_TICKS = 2;     // anti-spam between attack clicks while the weapon is ready
     private static final int TOPUP_HP_MARGIN = 20;         // between tornado phases, eat once HP is a full paddlefish below max (no overheal)
     private static final int TOPUP_MIN_FISH = 5;           // ...but only while more fish than this are left
@@ -308,7 +310,7 @@ public class CustomGauntletScript extends Script {
     private int walkSkipLogTick = -1;
     private int routeFromX = -1, routeFromY = -1, routeToX = -1, routeToY = -1; // last walk click: where it took effect, its tile
     private int offRouteTick = -1;              // last tick we re-clicked a walk that left its planned route
-    private long lastWalkClickAt = -1;    // loop timestamp (now) of the last walk click
+    private volatile long lastWalkClickAt = -1; // timestamp (now) of the last walk click
     private long lastEatClickAt = -1;     // loop timestamp (now) of the last eat/drink click
     private volatile long hitExpectedUntil = -1;  // a dodge move predicted an unavoidable hit: eat at the normal threshold until then
     private volatile long lastPrayerClickAt = -1; // diagnostics: wall-clock time of the last prayer click
@@ -327,6 +329,8 @@ public class CustomGauntletScript extends Script {
     private int[] lastEvade = null;       // last evade target picked (kept through drops, for EVADE_STICK_TICKS)
     private int lastEvadeTick = -100;
     private int runAnchorX = -1, runAnchorY = -1; // where the current run started / we last attacked (scene coords)
+    private volatile long lastOwnShotAt = 0, lastShotClickAt = 0; // our last projectile / tornado-shot click (ms)
+    private volatile Projectile lastOwnProjectile = null;
     private volatile int lastAttackFiredTick = -100;     // tick our attack animation last started (weapon cooldown)
     private volatile int unknownPlayerAnim = -1;         // last unrecognised player animation, logged from the script thread
     private int loggedUnknownAnim = -1;
@@ -3915,55 +3919,44 @@ public class CustomGauntletScript extends Script {
     }
 
     /**
-     * One attack check for every kind of tornado movement. With the weapon ready and {@link #TORNADO_ATTACK_INTERVAL_TICKS}
-     * since the last attack, simulate standing still for the shot and then carrying on to the same target; if that
-     * run is still clean (closest pass >= 1, end gap >= 2), click the Hunllef - the next tick's movement logic
-     * re-clicks the run. The old gates (lane 8+, 4 tiles run, gap > 3, mid-run only) let 1 shot through in 190
-     * tornado ticks; clicking the boss every 3-4s by hand gets ~3 per tornado phase.
+     * Tornado-phase shots: when we haven't shot for {@link #TORNADO_SHOT_INTERVAL_MS}, we stand on a safe tile and every
+     * tornado is at least {@link #TORNADO_SHOT_MIN_GAP} tiles off, click the Hunllef and carry straight on with the run
+     * the moment our projectile appears (see {@link #attackThenResume}). The old check simulated the run after a
+     * 2-tick pause and let 0-2 shots through per phase.
      */
     private boolean tryTornadoAttack(int px, int py, int bossX, int bossY, List<int[]> tornadoes, int nearestTornado) {
         if (!config.autoAttack() || hunllef == null) return false;
         if (!isBowEquipped() && !isStaffEquipped()) return false;
-        if (!weaponReady() || gameTickCount - lastAttackTick < TORNADO_ATTACK_INTERVAL_TICKS) return false;
-        // From here on the weapon is ready: count why a shot didn't go out (once per tick) for the phase summary.
+        long sinceShot = System.currentTimeMillis() - Math.max(lastOwnShotAt, lastShotClickAt);
+        if (sinceShot < TORNADO_SHOT_INTERVAL_MS || !weaponReady()) return false;
+        // From here on a shot is due: count why it didn't go out (once per tick) for the phase summary.
         if (hand.isPending("equip") || wrongWeaponEquipped()) return shotSkipped("weapon swap pending");
-        if (inTransition) return shotSkipped("lane transition");
-        if (nearestTornado <= 1) return shotSkipped("tornado 1 tile away");
-        if (isWarningTile(px, py) || isOnDangerousTile(px, py)) return shotSkipped("on warning/hazard tile");
-        if (isUnderBoss(px, py, bossX, bossY, 0)) return shotSkipped("under the boss");
-        // An evade that already takes a hit, or crosses hazards on purpose, has no time to give.
-        if (evadeTarget != null && (evadeExpectsHit || evadeCrossesHazard)) return shotSkipped("evade takes a hit/crosses hazard");
-        // The attack would cancel a walk clicked this tick before it took us anywhere.
-        if (walkClickTick == gameTickCount || hand.isPending("walk")) return shotSkipped("walk clicked this tick");
+        if (nearestTornado < TORNADO_SHOT_MIN_GAP) return shotSkipped("tornado within " + (TORNADO_SHOT_MIN_GAP - 1) + " tiles");
+        if (isWarningTile(px, py) || !isTileFullySafe(px, py, bossX, bossY)) return shotSkipped("not on a safe tile");
+        if (hand.isFleePending()) return shotSkipped("flee pending");
 
-        int[] target = null;
+        // Where the run goes on to after the shot: the evade, the lane run, or wherever we're walking.
+        int[] resume = null;
         String what;
         if (evadeTarget != null) {
-            target = evadeTarget;
+            resume = evadeTarget;
             what = "evade";
         } else if (currentShuttleTarget != null && isPlayerOnSafeLane(px, py)) {
-            target = currentShuttleTarget;
+            resume = currentShuttleTarget;
             what = "lane run";
         } else {
             LocalPoint dest = Microbot.getClient().getLocalDestinationLocation();
-            if (dest != null) target = new int[]{dest.getSceneX(), dest.getSceneY()};
+            if (dest != null) resume = new int[]{dest.getSceneX(), dest.getSceneY()};
             what = "walk";
         }
-        List<int[]> afterPause = tornadoesAfterPause(px, py, tornadoes);
-        String result;
-        if (target != null && (target[0] != px || target[1] != py)) {
-            if (!isTileFullySafe(target[0], target[1], bossX, bossY)) return shotSkipped("target unsafe");
-            int[] sim = simulateRun(px, py, target, afterPause);
-            if (sim[0] < 1 || sim[1] < 2 || sim[2] > 0) return shotSkipped("run after shot not clean");
-            result = String.format("run after shot: pass %d, end gap %d", sim[0], sim[1]);
-        } else {
-            what = "standstill";
-            if (!hasCleanRunFrom(buildSafeGrid(bossX, bossY), new int[]{px, py}, afterPause, 2)) return shotSkipped("no clean run onward");
-            result = "clean run onward";
-        }
+        if (resume != null && resume[0] == px && resume[1] == py) resume = null;
+        if (resume == null) what = "standstill";
         phaseShots++;
-        Microbot.log(String.format("[Attack] Shot during %s (tornado gap %d, %s) %s", what, nearestTornado, result, vitalsTag()));
-        attackHunllef();
+        Microbot.log(String.format("[Attack] Shot during %s (tornado gap %d, %.1fs since the last)%s %s", what, nearestTornado,
+                Math.min(sinceShot, 99_000) / 1000.0, resume == null ? "" : String.format(", then on to (%d,%d)", resume[0], resume[1]),
+                vitalsTag()));
+        attackThenResume(resume);
+        lastShotClickAt = System.currentTimeMillis();
         timeAttack = now;
         lastAttackTick = gameTickCount;
         midRunAttackTick = gameTickCount;
@@ -3974,6 +3967,70 @@ public class CustomGauntletScript extends Script {
         shotFiredLogged = false;
         shotMoveLogged = false;
         return true;
+    }
+
+    /**
+     * The hand's tornado-phase shot: click the Hunllef, put the mouse on the run tile straight away, and click it the
+     * moment our projectile appears. Gives up waiting (the dodge re-clicks the run) when a walk or protection prayer
+     * queues up, or the shot doesn't come within {@link #SHOT_WAIT_MAX_MS}.
+     */
+    private void attackThenResume(int[] resume) {
+        Rs2NpcModel boss = hunllef;
+        if (boss == null) return;
+        hand.submit(ClickHand.Kind.ATTACK, "attack", ClickHand.Tab.NONE, () -> {
+            net.runelite.api.Point at = Microbot.getClientThread().runOnClientThreadOptional(() -> {
+                java.awt.Shape hull = boss.getConvexHull();
+                if (hull == null) return null;
+                Rectangle b = hull.getBounds();
+                return new net.runelite.api.Point((int) b.getCenterX(), (int) b.getCenterY());
+            }).orElse(null);
+            if (at != null && Microbot.naturalMouse != null) Microbot.naturalMouse.moveTo(at.getX(), at.getY());
+            if (hand.isPending("walk") || hand.isFleePending()) {
+                hand.abortCurrent("aborted before clicking (escape walk goes first)");
+                return;
+            }
+            long shotBefore = lastOwnShotAt;
+            long clickedAt = System.currentTimeMillis();
+            boss.click("attack");
+            if (resume == null) return;
+            LocalPoint lp = LocalPoint.fromScene(resume[0], resume[1]);
+            if (lp == null) return;
+            // Mouse ready on the run tile while the shot winds up.
+            java.awt.Point tile = tileCanvasPoint(lp);
+            if (tile != null && Microbot.naturalMouse != null) Microbot.naturalMouse.moveTo(tile.x, tile.y);
+            while (lastOwnShotAt == shotBefore) {
+                if (System.currentTimeMillis() - clickedAt > SHOT_WAIT_MAX_MS) {
+                    eventLog.add(String.format("[Attack] No projectile within %dms of the click - the dodge resumes the run", SHOT_WAIT_MAX_MS));
+                    return;
+                }
+                if (hand.isPending("walk") || hand.isKindPending(ClickHand.Kind.PROTECT_PRAYER)) return;
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+            long shotAt = lastOwnShotAt;
+            java.awt.Point aim = tileCanvasPoint(lp);
+            if (aim == null) {
+                clickTileOffScreen(lp);
+            } else {
+                invokeWalk(aim);
+            }
+            lastWalkClickAt = System.currentTimeMillis();
+            eventLog.add(String.format("[Attack] Projectile %dms after the click - running on to (%d,%d) %dms later",
+                    shotAt - clickedAt, resume[0], resume[1], System.currentTimeMillis() - shotAt));
+        }, () -> hunllef != null, "attack Hunllef (tornado shot)");
+    }
+
+    /** Client thread (ProjectileMoved, many times per projectile): our own bow/staff shot. No logging here. */
+    public void onOwnProjectile(Projectile p) {
+        if (p == null || p == lastOwnProjectile) return;
+        Player me = Microbot.getClient().getLocalPlayer();
+        if (me == null || p.getSourceActor() != me) return;
+        lastOwnProjectile = p;
+        lastOwnShotAt = System.currentTimeMillis();
     }
 
     /** Counts a skipped tornado shot once per tick (for the phase summary); always false. */
