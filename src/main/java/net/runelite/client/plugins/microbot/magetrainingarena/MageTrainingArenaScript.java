@@ -9,6 +9,7 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.tileobject.models.TileObjectType;
 import net.runelite.client.plugins.microbot.globval.enums.InterfaceTab;
 import net.runelite.client.plugins.microbot.magetrainingarena.enums.*;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
@@ -17,7 +18,6 @@ import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
-import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2RunePouch;
@@ -114,6 +114,9 @@ public class MageTrainingArenaScript extends Script {
                 if (handleFirstTime())
                     return;
 
+                if (Rs2Player.getWorldLocation() == null)
+                    return;
+
                 currentRoom = getCurrentRoom();
                 updatePoints();
                 if (initPoints())
@@ -194,7 +197,7 @@ public class MageTrainingArenaScript extends Script {
                     Rs2Player.waitForWalking();
                 }
                 if (currentRoom == Rooms.GRAVEYARD && Rs2Inventory.contains(ItemID.BANANA, ItemID.PEACH)) {
-                    Rs2GameObject.interact(new WorldPoint(3354, 9639, 1), "Deposit");
+                    interactAt(new WorldPoint(3354, 9639, 1), "Deposit");
                     Rs2Inventory.waitForInventoryChanges(5000);
                 }
                 leaveRoom();
@@ -373,7 +376,7 @@ public class MageTrainingArenaScript extends Script {
             sleepUntil(() -> !Rs2Inventory.contains(itemId) || itemId != ItemID.MAGICTRAINING_DRAGONSTONE && bonusShape != getBonusShape(), 20000);
         } else if (object.click("Take-from")) {
             Rs2Inventory.waitForInventoryChanges(1000);
-        } else if (Rs2Player.getWorldLocation().distanceTo(object.getWorldLocation()) > 10){
+        } else if (isFartherThan(Rs2Player.getWorldLocation(), object.getWorldLocation(), 10)){
             Rs2Walker.walkFastCanvas(object.getWorldLocation());
         }
     }
@@ -394,10 +397,10 @@ public class MageTrainingArenaScript extends Script {
             return;
         }
 
+        var teleRoom = findTelekineticRoom(Rs2Player.getWorldLocation());
+        if (teleRoom == null) return;
+
         var room = mtaPlugin.getTelekineticRoom();
-        var teleRoom = Arrays.stream(TelekineticRooms.values())
-                .filter(x -> Rs2Player.getWorldLocation().distanceTo(x.getArea()) == 0)
-                .findFirst().orElseThrow();
 
         // Walk to maze if guardian is not visible
         WorldPoint target;
@@ -430,9 +433,9 @@ public class MageTrainingArenaScript extends Script {
             sleepUntil(() -> room.getGuardian().getId() == NpcID.MAGICTRAINING_GUARD_MAZE_COMPLETE);
             sleep(200, 400);
             new Rs2NpcModel(room.getGuardian()).click("New-maze");
-            sleepUntil(() -> Rs2Player.getWorldLocation().distanceTo(teleRoom.getArea()) != 0);
+            sleepUntil(() -> hasLeftTelekineticRoom(Rs2Player.getWorldLocation(), teleRoom));
         } else {
-            while (!Rs2Player.getWorldLocation().equals(targetConverted)
+            while (isAwayFrom(Rs2Player.getWorldLocation(), targetConverted)
                     && !Objects.equals(Microbot.getClientThread().invoke(() -> Microbot.getClient().getLocalDestinationLocation()), localTarget)) {
                 if (Rs2Camera.isTileOnScreen(localTarget)) {
                     Rs2Walker.walkFastCanvas(targetConverted);
@@ -442,6 +445,9 @@ public class MageTrainingArenaScript extends Script {
                 }
                 sleepUntil(() -> !Rs2Player.isMoving());
             }
+
+            if (Rs2Player.getWorldLocation() == null)
+                return;
 
             boolean noTelegrabProjectile = Microbot.getClientThread()
                     .runOnClientThreadOptional(() -> StreamSupport.stream(Microbot.getClient().getProjectiles().spliterator(), false)
@@ -464,6 +470,25 @@ public class MageTrainingArenaScript extends Script {
                 sleepUntil(()->room.getGuardian().getId() != NpcID.MAGICTRAINING_GUARD_MAZE_MOVING);
             }
         }
+    }
+
+    static TelekineticRooms findTelekineticRoom(WorldPoint location) {
+        if (location == null) return null;
+        return Arrays.stream(TelekineticRooms.values())
+                .filter(x -> location.distanceTo(x.getArea()) == 0)
+                .findFirst().orElse(null);
+    }
+
+    static boolean hasLeftTelekineticRoom(WorldPoint location, TelekineticRooms teleRoom) {
+        return location != null && location.distanceTo(teleRoom.getArea()) != 0;
+    }
+
+    static boolean isAwayFrom(WorldPoint location, WorldPoint target) {
+        return location != null && !location.equals(target);
+    }
+
+    static boolean isFartherThan(WorldPoint location, WorldPoint target, int distance) {
+        return location != null && location.distanceTo(target) > distance;
     }
 
     private void handleGraveyardRoom() {
@@ -504,18 +529,18 @@ public class MageTrainingArenaScript extends Script {
                 }
             }
             if (Rs2Inventory.contains(ItemID.BANANA, ItemID.PEACH)) {
-            Rs2GameObject.interact(new WorldPoint(3354, 9639, 1), "Deposit");
+            interactAt(new WorldPoint(3354, 9639, 1), "Deposit");
                 Rs2Inventory.waitForInventoryChanges(5000);
         }
             return;
         }
         if (mtaPlugin.getGraveyardRoom().getCounter() == null){
-            Rs2GameObject.interact(new WorldPoint(3352, 9637, 1), "Grab");
+            interactAt(new WorldPoint(3352, 9637, 1), "Grab");
             sleepUntil(()->!Rs2Player.isMoving() && Rs2Inventory.waitForInventoryChanges(2000));
         }
         while (mtaPlugin.getGraveyardRoom().getCounter() != null && mtaPlugin.getGraveyardRoom().getCounter().getCount() < boneGoal && isRunning()){
             System.out.println("Plugin Counter: " + mtaPlugin.getGraveyardRoom().getCounter().getCount() + " boneGoal: " + boneGoal);
-            Rs2GameObject.interact(new WorldPoint(3352, 9637, 1), "Grab");
+            interactAt(new WorldPoint(3352, 9637, 1), "Grab");
             Rs2Inventory.waitForInventoryChanges(5000);
             boneGoal = (Rs2Inventory.items().filter(x -> x.getName().equalsIgnoreCase("Animals' bones")).count()+Rs2Inventory.emptySlotCount());
             sleepGaussian(400, 150);
@@ -617,9 +642,14 @@ public class MageTrainingArenaScript extends Script {
     }
 
     public static Rooms getCurrentRoom() {
+        return findRoom(Rs2Player.getWorldLocation());
+    }
+
+    static Rooms findRoom(WorldPoint location) {
+        if (location == null) return null;
         for (var room : Rooms.values()) {
-            if (room == Rooms.TELEKINETIC && Arrays.stream(TelekineticRooms.values()).anyMatch(x -> Rs2Player.getWorldLocation().distanceTo(x.getArea()) == 0)
-                    || room.getArea() != null && Rs2Player.getWorldLocation().distanceTo(room.getArea()) == 0)
+            if (room == Rooms.TELEKINETIC && findTelekineticRoom(location) != null
+                    || room.getArea() != null && location.distanceTo(room.getArea()) == 0)
                 return room;
         }
 
@@ -646,12 +676,10 @@ public class MageTrainingArenaScript extends Script {
         if (room != Rooms.TELEKINETIC)
             exit = room.getExit();
         else {
-            for (var teleRoom : TelekineticRooms.values()) {
-                if (Rs2Player.getWorldLocation().distanceTo(teleRoom.getArea()) == 0) {
-                    exit = teleRoom.getExit();
-                    break;
-                }
-            }
+            var teleRoom = findTelekineticRoom(Rs2Player.getWorldLocation());
+            if (teleRoom == null)
+                return;
+            exit = teleRoom.getExit();
         }
 
         if (!Rs2Walker.walkTo(exit))
@@ -812,4 +840,17 @@ public class MageTrainingArenaScript extends Script {
         return false;
     }
 
+
+    private static boolean interactAt(WorldPoint location, String action) {
+        WorldPoint playerLocation = Rs2Player.getWorldLocation();
+        if (playerLocation == null) return false;
+        Rs2TileObjectModel object = Microbot.getRs2TileObjectCache().query()
+                .fromWorldView()
+                .where(o -> location.equals(o.getTileObject().getWorldLocation()))
+                .toList().stream()
+                .min(Comparator.comparing((Rs2TileObjectModel o) -> o.getTileObjectType() != TileObjectType.GAME)
+                        .thenComparingInt(o -> o.getTileObject().getWorldLocation().distanceTo(playerLocation)))
+                .orElse(null);
+        return object != null && object.click(action);
+    }
 }

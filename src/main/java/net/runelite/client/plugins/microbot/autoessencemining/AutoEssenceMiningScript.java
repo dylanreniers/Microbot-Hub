@@ -9,12 +9,13 @@ import net.runelite.api.gameval.ObjectID1;
 import net.runelite.client.plugins.microbot.agentserver.handler.ScriptHeartbeatRegistry;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
+import net.runelite.client.plugins.microbot.api.tileobject.models.TileObjectType;
 import net.runelite.client.plugins.microbot.autoessencemining.enums.AutoEssenceMiningState;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2AntibanSettings;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
-import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
@@ -99,12 +100,21 @@ public class AutoEssenceMiningScript extends Script {
         RUNE(AutoEssenceMiningConfig.PickaxeOverride.RUNE, ItemID.RUNE_PICKAXE, "Rune pickaxe", 41, 40, 70),
         GILDED(AutoEssenceMiningConfig.PickaxeOverride.GILDED, ItemID.TRAIL_GILDED_PICKAXE, "Gilded pickaxe", 41, 40, 71),
         DRAGON(AutoEssenceMiningConfig.PickaxeOverride.DRAGON, ItemID.DRAGON_PICKAXE, "Dragon pickaxe", 61, 60, 80),
-        DRAGON_OR(AutoEssenceMiningConfig.PickaxeOverride.DRAGON_OR, ItemID.DRAGON_PICKAXE_PRETTY, "Dragon pickaxe (or)", 61, 60, 81),
-        INFERNAL_EMPTY(AutoEssenceMiningConfig.PickaxeOverride.INFERNAL_EMPTY, ItemID.INFERNAL_PICKAXE_EMPTY, "Infernal pickaxe (uncharged)", 61, 60, 82),
-        INFERNAL(AutoEssenceMiningConfig.PickaxeOverride.INFERNAL, ItemID.INFERNAL_PICKAXE, "Infernal pickaxe", 61, 60, 83),
-        THIRD_AGE(AutoEssenceMiningConfig.PickaxeOverride.THIRD_AGE, ItemID._3A_PICKAXE, "3rd age pickaxe", 61, 65, 84),
-        TRAILBLAZER(AutoEssenceMiningConfig.PickaxeOverride.TRAILBLAZER, ItemID.TRAILBLAZER_PICKAXE, "Trailblazer pickaxe", 61, 60, 85),
-        CRYSTAL(AutoEssenceMiningConfig.PickaxeOverride.CRYSTAL, ItemID.CRYSTAL_PICKAXE, "Crystal pickaxe", 71, 70, 90);
+        DRAGON_ZALCANO(AutoEssenceMiningConfig.PickaxeOverride.DRAGON, ItemID.ZALCANO_PICKAXE, "Dragon pickaxe (upgraded)", 61, 60, 81),
+        DRAGON_ZALCANO_GLOW(AutoEssenceMiningConfig.PickaxeOverride.DRAGON, ItemID.ZALCANO_PICKAXE_SPECIAL_GLOW, "Dragon pickaxe (upgraded)", 61, 60, 82),
+        TRAILBLAZER_NO_INFERNAL(AutoEssenceMiningConfig.PickaxeOverride.TRAILBLAZER, ItemID.TRAILBLAZER_PICKAXE_NO_INFERNAL, "Trailblazer pickaxe (no infernal)", 61, 60, 83),
+        TRAILBLAZER_RELOADED_NO_INFERNAL(AutoEssenceMiningConfig.PickaxeOverride.TRAILBLAZER, ItemID.TRAILBLAZER_RELOADED_PICKAXE_NO_INFERNAL, "Trailblazer reloaded pickaxe (no infernal)", 61, 60, 84),
+        CRYSTAL_INACTIVE(AutoEssenceMiningConfig.PickaxeOverride.CRYSTAL, ItemID.CRYSTAL_PICKAXE_INACTIVE, "Crystal pickaxe (inactive)", 71, 70, 85),
+        DRAGON_OR(AutoEssenceMiningConfig.PickaxeOverride.DRAGON_OR, ItemID.DRAGON_PICKAXE_PRETTY, "Dragon pickaxe (or)", 61, 60, 86),
+        INFERNAL_EMPTY(AutoEssenceMiningConfig.PickaxeOverride.INFERNAL_EMPTY, ItemID.INFERNAL_PICKAXE_EMPTY, "Infernal pickaxe (uncharged)", 61, 60, 87),
+        INFERNAL(AutoEssenceMiningConfig.PickaxeOverride.INFERNAL, ItemID.INFERNAL_PICKAXE, "Infernal pickaxe", 61, 60, 88),
+        THIRD_AGE(AutoEssenceMiningConfig.PickaxeOverride.THIRD_AGE, ItemID._3A_PICKAXE, "3rd age pickaxe", 61, 65, 89),
+        TRAILBLAZER_EMPTY(AutoEssenceMiningConfig.PickaxeOverride.TRAILBLAZER, ItemID.TRAILBLAZER_PICKAXE_EMPTY, "Trailblazer pickaxe (uncharged)", 61, 60, 90),
+        TRAILBLAZER(AutoEssenceMiningConfig.PickaxeOverride.TRAILBLAZER, ItemID.TRAILBLAZER_PICKAXE, "Trailblazer pickaxe", 61, 60, 91),
+        TRAILBLAZER_RELOADED_EMPTY(AutoEssenceMiningConfig.PickaxeOverride.TRAILBLAZER, ItemID.TRAILBLAZER_RELOADED_PICKAXE_EMPTY, "Trailblazer reloaded pickaxe (uncharged)", 61, 60, 92),
+        TRAILBLAZER_RELOADED(AutoEssenceMiningConfig.PickaxeOverride.TRAILBLAZER, ItemID.TRAILBLAZER_RELOADED_PICKAXE, "Trailblazer reloaded pickaxe", 61, 60, 93),
+        CRYSTAL_GLOW(AutoEssenceMiningConfig.PickaxeOverride.CRYSTAL, ItemID.CRYSTAL_PICKAXE_GLOW, "Crystal pickaxe", 71, 70, 94),
+        CRYSTAL(AutoEssenceMiningConfig.PickaxeOverride.CRYSTAL, ItemID.CRYSTAL_PICKAXE, "Crystal pickaxe", 71, 70, 95);
 
         private final AutoEssenceMiningConfig.PickaxeOverride override;
         private final int id;
@@ -159,7 +169,11 @@ public class AutoEssenceMiningScript extends Script {
                 long startTime = System.currentTimeMillis();
                 
                 // determine current location and state
-                isInEssenceMine = isInEssenceMine();
+                WorldPoint playerLocation = Rs2Player.getWorldLocation();
+                if (playerLocation == null) {
+                    return;
+                }
+                isInEssenceMine = isInEssenceMine(playerLocation);
                 needsToBank = needsBankingBeforeTrip(config);
 
                 if (shouldStop()) {
@@ -175,7 +189,7 @@ public class AutoEssenceMiningScript extends Script {
                     return;
                 }
                 
-                logStateEvaluation();
+                logStateEvaluation(playerLocation);
 
                 if (isInEssenceMine) {
                     if (!needsToBank) {
@@ -191,7 +205,7 @@ public class AutoEssenceMiningScript extends Script {
                         log.info("Need to bank, switching to BANKING");
                         changeState(AutoEssenceMiningState.BANKING);
                     } else {
-                        if (Rs2Player.getWorldLocation().distanceTo(AUBURY_LOCATION) <= 8) {
+                        if (playerLocation.distanceTo(AUBURY_LOCATION) <= 8) {
                             log.info("Near Aubury, switching to TELEPORTING_WITH_AUBURY");
                             if (hasTeleportedWithAubury) {
                                 hasTeleportedWithAubury = false;
@@ -252,7 +266,11 @@ public class AutoEssenceMiningScript extends Script {
         }
         
         // validate current distance before walking
-        int currentDistance = Rs2Player.getWorldLocation().distanceTo(AUBURY_LOCATION);
+        WorldPoint playerLocation = Rs2Player.getWorldLocation();
+        if (playerLocation == null) {
+            return;
+        }
+        int currentDistance = playerLocation.distanceTo(AUBURY_LOCATION);
         log.info("Current distance to Aubury: {} tiles", currentDistance);
         
         if (currentDistance <= AUBURY_INTERACTION_DISTANCE) {
@@ -260,7 +278,7 @@ public class AutoEssenceMiningScript extends Script {
             return;
         }
         
-        if (walkTowardAuburyNonBlocking()) {
+        if (walkTowardAuburyNonBlocking(playerLocation)) {
             log.info("Issued short walk step toward Aubury");
         } else {
             log.info("Failed short Aubury step, will retry next loop");
@@ -293,8 +311,12 @@ public class AutoEssenceMiningScript extends Script {
         Microbot.status = "Mining essence";
         
         // validate we're in the essence mine
-        if (Rs2Player.getWorldLocation().getRegionID() != ESSENCE_MINE_REGION) {
-            log.info("Not in essence mine, current region: {}", Rs2Player.getWorldLocation().getRegionID());
+        WorldPoint playerLocation = Rs2Player.getWorldLocation();
+        if (playerLocation == null) {
+            return;
+        }
+        if (playerLocation.getRegionID() != ESSENCE_MINE_REGION) {
+            log.info("Not in essence mine, current region: {}", playerLocation.getRegionID());
             return;
         }
         
@@ -324,7 +346,7 @@ public class AutoEssenceMiningScript extends Script {
             }
         } else {
             log.info("No rune essence rocks found nearby");
-            log.info("Current region: {}, expected: {}", Rs2Player.getWorldLocation().getRegionID(), ESSENCE_MINE_REGION);
+            log.info("Current region: {}, expected: {}", playerLocation.getRegionID(), ESSENCE_MINE_REGION);
         }
     }
 
@@ -337,7 +359,7 @@ public class AutoEssenceMiningScript extends Script {
         Microbot.status = "Using portal to exit";
         
         // validate we're in the essence mine before looking for portal
-        if (Rs2Player.getWorldLocation().getRegionID() != ESSENCE_MINE_REGION) {
+        if (!isInEssenceMine()) {
             log.info("Not in essence mine, cannot use portal");
             return;
         }
@@ -369,7 +391,7 @@ public class AutoEssenceMiningScript extends Script {
         String actionDescription = action == null || action.isBlank() ? "default" : action;
         log.info("Attempting portal object interaction with {} action", actionDescription);
 
-        if (Rs2GameObject.interact(ESSENCE_MINE_EXIT_PORTAL_OBJECT_IDS, action) && sleepUntil(() -> !isInEssenceMine(), 5000)) {
+        if (clickPortalObject(action) && sleepUntil(() -> !isInEssenceMine(), 5000)) {
             log.info("Successfully used portal object with {} action", actionDescription);
             hasTeleportedWithAubury = false;
             return true;
@@ -387,7 +409,11 @@ public class AutoEssenceMiningScript extends Script {
         log.info("State: BANKING");
         Microbot.status = "Banking at Varrock East";
         
-        int distanceToBank = Rs2Player.getWorldLocation().distanceTo(VARROCK_EAST_BANK_LOCATION);
+        WorldPoint playerLocation = Rs2Player.getWorldLocation();
+        if (playerLocation == null) {
+            return;
+        }
+        int distanceToBank = playerLocation.distanceTo(VARROCK_EAST_BANK_LOCATION);
         
         log.info("=== Banking State Check ===");
         log.info("Distance to bank: {} tiles", distanceToBank);
@@ -398,7 +424,7 @@ public class AutoEssenceMiningScript extends Script {
         if (!Rs2Bank.isOpen()) {
             if (distanceToBank > BANK_INTERACTION_DISTANCE) {
                 log.info("Too far from bank, walking there");
-                walkTowardBankNonBlocking();
+                walkTowardBankNonBlocking(playerLocation);
                 return;
             }
             
@@ -406,7 +432,7 @@ public class AutoEssenceMiningScript extends Script {
             log.info("Near bank, attempting to open");
             if (!Rs2Bank.openBank()) {
                 log.info("Failed to open bank");
-                walkTowardBankNonBlocking();
+                walkTowardBankNonBlocking(playerLocation);
                 return;
             }
         }
@@ -484,7 +510,7 @@ public class AutoEssenceMiningScript extends Script {
                     .filter(pickaxe -> pickaxe.override == override)
                     .filter(this::canUsePickaxe)
                     .filter(this::hasPickaxeAvailable)
-                    .findFirst();
+                    .max(Comparator.comparingInt(pickaxe -> pickaxe.priority));
         }
 
         return Arrays.stream(PickaxeTool.values())
@@ -676,7 +702,11 @@ public class AutoEssenceMiningScript extends Script {
     }
 
     private boolean isInEssenceMine() {
-        return Rs2Player.getWorldLocation().getRegionID() == ESSENCE_MINE_REGION;
+        return isInEssenceMine(Rs2Player.getWorldLocation());
+    }
+
+    private static boolean isInEssenceMine(WorldPoint location) {
+        return location != null && location.getRegionID() == ESSENCE_MINE_REGION;
     }
 
     private boolean waitUntilInEssenceMine() {
@@ -704,13 +734,12 @@ public class AutoEssenceMiningScript extends Script {
         return true;
     }
 
-    private boolean walkTowardAuburyNonBlocking() {
+    private boolean walkTowardAuburyNonBlocking(WorldPoint currentLocation) {
         long now = System.currentTimeMillis();
         if (now - lastAuburyWalkAttempt < AUBURY_WALK_RETRY_DELAY_MS) {
             return true;
         }
 
-        WorldPoint currentLocation = Rs2Player.getWorldLocation();
         WorldPoint nextStep = stepToward(currentLocation, AUBURY_LOCATION, AUBURY_STEP_DISTANCE);
         lastAuburyWalkAttempt = now;
 
@@ -718,13 +747,12 @@ public class AutoEssenceMiningScript extends Script {
         return !shouldStop() && Rs2Walker.walkMiniMap(nextStep);
     }
 
-    private boolean walkTowardBankNonBlocking() {
+    private boolean walkTowardBankNonBlocking(WorldPoint currentLocation) {
         long now = System.currentTimeMillis();
         if (now - lastBankWalkAttempt < BANK_WALK_RETRY_DELAY_MS) {
             return true;
         }
 
-        WorldPoint currentLocation = Rs2Player.getWorldLocation();
         WorldPoint nextStep = stepToward(currentLocation, VARROCK_EAST_BANK_LOCATION, BANK_STEP_DISTANCE);
         lastBankWalkAttempt = now;
 
@@ -765,7 +793,7 @@ public class AutoEssenceMiningScript extends Script {
         log.info("Antiban cooldown active, waiting");
     }
 
-    private void logStateEvaluation() {
+    private void logStateEvaluation(WorldPoint playerLocation) {
         long now = System.currentTimeMillis();
         if (now - lastStateEvaluationLog < STATE_EVALUATION_LOG_INTERVAL_MS) {
             return;
@@ -776,7 +804,7 @@ public class AutoEssenceMiningScript extends Script {
         log.info("In essence mine: {}", isInEssenceMine);
         log.info("Needs banking: {}", needsToBank);
         log.info("Inventory full: {}", Rs2Inventory.isFull());
-        log.info("Distance to Aubury: {}", Rs2Player.getWorldLocation().distanceTo(AUBURY_LOCATION));
+        log.info("Distance to Aubury: {}", playerLocation.distanceTo(AUBURY_LOCATION));
     }
 
     private void teleportWithAubury(Rs2NpcModel aubury) {
@@ -817,5 +845,25 @@ public class AutoEssenceMiningScript extends Script {
         if (scheduledFuture != null && !scheduledFuture.isDone()) {
             scheduledFuture.cancel(false);
         }
+    }
+
+    private static boolean clickPortalObject(String action) {
+        for (int objectId : ESSENCE_MINE_EXIT_PORTAL_OBJECT_IDS) {
+            Rs2TileObjectModel portal = nearestById(objectId);
+            if (portal != null && portal.click(action)) return true;
+        }
+        return false;
+    }
+
+    private static Rs2TileObjectModel nearestById(int objectId) {
+        WorldPoint playerLocation = Rs2Player.getWorldLocation();
+        if (playerLocation == null) return null;
+        return Microbot.getRs2TileObjectCache().query()
+                .fromWorldView()
+                .withId(objectId)
+                .toList().stream()
+                .min(Comparator.comparing((Rs2TileObjectModel o) -> o.getTileObjectType() != TileObjectType.GAME)
+                        .thenComparingInt(o -> o.getTileObject().getWorldLocation().distanceTo(playerLocation)))
+                .orElse(null);
     }
 }

@@ -1,9 +1,14 @@
 package net.runelite.client.plugins.microbot.mining;
 
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatMessageType;
+import net.runelite.api.Constants;
 import net.runelite.api.GameObject;
+import net.runelite.api.Perspective;
+import net.runelite.api.Player;
 import net.runelite.api.Skill;
 import net.runelite.api.Tile;
+import net.runelite.api.WorldType;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
@@ -11,6 +16,8 @@ import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
+import net.runelite.client.plugins.microbot.api.tileobject.models.Rs2TileObjectModel;
+import net.runelite.client.plugins.microbot.api.tileobject.models.TileObjectType;
 import net.runelite.client.plugins.microbot.mining.data.LocationOption;
 import net.runelite.client.plugins.microbot.mining.data.MiningRockLocations;
 import net.runelite.client.plugins.microbot.mining.data.Rocks;
@@ -21,13 +28,14 @@ import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.coords.Rs2WorldPoint;
 import net.runelite.client.plugins.microbot.util.depositbox.Rs2DepositBox;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
-import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.keyboard.Rs2Keyboard;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
+import net.runelite.client.plugins.microbot.util.player.Rs2Pvp;
 import net.runelite.client.plugins.microbot.util.security.Login;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
+import org.slf4j.event.Level;
 
 import java.util.ArrayList;
 import java.awt.event.KeyEvent;
@@ -37,6 +45,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 enum State {
     MINING,
@@ -93,38 +102,9 @@ public class AutoMiningScript extends Script {
 
                 if (Rs2Player.isMoving() || Rs2Player.isAnimating()) return;
 
-                //code to change worlds if there are too many players in the distance to stray tiles
-                int maxPlayers = config.maxPlayersInArea();
-                if (maxPlayers > 0) {
-                    WorldPoint localLocation = Rs2Player.getWorldLocation();
-                    long nearbyPlayers = Microbot.getClientThread().runOnClientThreadOptional(() ->
-                                    Microbot.getClient().getTopLevelWorldView().players().stream()
-                                            .filter(p -> p != null && p != Microbot.getClient().getLocalPlayer())
-                                            .filter(p -> {
-                                                if (config.distanceToStray() == 0) {
-                                                    // Only count players standing on the same exact tile
-                                                    return p.getWorldLocation().equals(localLocation);
-                                                }
-                                                // Count players within distanceToStray
-                                                return p.getWorldLocation().distanceTo(localLocation) <= config.distanceToStray();
-                                            })
-                                            // filter if players are using mining animation
-                                            .filter(p -> p.getAnimation() != -1)
-                                            .count())
-                            .orElse(0L);
+                if (Rs2Player.getWorldLocation() == null) return;
 
-                    if (nearbyPlayers >= maxPlayers) {
-                        Microbot.status = "Too many players nearby. Hopping...";
-                        Rs2Random.waitEx(3200, 800); // Delay to avoid UI locking
-
-                        int world = Login.getRandomWorld(Rs2Player.isMember());
-                        boolean hopped = Microbot.hopToWorld(world);
-                        if (hopped) {
-                            Microbot.status = "Hopped to world: " + world;
-                            return; // Exit current cycle after hop
-                        }
-                    }
-                }
+                if (handleNearbyPlayers(config)) return;
 
 
                 switch (state) {
@@ -151,7 +131,7 @@ public class AutoMiningScript extends Script {
                         GameObject rock = findRock(config.distanceToStray());
 
                         if (rock != null) {
-                            if (Rs2GameObject.interact(rock)) {
+                            if (new Rs2TileObjectModel(rock).click()) {
                                 waitForOreOrDepletion(rock);
                                 Rs2Antiban.actionCooldown();
                                 Rs2Antiban.takeMicroBreakByChance();
@@ -233,19 +213,59 @@ public class AutoMiningScript extends Script {
         Rs2Antiban.resetAntibanSettings();
     }
 
+    boolean handleNearbyPlayers(AutoMiningConfig config) {
+        //code to change worlds if there are too many players in the distance to stray tiles
+        int maxPlayers = config.maxPlayersInArea();
+        if (maxPlayers <= 0) {
+            return false;
+        }
+        WorldPoint localLocation = Rs2Player.getWorldLocation();
+        if (localLocation == null) {
+            return true;
+        }
+        long nearbyPlayers = Microbot.getClientThread().runOnClientThreadOptional(() ->
+                        Microbot.getClient().getTopLevelWorldView().players().stream()
+                                .filter(p -> p != null && p != Microbot.getClient().getLocalPlayer())
+                                .filter(p -> {
+                                    if (config.distanceToStray() == 0) {
+                                        // Only count players standing on the same exact tile
+                                        return p.getWorldLocation().equals(localLocation);
+                                    }
+                                    // Count players within distanceToStray
+                                    return p.getWorldLocation().distanceTo(localLocation) <= config.distanceToStray();
+                                })
+                                // filter if players are using mining animation
+                                .filter(p -> p.getAnimation() != -1)
+                                .count())
+                .orElse(0L);
+
+        if (nearbyPlayers >= maxPlayers) {
+            Microbot.status = "Too many players nearby. Hopping...";
+            Rs2Random.waitEx(3200, 800); // Delay to avoid UI locking
+
+            int world = Login.getRandomWorld(Rs2Player.isMember());
+            boolean hopped = Microbot.hopToWorld(world);
+            if (hopped) {
+                Microbot.status = "Hopped to world: " + world;
+                return true; // Exit current cycle after hop
+            }
+        }
+        return false;
+    }
+
     private GameObject findRock(int distance) {
         WorldPoint playerLocation = Rs2Player.getWorldLocation();
         WorldPoint anchor = initialPlayerLocation;
         if (playerLocation == null || anchor == null || activeRock == null) {
             return null;
         }
-        Predicate<GameObject> rockName = Rs2GameObject.nameMatches(activeRock.getName(), true);
+        String rockName = activeRock.getName();
         List<GameObject> rocks = Microbot.getClientThread().runOnClientThreadOptional(() ->
-                        Rs2GameObject.getGameObjects(rockName, anchor, distance))
+                        gameObjectsNear(anchor, distance, rock -> rockName.equalsIgnoreCase(new Rs2TileObjectModel(rock).getName())))
                 .orElse(Collections.emptyList());
         return RockSelector.nearestReachable(rocks,
                 rock -> Rs2WorldPoint.quickDistance(playerLocation, rock.getWorldLocation()),
-                rock -> Microbot.getClientThread().runOnClientThreadOptional(() -> Rs2GameObject.isReachable(rock)).orElse(false));
+                rock -> Microbot.getClientThread().runOnClientThreadOptional(() -> new Rs2TileObjectModel(rock).isReachable()).orElse(false));
     }
 
     private void waitForOreOrDepletion(GameObject rock) {
@@ -301,9 +321,40 @@ public class AutoMiningScript extends Script {
         if (rock != activeRock || activeLocation == null) {
             activeRock = rock;
             activeLocation = MiningRockLocations.getBestAccessibleLocation(rock);
+            if (config.progressiveMode()) {
+                warnIfWildernessLocation(rock, activeLocation);
+            }
         }
 
         updateStatus();
+    }
+
+    static String wildernessWarning(Rocks rock, LocationOption location, boolean membersWorld, boolean membersAccount) {
+        if (location == null || location.getWorldPoint() == null) {
+            return null;
+        }
+        int wildernessLevel = Rs2Pvp.getWildernessLevelFrom(location.getWorldPoint());
+        if (wildernessLevel <= 0) {
+            return null;
+        }
+        String advice = !membersWorld && membersAccount
+                ? "If you don't want to go there, stop the script, then log in to a members world or turn off Progressive mode before you start it again."
+                : "If you don't want to go there, stop the script, then turn off Progressive mode before you start it again.";
+        return "Auto Mining: the nearest place to mine " + rock.getName()
+                + (membersWorld ? "" : " on this free world")
+                + " is " + location.getName().replace(" (Wilderness)", "")
+                + ", in level " + wildernessLevel + " Wilderness. " + advice;
+    }
+
+    private void warnIfWildernessLocation(Rocks rock, LocationOption location) {
+        boolean membersWorld = Microbot.getClient().getWorldType().contains(WorldType.MEMBERS);
+        String warning = wildernessWarning(rock, location, membersWorld, membersWorld || Rs2Player.isMember());
+        if (warning == null) {
+            return;
+        }
+        Microbot.log(warning, Level.WARN);
+        Microbot.getClientThread().invokeLater(() ->
+                Microbot.getClient().addChatMessage(ChatMessageType.GAMEMESSAGE, "", "<col=ff0000>" + warning + "</col>", null));
     }
 
     private boolean ensureProgressiveLocation(AutoMiningConfig config) {
@@ -342,5 +393,34 @@ public class AutoMiningScript extends Script {
                 ? activeLocation.getName()
                 : "current area";
         Microbot.status = "Mining " + oreName + " @ " + locationName;
+    }
+
+    private static List<GameObject> gameObjectsNear(WorldPoint anchor, int distance, Predicate<GameObject> predicate) {
+        LocalPoint anchorLocal = LocalPoint.fromWorld(Microbot.getClient().getTopLevelWorldView(), anchor);
+        if (anchorLocal == null) {
+            Player player = Microbot.getClient().getLocalPlayer();
+            anchorLocal = player != null ? player.getLocalLocation() : null;
+            if (anchorLocal == null) return Collections.emptyList();
+        }
+        LocalPoint from = anchorLocal;
+        int maxDistance = Math.min(distance, Constants.SCENE_SIZE) * Perspective.LOCAL_TILE_SIZE;
+        return Microbot.getRs2TileObjectCache().query()
+                .fromWorldView()
+                .ofType(TileObjectType.GAME)
+                .toList().stream()
+                .map(o -> (GameObject) o.getTileObject())
+                .filter(o -> isWithin(from, o.getLocalLocation(), maxDistance))
+                .filter(predicate)
+                .sorted(Comparator.comparingInt(o -> o.getLocalLocation().distanceTo(from)))
+                .collect(Collectors.toList());
+    }
+
+    private static boolean isWithin(LocalPoint anchor, LocalPoint location, int maxDistance) {
+        if (maxDistance == 0) {
+            int dx = Math.abs(anchor.getX() - location.getX());
+            int dy = Math.abs(anchor.getY() - location.getY());
+            return (dx == Perspective.LOCAL_TILE_SIZE && dy == 0) || (dy == Perspective.LOCAL_TILE_SIZE && dx == 0);
+        }
+        return location.distanceTo(anchor) <= maxDistance;
     }
 }
