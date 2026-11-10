@@ -24,11 +24,11 @@ import net.runelite.client.plugins.custom.customgauntlet.State;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.api.npc.models.Rs2NpcModel;
+import net.runelite.client.plugins.microbot.api.tileitem.models.Rs2TileItemModel;
 import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
-import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.keyboard.Rs2Keyboard;
@@ -104,8 +104,15 @@ public class CustomGauntletPrepScript extends Script {
     private static final int TARGET_VIALS = 3;
     private static final int MAX_BOWL_PRESSES = 4;   // per item: not made after this many presses = give up on it
     private static final long WAIT_LOG_MS = 10000;
-    private static final String VIAL_NAME = "Vial", WATER_VIAL_NAME = "Vial of water", UNF_POTION_NAME = "Grym potion (unf)";
+    // By id: the corrupted run's empty vial has its own id and the filled one didn't match "Vial of water" by name, so
+    // after filling the count read 0 and it sang a 4th vial.
+    private static final int[] EMPTY_VIAL_IDS = {ItemID.GAUNTLET_VIAL_EMPTY_HM, ItemID.GAUNTLET_VIAL_EMPTY};
+    private static final int[] WATER_VIAL_IDS = {ItemID.GAUNTLET_VIAL_WATER};
+    private static final int[] UNF_POTION_IDS = {ItemID.GAUNTLET_POTION_UNFINISHED};
+    private static final int[] EGNIOL_IDS = {ItemID.GAUNTLET_POTION_1, ItemID.GAUNTLET_POTION_2, ItemID.GAUNTLET_POTION_3,
+            ItemID.GAUNTLET_POTION_4};
     private static final String[] DUST_NAMES = {"Crystal dust", "Corrupted dust"};
+    private static final int LOOT_RANGE = 15;
     private static final String[] LOOT_NAMES = {"Weapon frame", "Crystal shards", "Corrupted shards", "Teleport crystal",
             "Corrupted orb", "Crystal orb", "Corrupted bowstring", "Crystalline bowstring"};
     // Phase 3: dropped before brewing (tools, spare materials), and the brewing leftovers after it. The inventory has
@@ -124,7 +131,6 @@ public class CustomGauntletPrepScript extends Script {
     private volatile int demibossTargetIndex = -1;    // the demiboss we're going for: its prayer, whatever is nearer
     private static final int CLICK_RANGE = 20;         // farther NPCs/objects are walked towards first, never clicked from afar
     private static final int APPROACH_STEP_TILES = 12; // one walk step towards a far target
-    private static final int RIM_RING_BONUS_TILES = 6; // on the rim, a rim room's node may be this much further than an inner one
     private static final int MEDIUM_MOB_PRAYER_RANGE = 3; // Protect from Melee for a scorpion/wolf/unicorn only this close // keep the right protection prayer up within this many tiles of a demiboss
     // The maze is 7x7 rooms of 16 tiles around the HUNLLEF room (3,3); the base is one room beside it. Phase 1 scouts
     // in rings around the Hunllef room: ring N ends N.5 rooms = 16N+8 tiles from its centre, and the outer rim (ring 3,
@@ -173,11 +179,31 @@ public class CustomGauntletPrepScript extends Script {
     // Remaining-count supplier for the resource we last clicked. Continuous gather actions don't stop on
     // their own, so once this hits 0 we break the action (step off) instead of overshooting the target.
     private IntSupplier activeGatherRemaining = null;
+    private TileObject activeGatherObject = null;
+    private boolean hoveredNext = false;
+    // When the resource we're on hit its target: its animation no longer counts as busy, so the next click goes out
+    // straight away (and interrupts it) instead of waiting for the animation to end.
+    private long gatherDoneAt = 0;
+    private long lastToolDropAt = 0;
+    private static final long TOOL_DROP_SETTLE_MS = 1200;
+    private static final long GATHER_STOP_FALLBACK_MS = 1500; // nothing clicked by then: step off to stop gathering strays
 
     // Player animations from a fight (block, unarmed and weapon attacks): not a gather/light still running.
     private static final Set<Integer> COMBAT_ANIMS = Set.of(420, 424, 422, 423, 426, 428, 440, 1167);
     private int chosenTargetIndex = -1;   // index of the NPC we clicked Attack on; any other fight was started by the mob
     private int loggedAttackerIndex = -1; // attacker last logged (one line per attacker)
+    // Kill watch: the NPC we last fought, and once it dies, waiting at its tile for the drop before moving on.
+    private int watchIndex = -1;
+    private String watchName;
+    private LocalPoint watchSpot;
+    private long watchLastFoughtAt = 0;
+    private LocalPoint killSpot;
+    private long killLootDeadline = 0;
+    private boolean killDropSeen = false;
+    private long lastTakeClickAt = 0;
+    private static final long KILL_LOOT_WAIT_MS = 6000;   // a demiboss's drop lands a few ticks after its death animation
+    private static final long WATCH_FORGET_MS = 8000;     // not fought for this long: it vanishing isn't our kill
+    private static final long TAKE_WALK_MS = 3000;        // don't re-click an item while still running to it
     private int scoutRing = 1;            // phase 1: rings around the Hunllef room we gather/scout in (widens to 2)
     private long lastHunllefLocateAt = 0;
 
@@ -189,6 +215,8 @@ public class CustomGauntletPrepScript extends Script {
     private long lastRetaliateToggleAt = 0;
     private static final long RETALIATE_TOGGLE_RETRY_MS = 5000;
     private long lastWaitLogAt = 0;
+    private String loggedScoutReason = "";
+    private volatile boolean resumeChecked = false;
 
     @Inject
     public CustomGauntletPrepScript(CustomGauntletPlugin plugin, CustomGauntletConfig config) {
@@ -210,7 +238,11 @@ public class CustomGauntletPrepScript extends Script {
         Microbot.cantReachTarget = false;
         Microbot.cantReachTargetRetries = 0;
         Microbot.pauseAllScripts.set(false);
-        mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
+        // The script object outlives a plugin stop/start, so without this a new run picked up the last run's phase,
+        // room grid and spent counts (it only reset when it saw the lobby). The phase is re-derived inside the maze.
+        resetForNewRun();
+        resumeChecked = false;
+        mainScheduledFuture =scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
                 if (!Microbot.isLoggedIn() || !super.run()) return;
 
@@ -240,6 +272,10 @@ public class CustomGauntletPrepScript extends Script {
 
                 // Anchor the base room once its stations are in view. Doesn't gate the loop: if the plugin was
                 // started away from base we keep going, just without the rim filter until the base is seen.
+                if (!resumeChecked) {
+                    resumeChecked = true;
+                    resumePhaseFromGear();
+                }
                 if (!initialized) {
                     initialized = initBaseAnchor();
                 }
@@ -254,6 +290,8 @@ public class CustomGauntletPrepScript extends Script {
                 updateDemibossProtectionPrayer();
                 syncAutoRetaliate();
                 handleUnchosenOpponent();
+                if (currentPhase != PrepPhase.COMPLETE && awaitKillLoot()) return;
+                hoverNextTarget();
 
                 switch (currentPhase) {
                     case PHASE_1_RESOURCES:
@@ -298,8 +336,25 @@ public class CustomGauntletPrepScript extends Script {
         activeGatherRemaining = null;
         lastPrayerToggle.clear();
         demibossTargetIndex = -1;
+        watchIndex = -1;
+        killLootDeadline = 0;
+        activeGatherObject = null;
+        gatherDoneAt = 0;
         scoutRing = 1;
         lastHunllefLocateAt = 0;
+    }
+
+    /**
+     * Plugin started inside the maze: pick the phase from what we carry or wear, so a restart mid-run carries on
+     * instead of starting over (or, before, carrying on with the previous run's phase). A fresh run has nothing
+     * yet and stays in phase 1.
+     */
+    private void resumePhaseFromGear() {
+        boolean t2Staff = hasItemOrWorn("staff (attuned)") || hasItemOrWorn("staff (perfected)");
+        if (!t2Staff) return;
+        boolean weaponsDone = checklist.hasBothWeaponComponents() || hasItemOrWorn("bow (");
+        enterPhase(weaponsDone ? PrepPhase.PHASE_2_TOP_UP : PrepPhase.PHASE_2_WEAPONS_AND_ARMOR);
+        Microbot.log("[Prep] Started with a T2 staff - resuming at " + currentPhase);
     }
 
     @Override
@@ -416,7 +471,14 @@ public class CustomGauntletPrepScript extends Script {
         }
         if (lootUseful()) return;
         if (gatherNearestNeeded(GATHER_SEARCH_TILES, checklist::totalFishRemaining)) return;
-        if (shardsShort() && attackNearest(MEDIUM_MOB_IDS, currentOpenRooms(), "shard mob", GATHER_SEARCH_TILES)) return;
+        if (shardsShort()) {
+            // Scorpions/wolves/unicorns drop the most shards; rats/bats/spiders when none of those is around (it lit
+            // room after room past weak mobs looking only for medium ones).
+            boolean[][] open = currentOpenRooms();
+            if (attackNearest(MEDIUM_MOB_IDS, open, "shard mob (" + shardsMissing() + " shards to go)", GATHER_SEARCH_TILES)) return;
+            if (attackNearest(WEAK_MOB_IDS, open, "weak mob for shards (" + shardsMissing() + " to go)", GATHER_SEARCH_TILES)) return;
+        }
+        logScoutReason(summary);
         if (scoutInnerRooms()) return;
         logWaiting("[Prep] Phase 2b: nothing reachable that we still need - waiting");
     }
@@ -436,11 +498,25 @@ public class CustomGauntletPrepScript extends Script {
         return false;
     }
 
+    private int shardsMissing() {
+        return Math.max(0, GauntletChecklist.TARGET_TOTAL_SHARDS - checklist.getTotalShardsEarned());
+    }
+
+    /** Phase 2b is about to open rooms: say what for (once per change), so the scouting isn't a mystery in the log. */
+    private void logScoutReason(String missing) {
+        String line = "[Prep] Phase 2b: nothing for it in the open rooms - opening new rooms to find " + missing
+                + (shardsShort() ? " (mobs to kill)" : "");
+        if (line.equals(loggedScoutReason)) return;
+        loggedScoutReason = line;
+        Microbot.log(line);
+    }
+
     private void enterPhase(PrepPhase phase) {
         currentPhase = phase;
         bowlSkipped.clear();
         bowlPresses.clear();
         loggedMissing = "";
+        loggedScoutReason = "";
     }
 
     private void logWaiting(String line) {
@@ -452,15 +528,19 @@ public class CustomGauntletPrepScript extends Script {
 
     /** Drop the pickaxe/axe once their resource is complete (frees a slot). */
     private boolean dropFinishedTools() {
+        // The inventory only updates on the next tick: don't drop the same tool again from the following pass.
+        if (System.currentTimeMillis() - lastToolDropAt < TOOL_DROP_SETTLE_MS) return false;
         if (checklist.getOreCount() >= GauntletChecklist.TARGET_ORE && Rs2Inventory.hasItem(PICKAXE_NAMES, true)) {
             Microbot.log("[Prep] 7 Ore reached -> Dropping pickaxe");
             dropByName(PICKAXE_NAMES);
-            return true;
+            lastToolDropAt = System.currentTimeMillis();
+            return false; // straight on to the next action, no waiting for the mining animation
         }
         if (checklist.getBarkCount() >= GauntletChecklist.TARGET_BARK && Rs2Inventory.hasItem(AXE_NAMES, true)) {
             Microbot.log("[Prep] 7 Bark reached -> Dropping axe");
             dropByName(AXE_NAMES);
-            return true;
+            lastToolDropAt = System.currentTimeMillis();
+            return false;
         }
         return false;
     }
@@ -470,14 +550,26 @@ public class CustomGauntletPrepScript extends Script {
      * instead of gathering strays.
      */
     private boolean stopAtGatherTarget() {
-        if (activeGatherRemaining == null || activeGatherRemaining.getAsInt() != 0) return false;
-        activeGatherRemaining = null;
-        if (busyWithOwnAction() && !Rs2Player.isMoving()) {
-            Microbot.log("[Prep] Resource target reached - stepping off to stop gathering");
-            stepOffCurrentTile();
-            return true;
+        if (activeGatherRemaining != null && activeGatherRemaining.getAsInt() == 0) {
+            activeGatherRemaining = null;
+            activeGatherObject = null;
+            gatherDoneAt = System.currentTimeMillis();
+            return false; // carry on this pass: the next click interrupts the gather
+        }
+        if (gatherDoneAt > 0 && System.currentTimeMillis() - gatherDoneAt > GATHER_STOP_FALLBACK_MS) {
+            gatherDoneAt = 0;
+            if (Rs2Player.getAnimation() != -1 && !Rs2Player.isMoving()) {
+                Microbot.log("[Prep] Resource target reached and nothing else to do - stepping off to stop gathering");
+                stepOffCurrentTile();
+                return true;
+            }
         }
         return false;
+    }
+
+    /** A new click of ours went out: the finished gather's animation is no longer the thing to look at. */
+    private void onActionClick() {
+        gatherDoneAt = 0;
     }
 
     /**
@@ -486,7 +578,11 @@ public class CustomGauntletPrepScript extends Script {
      */
     private boolean lootUseful() {
         for (String name : LOOT_NAMES) {
-            if (Rs2GroundItem.loot(name, 15)) return true;
+            if (name.equals("Weapon frame") && !frameNeeded()) continue; // every demiboss drops one: two is all we use
+            if (takeGroundItem(name)) {
+                Microbot.log("[Prep] Picking up " + name);
+                return true;
+            }
         }
         if (checklist.oreRemaining() > 0 && lootAny(GauntletChecklist.ORE_NAMES)) return true;
         if (checklist.barkRemaining() > 0 && lootAny(GauntletChecklist.BARK_NAMES)) return true;
@@ -499,6 +595,111 @@ public class CustomGauntletPrepScript extends Script {
         return fishWanted > 0 && !nearBase() && lootAny(GauntletChecklist.RAW_FISH_NAMES);
     }
 
+    /**
+     * Takes the nearest ground item called {@code name} within LOOT_RANGE tiles. Rs2GroundItem.loot looks tiles up by
+     * template world coords, and the Gauntlet's rooms reuse the same template chunks, so it often looked in another
+     * room and never saw the dark beast's bowstring and frame. This goes by the scene tile instead.
+     */
+    private boolean takeGroundItem(String name) {
+        Rs2TileItemModel item = Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            Player me = Microbot.getClient().getLocalPlayer();
+            LocalPoint from = me == null ? null : me.getLocalLocation();
+            if (from == null) return null;
+            Rs2TileItemModel best = null;
+            int bestDist = Integer.MAX_VALUE;
+            for (Rs2TileItemModel candidate : Microbot.getRs2TileItemCache().query().toList()) {
+                LocalPoint lp = candidate.getLocalLocation();
+                if (lp == null || !name.equalsIgnoreCase(candidate.getName())) continue;
+                int dist = Math.max(Math.abs(from.getSceneX() - lp.getSceneX()), Math.abs(from.getSceneY() - lp.getSceneY()));
+                if (dist <= LOOT_RANGE && dist < bestDist) {
+                    best = candidate;
+                    bestDist = dist;
+                }
+            }
+            return best;
+        }).orElse(null);
+        if (item == null) return false;
+        if (Rs2Inventory.isFull() && !(item.isStackable() && Rs2Inventory.hasItem(item.getId()))) return false;
+        onActionClick();
+        if (!item.click("Take")) return false;
+        lastTakeClickAt = System.currentTimeMillis();
+        return true;
+    }
+
+    /**
+     * After a kill, wait at the NPC's tile until its drop is on the floor and pick up what's useful before carrying on.
+     * Without it the next step (lighting a node) walked off before the dark beast's bowstring had even landed.
+     *
+     * @return true while waiting for or picking up the drop
+     */
+    private boolean awaitKillLoot() {
+        trackKill();
+        if (killLootDeadline == 0) return false;
+        long now = System.currentTimeMillis();
+        if (Rs2Player.isMoving() && now - lastTakeClickAt < TAKE_WALK_MS) return true; // running to an item
+        if (!killDropSeen && groundItemNear(killSpot)) killDropSeen = true;
+        if (killDropSeen) {
+            if (lootUseful()) return true;
+            killLootDeadline = 0; // everything useful is in
+            return false;
+        }
+        if (now > killLootDeadline) {
+            Microbot.log("[Prep] No drop after the kill - carrying on");
+            killLootDeadline = 0;
+            return false;
+        }
+        return true;
+    }
+
+    /** Follows the NPC we're fighting; when it dies (or vanishes soon after we fought it) start the loot wait. */
+    private void trackKill() {
+        Object[] fighting = Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            Player me = Microbot.getClient().getLocalPlayer();
+            Actor target = me == null ? null : me.getInteracting();
+            if (!(target instanceof NPC) || target.isDead()) return null;
+            NPC npc = (NPC) target;
+            return new Object[]{npc.getIndex(), npc.getName(), npc.getLocalLocation()};
+        }).orElse(null);
+        long now = System.currentTimeMillis();
+        if (fighting != null) {
+            watchIndex = (Integer) fighting[0];
+            watchName = (String) fighting[1];
+            watchSpot = (LocalPoint) fighting[2];
+            watchLastFoughtAt = now;
+            return;
+        }
+        if (watchIndex < 0) return;
+        int index = watchIndex;
+        Rs2NpcModel npc = Microbot.getRs2NpcCache().query().where(n -> n.getIndex() == index).nearest();
+        boolean died = npc == null || npc.isDead();
+        if (!died) {
+            watchSpot = npc.getLocalLocation();
+            if (now - watchLastFoughtAt > WATCH_FORGET_MS) watchIndex = -1; // we left it alive
+            return;
+        }
+        watchIndex = -1;
+        if (now - watchLastFoughtAt > WATCH_FORGET_MS || watchSpot == null) return;
+        killSpot = watchSpot;
+        killDropSeen = false;
+        killLootDeadline = now + KILL_LOOT_WAIT_MS;
+        activeGatherRemaining = null;
+        Microbot.log("[Prep] Killed " + watchName + " - waiting for the drop");
+    }
+
+    /** Any ground item within 2 tiles of {@code spot} (a drop lands on or next to the NPC's tile). */
+    private boolean groundItemNear(LocalPoint spot) {
+        if (spot == null) return false;
+        return Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            for (Rs2TileItemModel candidate : Microbot.getRs2TileItemCache().query().toList()) {
+                LocalPoint lp = candidate.getLocalLocation();
+                if (lp != null && Math.max(Math.abs(spot.getSceneX() - lp.getSceneX()), Math.abs(spot.getSceneY() - lp.getSceneY())) <= 2) {
+                    return true;
+                }
+            }
+            return false;
+        }).orElse(false);
+    }
+
     /** The Singing Bowl is within BASE_FISH_TILES: fish on the floor here are the ones we dropped. */
     private boolean nearBase() {
         return findTileObject(SINGING_BOWL_IDS, BASE_FISH_TILES) != null;
@@ -506,7 +707,7 @@ public class CustomGauntletPrepScript extends Script {
 
     private boolean lootAny(String[] names) {
         for (String name : names) {
-            if (Rs2GroundItem.loot(name, 15)) {
+            if (takeGroundItem(name)) {
                 Microbot.log("[Prep] Picked up a dropped " + name + " (still needed)");
                 return true;
             }
@@ -566,6 +767,11 @@ public class CustomGauntletPrepScript extends Script {
         return checklist.getWeaponFrameCount() == 0 && !hasItemOrWorn("staff (");
     }
 
+    /** A frame is still needed for a weapon we haven't made (staff, then bow) and we carry none. */
+    private boolean frameNeeded() {
+        return checklist.getWeaponFrameCount() == 0 && (!hasItemOrWorn("staff (") || !hasItemOrWorn("bow ("));
+    }
+
     private boolean shardsShort() {
         return checklist.getTotalShardsEarned() < GauntletChecklist.TARGET_TOTAL_SHARDS;
     }
@@ -617,6 +823,7 @@ public class CustomGauntletPrepScript extends Script {
             }
             Microbot.log("[Prep] Engaging " + what);
             chosenTargetIndex = npc.getIndex();
+            onActionClick();
             npc.click("Attack");
         }
         return true;
@@ -854,6 +1061,7 @@ public class CustomGauntletPrepScript extends Script {
         if (me == null) return false;
         if (Rs2Player.isInteracting()) return unchosenOpponent() == null;
         if (COMBAT_ANIMS.contains(me.getAnimation())) return false;
+        if (gatherDoneAt > 0) return false; // the finished gather's animation: ready for the next click
         return Rs2Player.isAnimating();
     }
 
@@ -1170,7 +1378,7 @@ public class CustomGauntletPrepScript extends Script {
         if (closeBowl()) return true;
         int fishCount = checklist.getRawFishCount();
         Microbot.log("[Prep] Dropping " + fishCount + " raw paddlefish at the base");
-        Rs2Inventory.dropAll(true, GauntletChecklist.RAW_FISH_NAMES);
+        fastDrop(GauntletChecklist.RAW_FISH_NAMES);
         checklist.setDroppedFishAtBase(checklist.getDroppedFishAtBase() + fishCount);
         return true;
     }
@@ -1192,12 +1400,18 @@ public class CustomGauntletPrepScript extends Script {
         }
         if (closeBowl()) return true;
         int[] before = checklist.carriedMaterials();
-        Microbot.log(String.format("[Prep] Crushing shards into dust (%d/%d dust)", quantity(DUST_NAMES), TARGET_DUST));
-        Rs2Inventory.combine(PESTLE_NAME, shards);
-        Rs2Inventory.waitForInventoryChanges(3000);
-        if (Rs2Widget.isProductionWidgetOpen()) {
-            Rs2Keyboard.keyPress(KeyEvent.VK_SPACE);
-            Rs2Inventory.waitForInventoryChanges(3000);
+        int startDust = quantity(DUST_NAMES);
+        Microbot.log(String.format("[Prep] Crushing shards into dust (%d/%d dust)", startDust, TARGET_DUST));
+        // Back to back, one per tick. waitForInventoryChanges missed a crush once the dust stack existed (only its
+        // quantity changes), so every crush sat out its 3 s timeout.
+        for (int i = 0; i < 6 && quantity(DUST_NAMES) < TARGET_DUST && firstHeld(GauntletChecklist.SHARD_NAMES) != null; i++) {
+            int dust = quantity(DUST_NAMES);
+            Rs2Inventory.combine(PESTLE_NAME, firstHeld(GauntletChecklist.SHARD_NAMES));
+            if (!sleepUntil(() -> quantity(DUST_NAMES) > dust || Rs2Widget.isProductionWidgetOpen(), 1200)) break;
+            if (Rs2Widget.isProductionWidgetOpen()) {
+                Rs2Keyboard.keyPress(KeyEvent.VK_SPACE);
+                sleepUntil(() -> quantity(DUST_NAMES) > dust, 1200);
+            }
         }
         checklist.recordSpent(before);
         return true;
@@ -1245,8 +1459,7 @@ public class CustomGauntletPrepScript extends Script {
             if (!Rs2Inventory.hasItem(name, true)) continue;
             if (closeBowl()) return true;
             Microbot.log("[Prep] Dropping " + name + " (no longer needed)");
-            Rs2Inventory.dropAll(true, name);
-            sleep(600);
+            fastDrop(name);
             return true;
         }
         return false;
@@ -1254,23 +1467,29 @@ public class CustomGauntletPrepScript extends Script {
 
     /** One step of brewing: vial -> water at the pump, + grym leaf, + dust = Egniol potion. */
     private boolean brewPotionStep() {
-        if (Rs2Inventory.hasItem(VIAL_NAME, true)) {
+        int emptyVial = firstHeldId(EMPTY_VIAL_IDS);
+        if (emptyVial != -1) {
             TileObject pump = findTileObject(WATER_PUMP_IDS);
             if (pump == null) return false;
             Microbot.log("[Prep] Filling a vial at the water pump");
-            useItemOn(VIAL_NAME, pump);
+            Rs2Inventory.useItemOnObject(emptyVial, pump.getId());
+            Rs2Inventory.waitForInventoryChanges(3000);
             return true;
         }
-        if (Rs2Inventory.hasItem(GauntletChecklist.LEAF_NAMES, true) && Rs2Inventory.hasItem(WATER_VIAL_NAME, true)) {
+        int waterVial = firstHeldId(WATER_VIAL_IDS);
+        Rs2ItemModel leaf = Rs2Inventory.get(GauntletChecklist.LEAF_NAMES[0], true);
+        if (leaf != null && waterVial != -1) {
             Microbot.log("[Prep] Adding a grym leaf to a vial of water");
-            Rs2Inventory.combine(GauntletChecklist.LEAF_NAMES[0], WATER_VIAL_NAME);
+            Rs2Inventory.combine(leaf.getId(), waterVial);
             Rs2Inventory.waitForInventoryChanges(2000);
             return true;
         }
         String dust = firstHeld(DUST_NAMES);
-        if (dust != null && Rs2Inventory.hasItem(UNF_POTION_NAME, true)) {
+        Rs2ItemModel dustItem = dust == null ? null : Rs2Inventory.get(dust, true);
+        int unf = firstHeldId(UNF_POTION_IDS);
+        if (dustItem != null && unf != -1) {
             Microbot.log("[Prep] Adding crystal dust to a grym potion (unf) -> Egniol potion");
-            Rs2Inventory.combine(dust, UNF_POTION_NAME);
+            Rs2Inventory.combine(dustItem.getId(), unf);
             Rs2Inventory.waitForInventoryChanges(2000);
             return true;
         }
@@ -1279,7 +1498,7 @@ public class CustomGauntletPrepScript extends Script {
 
     private boolean pickUpFish() {
         if (Rs2Inventory.isFull()) return false;
-        if (!Rs2GroundItem.loot(GauntletChecklist.RAW_FISH_NAMES[0], 15)) return false;
+        if (!takeGroundItem(GauntletChecklist.RAW_FISH_NAMES[0])) return false;
         Microbot.log("[Prep] Picking up raw paddlefish from the floor");
         checklist.setDroppedFishAtBase(Math.max(0, checklist.getDroppedFishAtBase() - 1));
         return true;
@@ -1308,7 +1527,18 @@ public class CustomGauntletPrepScript extends Script {
     }
 
     private int vialFamilyCount() {
-        return quantity(VIAL_NAME, WATER_VIAL_NAME, UNF_POTION_NAME) + Rs2Inventory.count("Egniol potion", false);
+        return countIds(EMPTY_VIAL_IDS) + countIds(WATER_VIAL_IDS) + countIds(UNF_POTION_IDS) + countIds(EGNIOL_IDS);
+    }
+
+    private static int countIds(int[] ids) {
+        int total = 0;
+        for (int id : ids) total += Rs2Inventory.count(id);
+        return total;
+    }
+
+    private static int firstHeldId(int[] ids) {
+        for (int id : ids) if (Rs2Inventory.hasItem(id)) return id;
+        return -1;
     }
 
     private static int quantity(String... names) {
@@ -1385,6 +1615,21 @@ public class CustomGauntletPrepScript extends Script {
      * MAX_BOWL_PRESSES is skipped for this phase. Closes the bowl and returns true once every step is done or skipped.
      */
     private boolean runBowlSteps(TileObject bowl, List<BowlStep> steps) {
+        // Press after press in one go (each pass used to end after one press and wait out the loop delay).
+        for (int press = 0; press < 16; press++) {
+            BowlStep next = nextBowlStep(steps);
+            if (next == null) return !closeBowl();
+            if (!openBowl(bowl)) return false;
+            if (!singOption(next)) {
+                bowlSkipped.add(next.label);
+                Microbot.log("[Prep] Couldn't make " + next.label + " at the bowl (not enough shards/resources?) - skipping it");
+            }
+        }
+        return false;
+    }
+
+    /** The first bowl step that isn't done, skipped, unaffordable or out of presses (those get skipped here). */
+    private BowlStep nextBowlStep(List<BowlStep> steps) {
         for (BowlStep step : steps) {
             if (bowlSkipped.contains(step.label) || step.done.getAsBoolean()) continue;
             int[] cost = step.cost == null ? null : step.cost.get();
@@ -1400,19 +1645,14 @@ public class CustomGauntletPrepScript extends Script {
                 Microbot.log(String.format("[Prep] %s still not made after %d presses - skipping it (wrong menu option?)", step.label, MAX_BOWL_PRESSES));
                 continue;
             }
-            if (!openBowl(bowl)) return false;
-            if (!singOption(step)) {
-                bowlSkipped.add(step.label);
-                Microbot.log("[Prep] Couldn't make " + step.label + " at the bowl (not enough shards/resources?) - skipping it");
-            }
-            return false;
+            return step;
         }
-        return !closeBowl();
+        return null;
     }
 
     private boolean openBowl(TileObject bowl) {
         if (isSingingBowlOpen()) return true;
-        if (!Rs2GameObject.interact(bowl, "Sing-dialogue")) Rs2GameObject.interact(bowl);
+        if (!Rs2GameObject.interact(bowl, "Sing-crystal")) Rs2GameObject.interact(bowl);
         sleepUntil(this::isSingingBowlOpen, 5000);
         return isSingingBowlOpen();
     }
@@ -1420,6 +1660,7 @@ public class CustomGauntletPrepScript extends Script {
     /** @return true if the inventory changed (something was made) */
     private boolean singOption(BowlStep step) {
         int[] before = checklist.carriedMaterials();
+        long sig = inventorySignature(); // before the click: the change can land within the same poll
         Widget option = findBowlOption(step.option);
         if (option != null) {
             Microbot.log(String.format("[Prep] Singing %s (menu option \"%s\")", step.label, Text.removeTags(option.getName())));
@@ -1429,13 +1670,19 @@ public class CustomGauntletPrepScript extends Script {
                     step.label, step.option, step.key == ' ' ? "space" : String.valueOf(step.key)));
             Rs2Keyboard.keyPress(step.key);
         }
-        boolean changed = Rs2Inventory.waitForInventoryChanges(3000);
+        // Any slot's id or quantity: an upgrade of worn gear only shows as fewer shards, which waitForInventoryChanges
+        // didn't always catch (it then sat out its whole timeout).
+        boolean changed = sleepUntil(() -> inventorySignature() != sig, 1800);
         if (Rs2Dialogue.hasContinue()) {
             Rs2Dialogue.clickContinue();
             changed = false;
         }
         checklist.recordSpent(before);
         return changed;
+    }
+
+    private static long inventorySignature() {
+        return Rs2Inventory.items(i -> true).mapToLong(i -> (i.getSlot() + 1) * 1_000_003L * (i.getId() + 7L) + i.getQuantity()).sum();
     }
 
     /** The bowl menu entry whose item name contains {@code fragment} (case-insensitive), or null. */
@@ -1572,8 +1819,22 @@ public class CustomGauntletPrepScript extends Script {
      */
     /** Drop every inventory item matching any of the given exact names (covers Corrupted + Crystal variants). */
     private void dropByName(String... names) {
-        for (String name : names) {
-            Rs2Inventory.drop(name, true);
+        fastDrop(names);
+    }
+
+    /**
+     * Drop every item with one of these exact names, column by column like a player shift-dropping, with a short gap
+     * between drops. Rs2Inventory.dropAll waits 150-300 ms per item, which made 16 fish take seconds.
+     */
+    private void fastDrop(String... names) {
+        Set<String> wanted = new HashSet<>(Arrays.asList(names));
+        List<Rs2ItemModel> items = new ArrayList<>();
+        Rs2Inventory.items(i -> i != null && i.getName() != null && wanted.contains(i.getName())).forEach(items::add);
+        items.sort((a, b) -> a.getSlot() % 4 != b.getSlot() % 4 ? Integer.compare(a.getSlot() % 4, b.getSlot() % 4)
+                : Integer.compare(a.getSlot() / 4, b.getSlot() / 4));
+        for (Rs2ItemModel item : items) {
+            Rs2Inventory.interact(item, "Drop");
+            sleep(Rs2Random.between(45, 95));
         }
     }
 
@@ -1616,10 +1877,60 @@ public class CustomGauntletPrepScript extends Script {
         if (!busyWithOwnAction() && approachIfFar(obj.getLocalLocation(), action + " target")) return true;
         if (!busyWithOwnAction() && !Rs2Player.isMoving()) {
             Microbot.log("[Prep] Gathering (" + action + ") " + distTo(obj) + " tiles away");
+            onActionClick();
             Rs2GameObject.interact(obj, action);
             activeGatherRemaining = remaining; // remember what we're on so we can stop at target
+            activeGatherObject = obj;
+            hoveredNext = false;
         }
         return true;
+    }
+
+    /**
+     * While a gather runs, rest the mouse on what comes next (another needed resource, else the node to light), like a
+     * player does, so that click goes out instantly when this one is done. Once per gather click.
+     */
+    private void hoverNextTarget() {
+        if (hoveredNext || activeGatherObject == null || Microbot.naturalMouse == null) return;
+        if (!busyWithOwnAction() || Rs2Player.isMoving()) return;
+        hoveredNext = true;
+        LocalPoint current = activeGatherObject.getLocalLocation();
+        TileObject next = nextGatherTarget(current);
+        if (next == null) next = findDoorwayNodeToLight(NODE_SEARCH_TILES, currentPhase == PrepPhase.PHASE_2_WEAPONS_AND_ARMOR);
+        if (next == null) return;
+        java.awt.Point p = clickPoint(next);
+        if (p != null) Microbot.naturalMouse.moveTo(p.x, p.y);
+    }
+
+    /** Nearest still-needed resource within click range other than the one at {@code exclude}. */
+    private TileObject nextGatherTarget(LocalPoint exclude) {
+        int fishWanted = currentPhase == PrepPhase.PHASE_1_RESOURCES ? PHASE1_FISH_MAX - checklist.getRawFishCount()
+                : currentPhase == PrepPhase.PHASE_2_WEAPONS_AND_ARMOR || currentPhase == PrepPhase.PHASE_2_TOP_UP
+                ? checklist.totalFishRemaining() : 0;
+        Set<Integer> ids = new HashSet<>();
+        if (checklist.oreRemaining() > 0) ids.addAll(ORE_DEPOSIT_IDS);
+        if (checklist.barkRemaining() > 0) ids.addAll(PHREN_ROOTS_IDS);
+        if (checklist.linumRemaining() > 0) ids.addAll(LINUM_TIRINUM_IDS);
+        if (checklist.leafRemaining() > 0) ids.addAll(GRYM_ROOT_IDS);
+        if (fishWanted > 0) ids.addAll(FISHING_SPOT_IDS);
+        if (ids.isEmpty()) return null;
+        boolean[][] open = currentOpenRooms();
+        return findTileObject(ids, CLICK_RANGE, o -> {
+            LocalPoint lp = o.getLocalLocation();
+            return lp != null && !lp.equals(exclude) && inScoutArea(lp) && inOpenRoom(open, lp);
+        });
+    }
+
+    /** Centre of the object's clickbox on the canvas, or null when it's off-screen. */
+    private java.awt.Point clickPoint(TileObject obj) {
+        return Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            java.awt.Shape box = obj.getClickbox();
+            if (box == null) return null;
+            java.awt.Rectangle b = box.getBounds();
+            java.awt.Point p = new java.awt.Point((int) b.getCenterX(), (int) b.getCenterY());
+            Client client = Microbot.getClient();
+            return p.x > 0 && p.y > 0 && p.x < client.getCanvasWidth() && p.y < client.getCanvasHeight() ? p : null;
+        }).orElse(null);
     }
 
     /** Nearest resource object within maxTiles, in the phase's scout area and in a room we can walk into. */
@@ -1738,6 +2049,7 @@ public class CustomGauntletPrepScript extends Script {
         if (!busyWithOwnAction() && approachIfFar(node.getLocalLocation(), "Node")) return true;
         if (!Rs2Player.isMoving() && !busyWithOwnAction()) {
             Microbot.log(String.format("[Scout] Lighting %s at %s%s", label, node.getWorldLocation(), chosenNodeRooms));
+            onActionClick();
             Rs2GameObject.interact(node, "Light");
             sleep(600);
             scanScoutRooms();
@@ -1766,6 +2078,12 @@ public class CustomGauntletPrepScript extends Script {
             TileObject nearest = null;
             int nearestScore = Integer.MIN_VALUE;
             String nearestRooms = "";
+            // Phase 2 on the rim: only rim rooms until the orb and bowstring are in (it opened ring-2 rooms from the
+            // rim). An inner room is only the fallback when no rim node is left to light.
+            boolean rimOnly = outward && playerRing >= GauntletGrid.HUNLLEF_X;
+            TileObject inner = null;
+            int innerScore = Integer.MIN_VALUE;
+            String innerRooms = "";
             StringBuilder skipped = new StringBuilder();
             for (TileObject obj : objects) {
                 if (obj == null) continue;
@@ -1790,16 +2108,27 @@ public class CustomGauntletPrepScript extends Script {
                     if (closedRing > scoutRing) continue;
                 }
                 if (outward && rooms != null) {
-                    // Heading out: the outermost room first, at any distance. On the rim: the nearest node, rim rooms
-                    // only slightly preferred (from a corner it walked 46 tiles back past the base for a rim node).
+                    // Heading out: the outermost room first, at any distance. On the rim: the nearest rim node.
                     int closedRing = firstOpen ? GauntletGrid.ringOf(rooms[2], rooms[3]) : GauntletGrid.ringOf(rooms[0], rooms[1]);
-                    score += closedRing * (playerRing >= GauntletGrid.HUNLLEF_X ? RIM_RING_BONUS_TILES : 1000);
+                    if (rimOnly && closedRing < GauntletGrid.HUNLLEF_X) {
+                        if (score > innerScore) {
+                            innerScore = score;
+                            inner = obj;
+                            innerRooms = String.format(" (opens (%d,%d)-(%d,%d), no rim node left)", rooms[0], rooms[1], rooms[2], rooms[3]);
+                        }
+                        continue;
+                    }
+                    if (!rimOnly) score += closedRing * 1000;
                 }
                 if (score > nearestScore) {
                     nearestScore = score;
                     nearest = obj;
                     nearestRooms = rooms == null ? "" : String.format(" (opens (%d,%d)-(%d,%d))", rooms[0], rooms[1], rooms[2], rooms[3]);
                 }
+            }
+            if (nearest == null && inner != null) {
+                nearest = inner;
+                nearestRooms = innerRooms;
             }
             skippedClosedNodes = skipped.toString().trim();
             chosenNodeRooms = nearestRooms;

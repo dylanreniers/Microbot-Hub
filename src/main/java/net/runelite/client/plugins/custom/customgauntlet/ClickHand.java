@@ -78,6 +78,7 @@ public class ClickHand {
     private final Map<String, Long> settleUntil = new HashMap<>();
     private final IntSupplier tick;
     private final BooleanSupplier tornadoesUp;
+    private final BooleanSupplier wantsFood;
     private volatile boolean running;
     private Thread thread;
     private long lastClickEnd = 0;
@@ -96,9 +97,10 @@ public class ClickHand {
     private int phaseClicks, phaseSameTick, phaseWaitedTick;
     private long phaseGapSum;
 
-    public ClickHand(IntSupplier tick, BooleanSupplier tornadoesUp) {
+    public ClickHand(IntSupplier tick, BooleanSupplier tornadoesUp, BooleanSupplier wantsFood) {
         this.tick = tick;
         this.tornadoesUp = tornadoesUp;
+        this.wantsFood = wantsFood;
     }
 
     private static int[] rank(Kind... order) {
@@ -202,7 +204,16 @@ public class ClickHand {
             // Same rank: stay on the open tab (both prayer clicks before switching back to the inventory).
             if (a < b || (a == b && r.tab == current && best.tab != current)) best = r;
         }
+        if (best.kind == Kind.WALK && tornadoesUp.getAsBoolean() && eatBeatsWalk()) {
+            Request eat = pending.get("eat");
+            if (eat != null) return eat;
+        }
         return best;
+    }
+
+    /** A walk landed this tick or the last, so we're running already: an eat may go before the next walk. */
+    private synchronized boolean eatBeatsWalk() {
+        return wantsFood.getAsBoolean() && landedTick.getOrDefault("walk", -100) >= tick.getAsInt() - 1;
     }
 
     private synchronized void take(Request r) {
@@ -268,7 +279,8 @@ public class ClickHand {
             if (p != null && Microbot.naturalMouse != null) Microbot.naturalMouse.moveTo(p.x, p.y);
         }
         // A flee (we're on a hazard) cuts in at any time: an eat at 24 HP went first and the flee walk waited 1.3s.
-        if (r.interruptible() && ((tornadoesUp.getAsBoolean() && isPending("walk")) || isFleePending())) {
+        if (r.interruptible() && ((tornadoesUp.getAsBoolean() && isPending("walk") && !(r.kind == Kind.EAT && eatBeatsWalk()))
+                || isFleePending())) {
             requeue(r);
             Microbot.log(String.format("[Click] %s put back - escape walk first", r.label));
             lastClickEnd = System.currentTimeMillis();

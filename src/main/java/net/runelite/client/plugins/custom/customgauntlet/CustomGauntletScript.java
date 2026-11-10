@@ -120,10 +120,23 @@ public class CustomGauntletScript extends Script {
     private static final int EQUIP_CONFIRM_TICKS = 3;      // ticks between weapon equip clicks
     private static final long TORNADO_SHOT_INTERVAL_MS = 3000; // during tornadoes: shoot when we haven't for this long...
     private static final int TORNADO_SHOT_MIN_GAP = 4;         // ...from a safe tile with every tornado at least this far off
+    // A merged stack (2+ tornadoes within a tile of each other) hits once per tornado: two standstill shots with a
+    // 4-stack at gap 4 cost 50-60 HP a tick when the escape landed late. Standstill shots need more room from one...
+    private static final int TORNADO_SHOT_STACK_GAP = 6;
+    // ...and the hold for the shot ends once one is this close.
+    private static final int HOLD_RELEASE_STACK_GAP = 3;
+    // Tiles the tornadoes must stay off the run after the shot's pause: more when no run is under way yet.
+    private static final int SHOT_CLEAR_TILES_STANDSTILL = 2;
+    private static final int SHOT_CLEAR_TILES_RUNNING = 1;
+    // After tornadoes end, shoot from a safe tile before walking to a door spot (8s without a shot and 41 floor damage
+    // on the way otherwise). Gives up after this long so the door spot isn't lost to a shot that never comes.
+    private static final long SHOOT_FIRST_WINDOW_MS = 3000;
+    // During tornadoes a due shot goes before an eat from this HP up (an eat blocks the shot and delays the next attack).
+    private static final int SHOT_BEFORE_EAT_HP = 80;
+    private static final long EAT_HOLD_MAX_MS = 1800; // ...but a shot that doesn't come doesn't hold the eat back longer
     private static final long SHOT_WAIT_MAX_MS = 1500;         // wait this long for our projectile before the dodge takes over
     private static final int ATTACK_RECLICK_TICKS = 2;     // anti-spam between attack clicks while the weapon is ready
-    private static final int TOPUP_HP_MARGIN = 20;         // between tornado phases, eat once HP is a full paddlefish below max (no overheal)
-    private static final int TOPUP_MIN_FISH = 5;           // ...but only while more fish than this are left
+    private static final int DRINK_TORNADO_GAP = 4;        // standing still with a tornado this close: the walk comes before a drink
     private static final int PRAYER_EMERGENCY = 10;        // "eat/drink only during tornadoes": drink below this anyway
     // Player attack animations (bow, staff, halberd jab/swipe): mark the tick the weapon actually fired.
     private static final Set<Integer> PLAYER_ATTACK_ANIMS = Set.of(426, 1167, 428, 440);
@@ -252,7 +265,11 @@ public class CustomGauntletScript extends Script {
     private Rs2NpcModel hunllef = null;
     // Every fight click goes through this one hand: one click at a time, human gaps, F5/ESC tab switches.
     private final ClickHand hand = new ClickHand(() -> this.gameTickCount,
-            () -> this.tornadoThreat || (this.tornado != null && !this.tornado.isEmpty()));
+            () -> this.tornadoThreat || (this.tornado != null && !this.tornado.isEmpty()),
+            // An eat may go before a walk only with every tornado 3+ tiles off: one at 84 HP went first with the stack
+            // at 1-2 tiles, the escape landed 2 ticks late and the stack hit twice.
+            () -> Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS) < topUpTarget()
+                    && (!tornadoesUpNow() || this.dodgeNearestTornado >= CLOSE_TORNADO_TILES));
     private List<Rs2NpcModel> tornado = null;
     private final AtomicBoolean attackNeeded = new AtomicBoolean(false);
 
@@ -330,6 +347,10 @@ public class CustomGauntletScript extends Script {
     private int lastEvadeTick = -100;
     private int runAnchorX = -1, runAnchorY = -1; // where the current run started / we last attacked (scene coords)
     private volatile long lastOwnShotAt = 0, lastShotClickAt = 0; // our last projectile / tornado-shot click (ms)
+    private long tornadoesEndedAt = 0; // when the last tornado phase ended (ms)
+    private long eatHeldSince = 0;     // when a tornado-phase eat started waiting for a due shot (ms, 0: none)
+    private volatile int dodgeNearestTornado = Integer.MAX_VALUE; // the dodge's last nearest-tornado gap (read by the hand)
+    private volatile boolean swapHoverDue = false; // one shot to go before the weapon swap: put the mouse on the weapon
     private volatile Projectile lastOwnProjectile = null;
     private volatile int lastAttackFiredTick = -100;     // tick our attack animation last started (weapon cooldown)
     private volatile int unknownPlayerAnim = -1;         // last unrecognised player animation, logged from the script thread
@@ -368,7 +389,6 @@ public class CustomGauntletScript extends Script {
     private volatile boolean tornadoDodgeKick = false;
     // "Eat/drink only during tornadoes": eat up to the top-up HP (set when tornadoes spawn and when they despawn), and
     // restore prayer once per tornado phase.
-    private boolean hpTopUpPending = false;
     private boolean prayerTopUpPending = false;
     private boolean outOfPotionsLogged = false;
     private final Map<String, Integer> shotSkipReasons = new HashMap<>();
@@ -533,6 +553,7 @@ public class CustomGauntletScript extends Script {
                         if (!tornadoesActive && (tornadoThreat || dodgeActive)) {
                             logTornadoPhaseSummary();
                             clearDodge();
+                            tornadoesEndedAt = now;
                             if (isPlayerOnSafeTile()) {
                                 lastWalkTargetX = -1;
                                 lastWalkTargetY = -1;
@@ -555,7 +576,6 @@ public class CustomGauntletScript extends Script {
                         if (tornadoesActive && !tornadoesWereActive) hand.cancel("attack");
                         if (tornadoesActive) repositionTarget = null;
                         if (tornadoesActive != tornadoesWereActive && config.eatDuringTornadoes()) {
-                            hpTopUpPending = true;
                             prayerTopUpPending = tornadoesActive;
                         }
                         tornadoesWereActive = tornadoesActive;
@@ -567,6 +587,10 @@ public class CustomGauntletScript extends Script {
                         // The click hand lands eat/drink after the dodge walk (its priority order), so they no longer
                         // wait for a pass without a walk click - and can't replace the walk any more.
                         loopSection = "food/drink";
+                        if (swapHoverDue) {
+                            swapHoverDue = false;
+                            hoverNextWeapon();
+                        }
                         if (now - timeEatAttempted > CD_EAT) checkFood();
                         if (now - timeDrink > CD_DRINK) checkPrayerPotions(); //Non-Blocking
 
@@ -722,7 +746,7 @@ public class CustomGauntletScript extends Script {
     }
 
     /**
-     * Runs to the nearest safe tile - a floor tile (ground object {@link #SAFE_TILE_GROUND_ID}) that is
+     * Runs to the nearest safe tile - a floor tile that is
      * not under the Hunllef. Only acts while stationary (so it never fights an in-progress or manual
      * walk) and throttled by {@link #CD_SAFESPOT}. Everything is computed in scene/LocalPoint space and
      * the walk is issued via walkFastLocal, which sidesteps the instance WorldPoint pitfalls.
@@ -985,6 +1009,7 @@ public class CustomGauntletScript extends Script {
             runSpeed = Rs2Player.isRunEnabled() && Microbot.getClient().getEnergy() > 0 ? 2 : 1;
 
             int nearestNow = minTornadoDistance(px, py, tornadoes);
+            dodgeNearestTornado = nearestNow;
             if (isOnDangerousTile(px, py) && nearestNow <= 2) hitExpectedUntil = now + 600;
             if (tick != lastDiagTick) {
                 lastDiagTick = tick;
@@ -1034,7 +1059,7 @@ public class CustomGauntletScript extends Script {
             logShotTiming(px, py);
 
             // An attack clicked from a standstill or mid-run: hold still until it fires (up to the pause).
-            if (holdingForAttack() && nearestNow > 2) return true;
+            if (holdingForAttack() && nearestNow > 2 && !stackWithin(px, py, tornadoes, HOLD_RELEASE_STACK_GAP)) return true;
 
             // Fit a shot in whenever the run we're on survives standing still for it (lane run, evade, standstill).
             if (!loopMode && tryTornadoAttack(px, py, bossX, bossY, tornadoes, nearestNow)) return true;
@@ -1050,6 +1075,8 @@ public class CustomGauntletScript extends Script {
                 boolean arrived = px == evadeTarget[0] && py == evadeTarget[1];
                 if (arrived || !isTileFullySafe(evadeTarget[0], evadeTarget[1], bossX, bossY)
                         || (!evadeCrossesHazard && !isStraightPathFullySafe(px, py, evadeTarget[0], evadeTarget[1], bossX, bossY))
+                        // Crossing hazards on purpose still never means under the Hunllef (the walk would refuse it).
+                        || walkLineCrossesBoss(px, py, evadeTarget[0], evadeTarget[1], bossX, bossY)
                         // A hit-taking evade ends beside a tornado by design: dropping it for that re-picked it twice
                         // a tick and we stood still 3 ticks while the tornado closed in. Only clean evades re-plan.
                         || (!evadeExpectsHit && minTornadoDistance(evadeTarget[0], evadeTarget[1], tornadoes) <= 1)) {
@@ -1084,6 +1111,7 @@ public class CustomGauntletScript extends Script {
             // corner waypoint was treated as a lane endpoint, so reaching it sprinted straight at the lane end.
             if (inTransition) {
                 if (!isPlayerOnSafeLane(px, py) && transitionEntryTile != null) {
+                    if (laneEntryIsTrap(px, py, tornadoes) && evadeTornadoes(px, py, bossX, bossY, tornadoes)) return true;
                     return enterLaneAndRun(px, py, bossX, bossY, tornadoes)
                             || walkSafeRoute(px, py, transitionEntryTile[0], transitionEntryTile[1], bossX, bossY, tornadoes)
                             || evadeTornadoes(px, py, bossX, bossY, tornadoes)
@@ -2177,26 +2205,30 @@ public class CustomGauntletScript extends Script {
                 bestGap = sim[1];
             }
         }
-        if (bestMargin < 1) {
+        // A plan with a second move leaves the first tile straight away: bestHits assumes we stop there, which rated a
+        // 0+0 plan x4 and sent us on a break-out onto the outer ring as it lit up (85 damage in 2 ticks).
+        int expectedHits = plan != null && best == plan.first && plan.second != null ? plan.hits1 + plan.hits2 : bestHits;
+        if (bestMargin < 1 && expectedHits > 0) {
             // Expected hits that would kill us aren't "a few hits": then a hazard crossing is always worth a look.
             // (A x4 evade at 68 HP walked into a 4-tornado stack - 68 damage in one tick.)
             int hpNow = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
-            boolean lethal = bestHits * TORNADO_HIT_DMG >= hpNow - LETHAL_MARGIN;
+            boolean lethal = expectedHits * TORNADO_HIT_DMG >= hpNow - LETHAL_MARGIN;
             if (lethal) {
-                Microbot.log(String.format("[Plan] All safe options lethal (x%d at %d HP) - looking for a hazard crossing", bestHits, hpNow));
+                Microbot.log(String.format("[Plan] All safe options lethal (x%d at %d HP) - looking for a hazard crossing", expectedHits, hpNow));
             }
             // Boxed in: a couple of hazard landings beat a stack of tornado hits.
-            if (bestHits >= breakoutMinHits() || lethal) {
-                int[] out = pickBreakout(px, py, bossX, bossY, tornadoes, bestHits);
+            if (expectedHits >= breakoutMinHits() || lethal) {
+                int[] out = pickBreakout(px, py, bossX, bossY, tornadoes, expectedHits);
                 if (out != null) {
                     int[] sim = simulateRun(px, py, out, tornadoes);
                     Microbot.log(String.format("[Breakout] Evade would take x%d - crossing %d hazard tile(s) to (%d,%d) (tornado hits x%d) %s",
-                            bestHits, hazardLandings(px, py, out[0], out[1]), out[0], out[1], sim[2], vitalsTag()));
+                            expectedHits, hazardLandings(px, py, out[0], out[1]), out[0], out[1], sim[2], vitalsTag()));
                     best = out;
                     bestMargin = sim[0];
                     bestGap = sim[1];
                     bestHits = sim[2];
                     breakout = true;
+                    expectedHits = bestHits;
                 }
             }
         }
@@ -2242,8 +2274,12 @@ public class CustomGauntletScript extends Script {
         lastWalkTargetY = best[1];
         Microbot.log(String.format("[Evade] Both lane directions cut off by tornadoes - running to (%d,%d) (closest pass %d, end gap %d%s) %s",
                 best[0], best[1], bestMargin, bestGap,
-                (bestMargin >= 1 ? "" : String.format(", WILL BE HIT x%d", bestHits)) + (noWayOut ? ", no clean run onward" : ""),
+                (bestMargin >= 1 || expectedHits == 0 ? "" : String.format(", WILL BE HIT x%d", expectedHits)) + (noWayOut ? ", no clean run onward" : ""),
                 vitalsTag()));
+        // Already within a tick's run of the first tile: click the second move straight away. Starting the first click
+        // anyway sent the mouse there and then on to the second tile, a wasted move at the start of a phase.
+        if (evadeNext != null && Math.max(Math.abs(best[0] - px), Math.abs(best[1] - py)) <= runSpeed
+                && sendEvadeNextEarly(px, py, bossX, bossY, tornadoes)) return true;
         walkExactTile(best[0], best[1]);
         return true;
     }
@@ -2259,18 +2295,36 @@ public class CustomGauntletScript extends Script {
     private boolean sendEvadeNextEarly(int px, int py, int bossX, int bossY, List<int[]> tornadoes) {
         int[] first = evadeTarget, next = evadeNext;
         if (Math.max(Math.abs(first[0] - px), Math.abs(first[1] - py)) > runSpeed) return false;
-        evadeNext = null; // one try: a failed check falls back to a fresh plan from the first tile
-        if (!isTileFullySafe(next[0], next[1], bossX, bossY)) return false;
-        if (walkLineCrossesBoss(first[0], first[1], next[0], next[1], bossX, bossY)
-                || walkLineCrossesBoss(px, py, next[0], next[1], bossX, bossY)) return false;
-        int[] fromFirst = simulateRun(first[0], first[1], next, tornadoes);
-        int[] fromHere = simulateRun(px, py, next, tornadoes);
-        int hits = Math.max(fromFirst[2], fromHere[2]);
+        evadeNext = null; // one try: with no usable move left we fall back to a fresh plan from the first tile
+        boolean usable = secondMoveUsable(px, py, first, next, bossX, bossY);
+        int hits = usable ? secondMoveHits(px, py, first, next, tornadoes) : Integer.MAX_VALUE;
         if (hits > evadeNextHits) {
-            Microbot.log(String.format("[Plan] Second move to (%d,%d) would now take x%d (planned x%d) - re-planning at (%d,%d)",
-                    next[0], next[1], hits, evadeNextHits, first[0], first[1]));
+            // Stopping to re-plan on arrival cost 2 ticks beside a stack (3-4 hits a tick) over a predicted 1 hit:
+            // pick the best move on from the first tile now, and failing that still take the planned one.
+            Plan replan = planFrom(px, py, first, bossX, bossY, tornadoes, buildSafeGrid(bossX, bossY));
+            int[] better = replan == null ? null : replan.second;
+            int betterHits = better != null && secondMoveUsable(px, py, first, better, bossX, bossY)
+                    ? secondMoveHits(px, py, first, better, tornadoes) : Integer.MAX_VALUE;
+            if (betterHits == Integer.MAX_VALUE && !usable) return false;
+            if (betterHits <= hits) {
+                Microbot.log(String.format("[Plan] Second move changed to (%d,%d), x%d (planned x%d) %s",
+                        better[0], better[1], betterHits, evadeNextHits, vitalsTag()));
+                next = better;
+                hits = betterHits;
+            } else {
+                Microbot.log(String.format("[Plan] Second move to (%d,%d) now takes x%d (planned x%d), nothing better - keeping it %s",
+                        next[0], next[1], hits, evadeNextHits, vitalsTag()));
+            }
+        }
+        // A lethal second move (a replacement taking x8 was clicked) is no plan: re-plan from the first tile instead.
+        int hpNow = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
+        if (hits > 0 && hits * TORNADO_HIT_DMG >= hpNow - LETHAL_MARGIN) {
+            Microbot.log(String.format("[Plan] Second move to (%d,%d) would take x%d at %d HP - re-planning at (%d,%d)",
+                    next[0], next[1], hits, hpNow, first[0], first[1]));
             return false;
         }
+        int[] fromFirst = simulateRun(first[0], first[1], next, tornadoes);
+        int[] fromHere = simulateRun(px, py, next, tornadoes);
         Microbot.log(String.format("[Plan] Reaching (%d,%d) - sending the second move to (%d,%d) now (pass %d%s) %s",
                 first[0], first[1], next[0], next[1], Math.min(fromFirst[0], fromHere[0]), hits > 0 ? ", hit x" + hits : "",
                 vitalsTag()));
@@ -2362,7 +2416,7 @@ public class CustomGauntletScript extends Script {
         for (int x = arenaMinX; x <= arenaMaxX; x++) {
             for (int y = arenaMinY; y <= arenaMaxY; y++) {
                 if (x == px && y == py) continue;
-                if (!safe[x - arenaMinX][y - arenaMinY]) continue;
+                if (!safe[x - arenaMinX][y - arenaMinY] || isWarningTile(x, y)) continue; // not onto floor about to burn
                 if (gridPathSafe(safe, px, py, x, y)) continue; // hazard-free targets were the evade's to pick
                 if (!clearOfBossFromBoth(px, py, pred, x, y, bossX, bossY)) continue;
                 int landings = hazardLandings(px, py, x, y);
@@ -2393,6 +2447,18 @@ public class CustomGauntletScript extends Script {
         boolean healthy = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS) >= BREAKOUT_HEALTHY_HP
                 && (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_MAGIC) || Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_RANGE));
         return healthy ? BREAKOUT_MIN_HITS_HEALTHY : BREAKOUT_MIN_HITS;
+    }
+
+    /** True if {@code next} is safe to run to from the first tile and from here, without going under the Hunllef. */
+    private boolean secondMoveUsable(int px, int py, int[] first, int[] next, int bossX, int bossY) {
+        return isTileFullySafe(next[0], next[1], bossX, bossY)
+                && !walkLineCrossesBoss(first[0], first[1], next[0], next[1], bossX, bossY)
+                && !walkLineCrossesBoss(px, py, next[0], next[1], bossX, bossY);
+    }
+
+    /** Tornado hits on the second move, the worse of leaving from the first tile and from here. */
+    private int secondMoveHits(int px, int py, int[] first, int[] next, List<int[]> tornadoes) {
+        return Math.max(simulateRun(first[0], first[1], next, tornadoes)[2], simulateRun(px, py, next, tornadoes)[2]);
     }
 
     /** A two-move plan: run to {@code first}, then on to {@code second} (null: no safe run on from there). */
@@ -2554,6 +2620,12 @@ public class CustomGauntletScript extends Script {
             // answer here: 1-tile hops never shake a tornado that moves 1 tile a tick (it sat on us for 3 ticks).
             best = pickHitMinimisingFleeTile(px, py, bossX, bossY, tornadoes);
             if (best != null) hitExpectedUntil = now + HIT_EXPECTED_MS;
+        }
+        // A nearest tile through the tornadoes: from (76,44) one ran straight through a 4-stack for 85 damage.
+        if (best != null && !tornadoes.isEmpty() && simulateRun(px, py, best, tornadoes)[2] > 0) {
+            int[] fewerHits = pickHitMinimisingFleeTile(px, py, bossX, bossY, tornadoes);
+            if (fewerHits != null && simulateRun(px, py, fewerHits, tornadoes)[2] < simulateRun(px, py, best, tornadoes)[2]) best = fewerHits;
+            hitExpectedUntil = now + HIT_EXPECTED_MS;
         }
         // No clean safe tile close by: the cheapest path across the hazards beats a long run to a far tile (a flee
         // once ran 6 tiles at a tile behind the Hunllef and died on the detour).
@@ -3267,6 +3339,13 @@ public class CustomGauntletScript extends Script {
                 Microbot.log(String.format("[Walk] Route from (%d,%d) to (%d,%d) goes under the Hunllef - clicking it anyway, we're on a hazard",
                         start[0], start[1], sceneX, sceneY));
             } else if (!escapingBoss && walkLineCrossesBoss(start[0], start[1], sceneX, sceneY, bx, by)) {
+                // An evade we can't walk straight to any more is finished: re-plan from here. Kept, it was refused
+                // 6 times in a row while a 4-stack walked onto us (58 a tick).
+                if (evadeTarget != null && evadeTarget[0] == sceneX && evadeTarget[1] == sceneY) {
+                    evadeTarget = null;
+                    evadeNext = null;
+                    lastEvade = null;
+                }
                 int[] pos = {start[0], start[1]};
                 int[] lastClear = null;
                 while (pos[0] != sceneX || pos[1] != sceneY) {
@@ -3500,6 +3579,33 @@ public class CustomGauntletScript extends Script {
         return coords;
     }
 
+    /**
+     * True if the lane entry is one end of the lane and, by the time we get there, the run to the other end (the only
+     * way out) goes through the tornadoes: walking to the end of a lane with the stack coming down it left us pinned.
+     */
+    private boolean laneEntryIsTrap(int px, int py, List<int[]> tornadoes) {
+        int[] entry = transitionEntryTile;
+        if (entry == null || safeLaneTileA == null || safeLaneTileB == null) return false;
+        int[] other;
+        if (entry[0] == safeLaneTileA[0] && entry[1] == safeLaneTileA[1]) other = safeLaneTileB;
+        else if (entry[0] == safeLaneTileB[0] && entry[1] == safeLaneTileB[1]) other = safeLaneTileA;
+        else return false;
+        int dist = Math.max(Math.abs(entry[0] - px), Math.abs(entry[1] - py));
+        int ticks = (dist + Math.max(1, runSpeed) - 1) / Math.max(1, runSpeed);
+        return simulateRun(entry[0], entry[1], other, tornadoesAfter(entry[0], entry[1], tornadoes, ticks))[0] < 1;
+    }
+
+    /** True if a tornado within {@code range} tiles of (x,y) has another tornado on or next to its tile (a stack). */
+    private static boolean stackWithin(int x, int y, List<int[]> tornadoes, int range) {
+        for (int[] t : tornadoes) {
+            if (Math.max(Math.abs(x - t[0]), Math.abs(y - t[1])) > range) continue;
+            for (int[] o : tornadoes) {
+                if (o != t && Math.max(Math.abs(o[0] - t[0]), Math.abs(o[1] - t[1])) <= 1) return true;
+            }
+        }
+        return false;
+    }
+
     /** Minimum Chebyshev (tile) distance from a scene tile to the nearest tornado. */
     private int minTornadoDistance(int x, int y, List<int[]> tornadoes) {
         int min = Integer.MAX_VALUE;
@@ -3510,6 +3616,7 @@ public class CustomGauntletScript extends Script {
     }
 
     private void clearDodge() {
+        dodgeNearestTornado = Integer.MAX_VALUE;
         evadeNext = null;
         dodgeActive = false;
         tornadoThreat = false;
@@ -3719,6 +3826,11 @@ public class CustomGauntletScript extends Script {
             fleeTarget = null;
             return false;
         }
+        if (!onDanger && shootFirstAfterPhase()
+                && isTileFullySafe(px, py, bossX, bossY)) {
+            doorSpotTarget = null;
+            return false; // shoot from here first
+        }
         if (doorSpotTarget != null) {
             int[] t = doorSpotTarget;
             if (isTileFullySafe(t[0], t[1], bossX, bossY)) {
@@ -3735,6 +3847,7 @@ public class CustomGauntletScript extends Script {
         for (int[] s : arenaDoorSpots) {
             if (!isTileFullySafe(s[0], s[1], bossX, bossY)) continue;
             if (!isStraightPathFullySafe(px, py, s[0], s[1], bossX, bossY)) continue;
+            if (walkLineCrossesBoss(px, py, s[0], s[1], bossX, bossY)) continue;
             int dist = Math.max(Math.abs(s[0] - px), Math.abs(s[1] - py));
             if (onDanger && dist > DOOR_SPOT_FLEE_RANGE) continue; // off the hazard first, the nearest way
             if (dist < bestDist) {
@@ -3867,6 +3980,7 @@ public class CustomGauntletScript extends Script {
         HeadIcon praying = effectiveBossIcon();
         if (style == praying) return; // shots into its prayer don't count towards a switch
         int n = ++bossHitsOnPrayer;
+        if (n == BOSS_HITS_TO_SWITCH - 1) swapHoverDue = true;
         if (n < BOSS_HITS_TO_SWITCH) {
             eventLog.add(String.format("[Weapon] %s shot %d/%d on a %s-praying Hunllef", iconName(style), n,
                     BOSS_HITS_TO_SWITCH, iconName(praying)));
@@ -3934,6 +4048,8 @@ public class CustomGauntletScript extends Script {
         if (nearestTornado < TORNADO_SHOT_MIN_GAP) return shotSkipped("tornado within " + (TORNADO_SHOT_MIN_GAP - 1) + " tiles");
         if (isWarningTile(px, py) || !isTileFullySafe(px, py, bossX, bossY)) return shotSkipped("not on a safe tile");
         if (hand.isFleePending()) return shotSkipped("flee pending");
+        // A shot queued behind an eat inherits its wait: one landed 1.6s late and the escape after it 3 ticks late.
+        if (hand.isBusyWith("eat")) return shotSkipped("eat in the queue");
 
         // Where the run goes on to after the shot: the evade, the lane run, or wherever we're walking.
         int[] resume = null;
@@ -3951,6 +4067,14 @@ public class CustomGauntletScript extends Script {
         }
         if (resume != null && resume[0] == px && resume[1] == py) resume = null;
         if (resume == null) what = "standstill";
+        if (resume == null && stackWithin(px, py, tornadoes, TORNADO_SHOT_STACK_GAP - 1)) {
+            return shotSkipped("tornado stack within " + (TORNADO_SHOT_STACK_GAP - 1) + " tiles (standstill)");
+        }
+        // Standing still for the shot must still leave a run clear of the tornadoes.
+        int clearTiles = resume == null ? SHOT_CLEAR_TILES_STANDSTILL : SHOT_CLEAR_TILES_RUNNING;
+        if (!hasCleanRunFrom(buildSafeGrid(bossX, bossY), new int[]{px, py}, tornadoesAfterPause(px, py, tornadoes), clearTiles)) {
+            return shotSkipped("no clean run after the pause");
+        }
         phaseShots++;
         Microbot.log(String.format("[Attack] Shot during %s (tornado gap %d, %.1fs since the last)%s %s", what, nearestTornado,
                 Math.min(sinceShot, 99_000) / 1000.0, resume == null ? "" : String.format(", then on to (%d,%d)", resume[0], resume[1]),
@@ -4356,8 +4480,10 @@ public class CustomGauntletScript extends Script {
             if (Rs2Inventory.contains(id)) {
                 Microbot.log(String.format("[Action] Switch gear: equipping weapon ID %d", id));
                 final int itemId = id;
-                hand.submit(ClickHand.Kind.EQUIP, "equip", ClickHand.Tab.INVENTORY, () -> Rs2Inventory.equip(itemId),
-                        () -> Rs2Inventory.contains(itemId), "equip " + itemId, () -> itemCenter(null, itemId));
+                hand.submit(ClickHand.Kind.EQUIP, "equip", ClickHand.Tab.INVENTORY, () -> {
+                    Rs2Inventory.equip(itemId);
+                    attackAfterSwap(itemId);
+                }, () -> Rs2Inventory.contains(itemId), "equip " + itemId, () -> itemCenter(null, itemId));
                 lastEquipTick = gameTickCount;
                 if (!tornadoThreat && (tornado == null || tornado.isEmpty()) && hasArrived(lastWalkTargetX, lastWalkTargetY)) {
                     attackNeeded.set(true);
@@ -4365,6 +4491,41 @@ public class CustomGauntletScript extends Script {
                 break;
             }
         }
+    }
+
+    /** Between tornado phases, with one shot to go before the swap: mouse onto the next weapon, so the equip is instant. */
+    private void hoverNextWeapon() {
+        if (tornadoesUpNow()) return;
+        int[] next = isBowEquipped() ? STAFF_IDS : isStaffEquipped() ? BOW_IDS : null;
+        if (next == null) return;
+        for (int id : next) {
+            if (!Rs2Inventory.contains(id)) continue;
+            final int itemId = id;
+            hand.submit(ClickHand.Kind.HOVER, "hover", ClickHand.Tab.INVENTORY, () -> {
+                java.awt.Point p = itemCenter(null, itemId);
+                if (p != null && Microbot.naturalMouse != null) Microbot.naturalMouse.moveTo(p.x, p.y);
+            }, () -> !tornadoesUpNow(), "hover weapon " + itemId);
+            return;
+        }
+    }
+
+    /**
+     * The attack click right behind the equip, without waiting for the swap to show: 7 swaps cost about 2s each when the
+     * attack only went out after it. The shot still waits for the weapon's cooldown, so a click now loses nothing.
+     */
+    private void attackAfterSwap(int itemId) {
+        Rs2NpcModel boss = hunllef;
+        if (boss == null || !config.autoAttack() || tornadoesUpNow() || !isPlayerOnSafeTile()) return;
+        if (Arrays.stream(HALBERD_IDS).anyMatch(id -> id == itemId)) return; // the halberd would walk us to the boss
+        net.runelite.api.Point at = Microbot.getClientThread().runOnClientThreadOptional(() -> {
+            java.awt.Shape hull = boss.getConvexHull();
+            if (hull == null) return null;
+            Rectangle b = hull.getBounds();
+            return new net.runelite.api.Point((int) b.getCenterX(), (int) b.getCenterY());
+        }).orElse(null);
+        if (at != null && Microbot.naturalMouse != null) Microbot.naturalMouse.moveTo(at.getX(), at.getY());
+        if (hand.isPending("walk") || tornadoesUpNow() || !isPlayerOnSafeTile()) return;
+        boss.click("attack");
     }
 
     private boolean hasBowInInventory() {
@@ -4495,87 +4656,45 @@ public class CustomGauntletScript extends Script {
         return dest.getSceneX() != lp.getSceneX() || dest.getSceneY() != lp.getSceneY();
     }
 
+    /**
+     * Calm phases are for attacking: eat only below "Eat below HP". While tornadoes are up, stay above "Top up to HP":
+     * eat again after every hit, on the run too (eating doesn't stop a run). Below CRITICAL_HP always eat, hazard or not.
+     */
     private void checkFood() {
         if (!config.enableFood()) return;
-        if (config.eatDuringTornadoes()) {
-            checkFoodTornadoPhases();
-            return;
-        }
-        boolean tornadoesActive = tornado != null && !tornado.isEmpty();
-
-        if (tornadoesActive) {
-            // Eating doesn't stop a run, and the click hand can't drop the walk for it any more: while we're running
-            // somewhere (no new walk waiting), eat below the normal threshold - earlier still if the evade we're on
-            // already expects hits (~15 HP a hit, capped a fish below max so it isn't wasted).
-            int hpNow = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
-            int runEatAt = config.lowHpEatValue();
-            if (evadeTarget != null && evadeExpectsHit) {
-                runEatAt = Math.min(Microbot.getClient().getRealSkillLevel(Skill.HITPOINTS) - TOPUP_HP_MARGIN,
-                        runEatAt + EAT_PER_EXPECTED_HIT * evadeExpectedHits);
-            }
-            if (hpNow < runEatAt && isPlayerInFlight() && !hand.isPending("walk")) {
-                eatFood(runEatAt);
+        int hp = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
+        if (hp <= 0) return;
+        if (tornado != null && !tornado.isEmpty()) {
+            int target = topUpTarget();
+            if (holdEatForShot(hp)) return;
+            if (hp < target && isPlayerInFlight()) {
+                eatFood(target);
                 return;
             }
-            // A flee/evade or a close tornado needs the next click to be a walk; an eat now delays it 600ms. Below
-            // CRITICAL_HP eat regardless - standing still or mid-flee included (the old in-flight-only rule meant a
-            // player pinned at a lane end never ate and died from 59 HP without a single bite).
-            // When a hit is already certain (evade/flee says so, or a hazard with a tornado at 2), the walk click we'd
-            // protect saves nothing: eat at the normal threshold.
-            if (Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS) >= CRITICAL_HP && movementCritical
-                    && now >= hitExpectedUntil) return;
-        } else {
-            // Outside tornadoes: normal safe tile check (below CRITICAL_HP eat on the hazard too, while fleeing it)
-            if (!isPlayerOnSafeTile() && Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS) >= CRITICAL_HP) return;
-        }
-
-        int currentHp = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
-        if (currentHp <= 0) return;
-
-        int topUpBelow = Microbot.getClient().getRealSkillLevel(Skill.HITPOINTS) - TOPUP_HP_MARGIN + 1;
-        if (currentHp < config.lowHpEatValue() || currentHp < CRITICAL_HP) {
+            // Standing still: don't hold a needed walk click back, unless low or a hit is coming anyway.
+            if (hp >= CRITICAL_HP && movementCritical && now >= hitExpectedUntil) return;
+            if (hp < target || hp < CRITICAL_HP) eatFood(Math.max(target, CRITICAL_HP));
+        } else if (hp < CRITICAL_HP || (hp < config.lowHpEatValue() && isPlayerOnSafeTile() && !shootFirstAfterPhase())) {
             eatFood(Math.max(config.lowHpEatValue(), CRITICAL_HP));
-        } else if (!tornadoesActive && isPlayerOnSafeTile() && currentHp < topUpBelow
-                && Rs2Inventory.count("Paddlefish") > TOPUP_MIN_FISH) {
-            // Top up between tornado phases: a phase that opens on 60-66 HP left a 4-tornado stack at 1 HP.
-            eatFood(topUpBelow);
         }
     }
 
-    /**
-     * "Eat/drink only during tornadoes": calm phases are for attacking. When tornadoes spawn we eat up to the top-up HP,
-     * then below the eat threshold (with the same on-the-run rules as normal eating); when they despawn we top up once
-     * more on a safe tile and after that only eat below CRITICAL_HP until the next tornadoes.
-     */
-    private void checkFoodTornadoPhases() {
-        boolean tornadoesActive = tornado != null && !tornado.isEmpty();
-        int hp = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
-        if (hp <= 0) return;
-        int target = topUpTarget();
-        if (hpTopUpPending && (hp >= target || !Rs2Inventory.contains("Paddlefish"))) {
-            hpTopUpPending = false;
-            Microbot.log(String.format("[Food] Topped up (hp=%d, target %d, %s)", hp, target, tornadoesActive ? "tornadoes" : "calm"));
+    /** During tornadoes, healthy enough and a shot is due with the tornadoes far enough off: the shot goes first. */
+    private boolean holdEatForShot(int hp) {
+        boolean shotDue = config.autoAttack() && hunllef != null && (isBowEquipped() || isStaffEquipped()) && weaponReady()
+                && System.currentTimeMillis() - Math.max(lastOwnShotAt, lastShotClickAt) >= TORNADO_SHOT_INTERVAL_MS
+                && nearestTornadoGap() >= TORNADO_SHOT_MIN_GAP;
+        if (hp < SHOT_BEFORE_EAT_HP || !shotDue) {
+            eatHeldSince = 0;
+            return false;
         }
-        if (tornadoesActive) {
-            int eatAt = hpTopUpPending ? target : config.lowHpEatValue();
-            if (!hpTopUpPending && evadeTarget != null && evadeExpectsHit) {
-                eatAt = Math.min(Microbot.getClient().getRealSkillLevel(Skill.HITPOINTS) - TOPUP_HP_MARGIN,
-                        eatAt + EAT_PER_EXPECTED_HIT * evadeExpectedHits);
-            }
-            if (hp < eatAt && isPlayerInFlight() && !hand.isPending("walk")) {
-                eatFood(eatAt);
-                return;
-            }
-            // As normal eating: don't hold a needed walk click back, unless low or a hit is coming anyway.
-            if (hp >= CRITICAL_HP && movementCritical && now >= hitExpectedUntil) return;
-            if (hp < eatAt || hp < CRITICAL_HP) eatFood(Math.max(eatAt, CRITICAL_HP));
-        } else {
-            if (hp < CRITICAL_HP) {
-                eatFood(CRITICAL_HP); // emergency: on a hazard too, while fleeing it
-                return;
-            }
-            if (hpTopUpPending && isPlayerOnSafeTile()) eatFood(target);
-        }
+        if (eatHeldSince == 0) eatHeldSince = now;
+        return now - eatHeldSince < EAT_HOLD_MAX_MS;
+    }
+
+    /** Just after a tornado phase, before our first shot: the attack goes before eating or drinking. */
+    private boolean shootFirstAfterPhase() {
+        return lastOwnShotAt < tornadoesEndedAt && now - tornadoesEndedAt < SHOOT_FIRST_WINDOW_MS;
     }
 
     /** Tiles from our true tile to the nearest tornado (MAX_VALUE without tornadoes). */
@@ -4605,8 +4724,8 @@ public class CustomGauntletScript extends Script {
         // A tornado this close while we stand (or a walk is waiting) needs the next click to be the dodge walk: an eat
         // went first and we stood 2 ticks while a 4-tornado stack walked onto us. Eating on the run is fine (it doesn't
         // stop us), and below CRITICAL_HP the eat always goes.
-        if (currentHp >= CRITICAL_HP && (!isPlayerInFlight() || hand.isPending("walk"))
-                && nearestTornadoGap() <= CLOSE_TORNADO_TILES) return;
+        // A walk waiting while we run is fine: the hand sends the eat between walks (see ClickHand.eatBeatsWalk).
+        if (currentHp >= CRITICAL_HP && !isPlayerInFlight() && nearestTornadoGap() <= CLOSE_TORNADO_TILES) return;
         // Out of food: every eat click still held walk clicks back 600ms, which slowed the final dodges.
         int fish = Rs2Inventory.count("Paddlefish");
         if (fish <= 0) {
@@ -4655,20 +4774,30 @@ public class CustomGauntletScript extends Script {
             if (!(currentPrayer < PRAYER_EMERGENCY && !hand.isPending("walk"))
                     && (!isPlayerInFlight() || movementCritical)) return;
         } else {
-            if (!isPlayerOnSafeTile() && currentPrayer >= PRAYER_EMERGENCY) return;
+            if (currentPrayer >= PRAYER_EMERGENCY && (!isPlayerOnSafeTile() || shootFirstAfterPhase())) return;
         }
 
         // Same as eating: one drink at a time, and wait for it to land and show before another.
         if (hand.isBusyWith("drink") || gameTickCount - hand.lastLandedTick("drink") < EAT_CONFIRM_TICKS) return;
+        if (drinkMustWait()) return;
         if (currentPrayer < config.prayerPotionValue() && !warnIfNoPotions()) return;
         if (currentPrayer < config.prayerPotionValue()) {
             Microbot.log(String.format("[Action] Drink potion: Egniol potion | prayer=%d/%d%s", currentPrayer, config.prayerPotionValue(),
                     currentPrayer < PRAYER_EMERGENCY ? " (emergency)" : ""));
             hand.submit(ClickHand.Kind.DRINK, "drink", ClickHand.Tab.INVENTORY, () -> Rs2Inventory.interact("Egniol potion", "Drink"),
-                    () -> Rs2Inventory.contains(false, "Egniol potion"), "drink Egniol potion", () -> itemCenter("Egniol potion", -1));
+                    () -> Rs2Inventory.contains(false, "Egniol potion") && !drinkMustWait(), "drink Egniol potion", () -> itemCenter("Egniol potion", -1));
             timeDrink = now;
             lastEatClickAt = now;
         }
+    }
+
+    /**
+     * Standing still with a tornado close: the next click must be the walk (a drink landed as the run ended and the
+     * evade was only decided a tick later, with the stack at 3 tiles). Checked again when the hand gets to the click.
+     */
+    private boolean drinkMustWait() {
+        return Microbot.getClient().getBoostedSkillLevel(Skill.PRAYER) >= PRAYER_EMERGENCY
+                && !isPlayerInFlight() && nearestTornadoGap() <= DRINK_TORNADO_GAP;
     }
 
     /** True if an Egniol dose is left; logs once when they've run out. */
@@ -4701,21 +4830,21 @@ public class CustomGauntletScript extends Script {
             if (!(emergency && !hand.isPending("walk")) && (!isPlayerInFlight() || movementCritical)) return;
             int hp = Microbot.getClient().getBoostedSkillLevel(Skill.HITPOINTS);
             boolean foodLeft = Rs2Inventory.contains("Paddlefish");
-            if (!emergency && foodLeft && (hpTopUpPending || hp < config.lowHpEatValue() || hand.isBusyWith("eat"))) return;
+            if (!emergency && foodLeft && (hp < topUpTarget() || hand.isBusyWith("eat"))) return;
             want = emergency || prayer < config.prayerPotionValue() || (prayerTopUpPending && doseFits);
         } else {
             // Calm phases are for attacking, but never at the cost of running dry: drink below the normal threshold
             // (only an emergency drink before; prayer reached 9/73).
-            if (!isPlayerOnSafeTile() && !emergency) return;
+            if (!emergency && (!isPlayerOnSafeTile() || shootFirstAfterPhase())) return;
             want = prayer < config.prayerPotionValue();
         }
-        if (!want) return;
+        if (!want || drinkMustWait()) return;
         if (hand.isBusyWith("drink") || gameTickCount - hand.lastLandedTick("drink") < EAT_CONFIRM_TICKS) return;
         if (!warnIfNoPotions()) return;
         Microbot.log(String.format("[Action] Drink potion: Egniol potion | prayer=%d/%d%s", prayer, maxPrayer,
                 emergency ? " (emergency)" : prayerTopUpPending ? " (tornado phase restore)" : ""));
         hand.submit(ClickHand.Kind.DRINK, "drink", ClickHand.Tab.INVENTORY, () -> Rs2Inventory.interact("Egniol potion", "Drink"),
-                () -> Rs2Inventory.contains(false, "Egniol potion"), "drink Egniol potion", () -> itemCenter("Egniol potion", -1));
+                () -> Rs2Inventory.contains(false, "Egniol potion") && !drinkMustWait(), "drink Egniol potion", () -> itemCenter("Egniol potion", -1));
         prayerTopUpPending = false;
         timeDrink = now;
         lastEatClickAt = now;
