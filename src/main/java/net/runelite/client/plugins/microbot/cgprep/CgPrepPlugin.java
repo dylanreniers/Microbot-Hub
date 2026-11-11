@@ -51,7 +51,7 @@ import net.runelite.client.util.HotkeyListener;
 )
 public class CgPrepPlugin extends Plugin
 {
-	static final String version = "1.7.5";
+	static final String version = "1.8.2";
 
 	@Inject
 	private CgPrepConfig config;
@@ -89,8 +89,10 @@ public class CgPrepPlugin extends Plugin
 			String msg = paused ? "<col=ff9040>[Auto Gauntlet]</col> Paused."
 				: dry ? "<col=ff0000>[Auto Gauntlet] Resumed in DRY RUN: it will plan but NOT click. Turn off 'Dry run (plan only)'.</col>"
 				: "<col=ff9040>[Auto Gauntlet]</col> Resumed (live).";
-			Microbot.getClientThread().invoke(() ->
-				Microbot.getClient().addChatMessage(net.runelite.api.ChatMessageType.GAMEMESSAGE, "", msg, null));
+			Microbot.getClientThread().invokeLater(() ->
+			{
+				Microbot.getClient().addChatMessage(net.runelite.api.ChatMessageType.GAMEMESSAGE, "", msg, null);
+			});
 		}
 	};
 
@@ -100,17 +102,71 @@ public class CgPrepPlugin extends Plugin
 		public void hotkeyPressed()
 		{
 			script.requestContinue();
-			Microbot.getClientThread().invoke(() ->
-				Microbot.getClient().addChatMessage(net.runelite.api.ChatMessageType.GAMEMESSAGE, "", "<col=ff9040>[Auto Gauntlet]</col> Next run requested: it starts when you're in the Gauntlet lobby.", null));
+			Microbot.getClientThread().invokeLater(() ->
+			{
+				Microbot.getClient().addChatMessage(net.runelite.api.ChatMessageType.GAMEMESSAGE, "", "<col=ff9040>[Auto Gauntlet]</col> Next run requested: it starts when you're in the Gauntlet lobby.", null);
+			});
 			Microbot.log("[Auto Gauntlet] continue requested");
 		}
 	};
 
+	private void migratePotionSetting()
+	{
+		String old = configManager.getConfiguration(CgPrepConfig.GROUP, "potionTarget");
+		if (old == null)
+		{
+			return;
+		}
+		configManager.unsetConfiguration(CgPrepConfig.GROUP, "potionTarget");
+		int value;
+		try
+		{
+			value = Integer.parseInt(old.trim());
+		}
+		catch (NumberFormatException e)
+		{
+			return;
+		}
+		int brewed = Math.max(0, Math.min(6, value >= 2 ? value - 1 : value));
+		configManager.setConfiguration(CgPrepConfig.GROUP, "potionsBrewed", brewed);
+		String change = brewed == value ? "kept at " + brewed : "changed from " + value + " to " + brewed;
+		pendingMigrationMsg = "<col=ff9040>[Auto Gauntlet]</col> 'Egniol potions' now counts potions brewed. Your setting was "
+			+ change + ", which gives the boss the same potions as before." + (brewed == value ? "" : " No need to change it back.");
+		Microbot.log("[Auto Gauntlet] Egniol potions setting " + change);
+	}
+
+	private volatile String pendingMigrationMsg;
+
+	private void postMigrationMsg()
+	{
+		String msg = pendingMigrationMsg;
+		if (msg == null)
+		{
+			return;
+		}
+		pendingMigrationMsg = null;
+		client.addChatMessage(net.runelite.api.ChatMessageType.GAMEMESSAGE, "", msg, null);
+	}
+
+	@Subscribe
+	public void onGameStateChanged(net.runelite.api.events.GameStateChanged e)
+	{
+		if (e.getGameState() == net.runelite.api.GameState.LOGGED_IN)
+		{
+			postMigrationMsg();
+		}
+	}
+
 	@Override
 	protected void startUp()
 	{
+		migratePotionSetting();
+		if (pendingMigrationMsg != null && client.getGameState() == net.runelite.api.GameState.LOGGED_IN)
+		{
+			Microbot.getClientThread().invokeLater(this::postMigrationMsg);
+		}
 		overlayManager.add(overlay);
-		bossOverlay = new net.runelite.client.plugins.microbot.cgprep.boss.BossFightOverlay(client, () -> script.boss, config::bossOverlay);
+		bossOverlay = new net.runelite.client.plugins.microbot.cgprep.boss.BossFightOverlay(client, () -> script.boss, () -> config.showOverlay() && config.bossOverlay());
 		overlayManager.add(bossOverlay);
 		keyManager.registerKeyListener(pauseListener);
 		keyManager.registerKeyListener(continueListener);
@@ -321,9 +377,22 @@ public class CgPrepPlugin extends Plugin
 			if (st != null)
 			{
 				st.onChat(e.getMessage(), client.getVarbitValue(net.runelite.api.gameval.VarbitID.PLAYER_IN_GAUNTLET) != 0,
-					client.getVarbitValue(CgIds.VB_BOSS_STARTED) != 0);
+					client.getVarbitValue(CgIds.VB_BOSS_STARTED) != 0, client.getTickCount());
 			}
 		}
+	}
+
+	/** 1.8.2: our own death, seen as it happens (still inside the Gauntlet, varbits intact). */
+	@Subscribe
+	public void onActorDeath(net.runelite.api.events.ActorDeath e)
+	{
+		net.runelite.client.plugins.microbot.cgprep.stats.RunStats st = script.stats;
+		if (st == null || e.getActor() == null || e.getActor() != client.getLocalPlayer()
+			|| client.getVarbitValue(net.runelite.api.gameval.VarbitID.PLAYER_IN_GAUNTLET) == 0)
+		{
+			return;
+		}
+		st.died(client.getVarbitValue(CgIds.VB_BOSS_STARTED) != 0, "death");
 	}
 
 	/** Reward Chest opened by hand: its loot lands in the inventory over the next ticks. */

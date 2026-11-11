@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.concurrent.CompletableFuture;
 
+import lombok.Setter;
 import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
@@ -36,6 +37,8 @@ public class BanksShopperScript extends Script {
     private final BanksShopperPlugin plugin;
     private ShopperState state = ShopperState.SHOPPING;
     private WorldPoint shopNpcLocation;
+    @Setter
+    private volatile boolean stopForSupply;
 
     public BanksShopperScript(final BanksShopperPlugin plugin) {
         this.plugin = plugin;
@@ -46,6 +49,7 @@ public class BanksShopperScript extends Script {
         Microbot.enableAutoRunOn = false;
         initialPlayerLocation = null;
         shopNpcLocation = null;
+        stopForSupply = false;
         Rs2Antiban.resetAntibanSettings();
         Rs2AntibanSettings.naturalMouse = true;
 
@@ -71,6 +75,7 @@ public class BanksShopperScript extends Script {
                         if (missingAllRequiredItems && plugin.getSelectedAction() == Actions.SELL) {
                             Microbot.status = "[Shutting down] - Reason: Not enough supplies.";
                             Microbot.showMessage(Microbot.status);
+                            stopForSupply = true;
                             Microbot.stopPlugin(plugin);
                             return;
                         }
@@ -91,43 +96,24 @@ public class BanksShopperScript extends Script {
                                 if (itemName.length() <= 1) continue;
 
                                 switch (plugin.getSelectedAction()) {
-                                    case BUY: {
-                                        boolean isNumeric = itemName.matches("\\d+");
-                                        int itemId = isNumeric ? Integer.parseInt(itemName) : -1;
-                                        // Keep buying from this same shop until stock drops below the
-                                        // configured minimum. Only then do we flag outOfStock and let
-                                        // the caller hop to another world.
-                                        while (isRunning() && !Microbot.pauseAllScripts.get()) {
-                                            boolean hasStock = isNumeric
-                                                    ? Rs2Shop.hasMinimumStock(itemId, plugin.getMinStock())
-                                                    : Rs2Shop.hasMinimumStock(itemName, plugin.getMinStock());
-                                            if (!hasStock) {
-                                                outOfStock = true;
-                                                break;
-                                            }
-
-                                            boolean boughtItem = isNumeric
-                                                    ? processBuyAction(itemId, plugin.getSelectedQuantity().toString())
-                                                    : processBuyAction(itemName, plugin.getSelectedQuantity().toString());
-                                            if (boughtItem) {
-                                                successfullAction = true;
-                                            }
-
-                                            if (Rs2Inventory.isFull()){
-                                                System.out.println("Inventory is full, stopping buy action to bank.");
-                                                Rs2Shop.closeShop();
-                                                state = ShopperState.BANKING;
-                                                return;
-                                            }
-
-                                            // Couldn't buy despite the shop reporting stock (e.g. out of
-                                            // coins) — bail out of the loop to avoid spinning forever.
-                                            if (!boughtItem) break;
-
-                                            sleepGaussian(200, 40);
+                                    case BUY:
+                                        // Check if name is purely numeric or alphanumeric
+                                        if (itemName.matches("\\d+")) {
+                                            outOfStock = !Rs2Shop.hasMinimumStock(Integer.parseInt(itemName), Math.max(1, plugin.getMinStock()));
+                                            if (outOfStock) continue;
+                                            successfullAction = processBuyAction(Integer.parseInt(itemName), plugin.getSelectedQuantity().toString());
+                                        } else {
+                                            outOfStock = !Rs2Shop.hasMinimumStock(itemName, Math.max(1, plugin.getMinStock()));
+                                            if (outOfStock) continue;
+                                            successfullAction = processBuyAction(itemName, plugin.getSelectedQuantity().toString());
+                                        }
+                                        if (Rs2Inventory.isFull()){
+                                            System.out.println("Inventory is full, stopping buy action to bank.");
+                                            Rs2Shop.closeShop();
+                                            state = ShopperState.BANKING;
+                                            return;
                                         }
                                         break;
-                                    }
                                     case SELL:
                                         if (Rs2Shop.isFull()) continue;
                                         // Check if name is purely numeric or alphanumeric
@@ -195,7 +181,9 @@ public class BanksShopperScript extends Script {
             Rs2Shop.closeShop();
         }
 
-        if (plugin.isUseLogout()) {
+        boolean logoutForSupply = stopForSupply;
+        stopForSupply = false;
+        if (plugin.isUseLogout() && logoutForSupply) {
             Rs2Player.logout();
         }
 
@@ -302,9 +290,7 @@ public class BanksShopperScript extends Script {
 
             CompletableFuture<Void> walkFuture = CompletableFuture.runAsync(
                     () -> Rs2Walker.walkTo(walkTarget, 4));
-            sleepUntil(() -> Rs2Shop.getNearestShopNpc(plugin.getNpcName(), plugin.isUseExactNaming()) != null
-                            || Rs2Player.getWorldLocation().distanceTo(walkTarget) <= 4,
-                    30_000);
+            sleepUntil(() -> isShopNpcInSceneOrArrived(walkTarget), 30_000);
             Rs2Walker.clearWalkingRoute("banksshopper:shop-npc-in-range");
             try {
                 walkFuture.get(2, TimeUnit.SECONDS);
@@ -318,6 +304,12 @@ public class BanksShopperScript extends Script {
         Rs2Npc.interact(npc, "Trade");
         sleepUntil(Rs2Shop::isOpen, 5000);
         return Rs2Shop.isOpen();
+    }
+
+    private boolean isShopNpcInSceneOrArrived(WorldPoint walkTarget) {
+        if (Rs2Shop.getNearestShopNpc(plugin.getNpcName(), plugin.isUseExactNaming()) != null) return true;
+        WorldPoint here = Rs2Player.getWorldLocation();
+        return here != null && here.distanceTo(walkTarget) <= 4;
     }
 
     /**

@@ -5,6 +5,7 @@ import net.runelite.api.TileObject;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.MenuAction;
 import net.runelite.api.Perspective;
+import net.runelite.api.Player;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ItemID;
@@ -52,11 +53,16 @@ public class AgilityScript extends Script
 	private static final long MARK_OF_GRACE_SCAN_INTERVAL_MS = 750;
 	private static final int MARK_OF_GRACE_SEARCH_DISTANCE = 30;
 	private static final int MARK_OF_GRACE_PICKUP_TIMEOUT = 5000;
+	private static final int MARK_OF_GRACE_TARGET_TIMEOUT = 10000;
 	private volatile int currentObstacleIndex = -1;
 	private WorldPoint pendingMarkOfGraceLocation = null;
 	private int pendingMarkOfGraceCount = 0;
 	private long pendingMarkOfGraceStartedAt = 0;
 	private long lastMarkOfGraceScanAt = 0;
+	private WorldPoint markOfGraceTargetLocation = null;
+	private long markOfGraceTargetIdleSince = 0;
+	private boolean markOfGraceCameraTurned = false;
+	private WorldPoint skippedMarkOfGraceLocation = null;
 	private WorldPoint alchDecisionObstacleLocation = null;
 	private int alchDecisionObstacleId = -1;
 	private boolean alchDecisionShouldAlch = false;
@@ -87,6 +93,7 @@ public class AgilityScript extends Script
 		currentObstacleIndex = -1;
 		supplyManager.reset();
 		clearPendingMarkOfGrace();
+		skippedMarkOfGraceLocation = null;
 		clearAlchDecision();
 
 		if (mainScheduledFuture != null && !mainScheduledFuture.isDone())
@@ -138,7 +145,14 @@ public class AgilityScript extends Script
 					return;
 				}
 				AgilityCourseHandler courseHandler = getActiveHandler();
-				final WorldPoint playerWorldLocation = Microbot.getClientThread().invoke(() -> Microbot.getClient().getLocalPlayer().getWorldLocation());
+				final WorldPoint playerWorldLocation = Microbot.getClientThread().invoke(() -> {
+					Player localPlayer = Microbot.getClient().getLocalPlayer();
+					return localPlayer == null ? null : localPlayer.getWorldLocation();
+				});
+				if (playerWorldLocation == null)
+				{
+					return;
+				}
 
 				if (startPoint == null)
 				{
@@ -204,7 +218,6 @@ public class AgilityScript extends Script
 
 				if (lootMarksOfGrace(courseHandler))
 				{
-					Microbot.log("Early return: Looting marks of grace");
 					return;
 				}
 
@@ -218,6 +231,13 @@ public class AgilityScript extends Script
 
 				if (gameObject == null)
 				{
+					String stopMessage = courseHandler.getObstacleNotFoundStopMessage();
+					if (stopMessage != null)
+					{
+						plugin.notifyUser(stopMessage);
+						shutdown();
+						return;
+					}
 					Microbot.log("No agility obstacle found. Report this as a bug if this keeps happening.");
 					return;
 				}
@@ -421,7 +441,7 @@ public class AgilityScript extends Script
 		return activeHandler;
 	}
 
-	private boolean lootMarksOfGrace(AgilityCourseHandler courseHandler)
+	boolean lootMarksOfGrace(AgilityCourseHandler courseHandler)
 	{
 		if (shuttingDown)
 		{
@@ -457,11 +477,16 @@ public class AgilityScript extends Script
 		}
 
 		long now = System.currentTimeMillis();
-		if (now - lastMarkOfGraceScanAt < MARK_OF_GRACE_SCAN_INTERVAL_MS)
+		if (markOfGraceTargetLocation == null && now - lastMarkOfGraceScanAt < MARK_OF_GRACE_SCAN_INTERVAL_MS)
 		{
 			return false;
 		}
 		lastMarkOfGraceScanAt = now;
+
+		if (skippedMarkOfGraceLocation != null && skippedMarkOfGraceLocation.distanceTo(playerLocation) > MARK_OF_GRACE_SEARCH_DISTANCE)
+		{
+			skippedMarkOfGraceLocation = null;
+		}
 
 		Rs2TileItemModel markOfGrace = Microbot.getRs2TileItemCache().query()
 			.fromWorldView()
@@ -472,33 +497,69 @@ public class AgilityScript extends Script
 			.where(item -> Rs2Walker.canReach(item.getWorldLocation()))
 			.toList()
 			.stream()
+			.filter(item -> !item.getWorldLocation().equals(skippedMarkOfGraceLocation))
 			.min(Comparator.comparingInt(item -> item.getWorldLocation().distanceTo(playerLocation)))
 			.orElse(null);
 
 		if (markOfGrace == null)
 		{
+			clearMarkOfGraceTarget();
 			return false;
 		}
 
-		if (Rs2Player.isMoving() || Rs2Player.isAnimating())
+		WorldPoint markLocation = markOfGrace.getWorldLocation();
+		boolean busy = Rs2Player.isMoving() || Rs2Player.isAnimating();
+		if (!markLocation.equals(markOfGraceTargetLocation))
+		{
+			clearMarkOfGraceTarget();
+			markOfGraceTargetLocation = markLocation;
+			if (busy)
+			{
+				Microbot.log("Mark of grace spotted, picking it up after this obstacle");
+			}
+		}
+
+		if (busy)
 		{
 			return true;
 		}
 
-		WorldPoint markLocation = markOfGrace.getWorldLocation();
-		var markLocalLocation = markOfGrace.getLocalLocation();
-		if (markLocation == null || markLocalLocation == null)
+		if (markOfGraceTargetIdleSince == 0)
 		{
+			markOfGraceTargetIdleSince = now;
+		}
+
+		var markLocalLocation = markOfGrace.getLocalLocation();
+		if (markLocalLocation == null)
+		{
+			clearMarkOfGraceTarget();
 			return false;
 		}
 
 		if (!Rs2Camera.isTileOnScreen(markLocalLocation))
 		{
-			Rs2Camera.turnTo(markLocalLocation);
-			sleep(300, 600);
+			if (now - markOfGraceTargetIdleSince > MARK_OF_GRACE_TARGET_TIMEOUT)
+			{
+				skipMarkOfGraceTarget();
+				return false;
+			}
+			if (!markOfGraceCameraTurned)
+			{
+				markOfGraceCameraTurned = true;
+				Rs2Camera.turnTo(markLocalLocation);
+				sleep(300, 600);
+				return true;
+			}
+			if (!Rs2Walker.walkMiniMap(markLocation))
+			{
+				skipMarkOfGraceTarget();
+				return false;
+			}
+			sleepUntil(() -> shuttingDown || Rs2Player.isMoving(), 1200);
 			return true;
 		}
 
+		clearMarkOfGraceTarget();
 		int markCount = Rs2Inventory.itemQuantity(ItemID.GRACE);
 		if (!pickupMarkOfGrace(markOfGrace))
 		{
@@ -529,6 +590,21 @@ public class AgilityScript extends Script
 		pendingMarkOfGraceCount = 0;
 		pendingMarkOfGraceStartedAt = 0;
 		lastMarkOfGraceScanAt = 0;
+		clearMarkOfGraceTarget();
+	}
+
+	private void clearMarkOfGraceTarget()
+	{
+		markOfGraceTargetLocation = null;
+		markOfGraceTargetIdleSince = 0;
+		markOfGraceCameraTurned = false;
+	}
+
+	private void skipMarkOfGraceTarget()
+	{
+		Microbot.log("Could not reach the mark of grace, continuing the course");
+		skippedMarkOfGraceLocation = markOfGraceTargetLocation;
+		clearMarkOfGraceTarget();
 	}
 
 	private boolean hasLootableMarkAt(WorldPoint markLocation)

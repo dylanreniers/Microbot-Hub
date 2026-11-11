@@ -28,6 +28,10 @@ public class CgPrepOverlay extends OverlayPanel
 	@Override
 	public Dimension render(Graphics2D g)
 	{
+		if (!config.showOverlay())
+		{
+			return null; // setting "Show overlay" off (user, 1.8.2)
+		}
 		CgPrepScript s = plugin.script();
 		panelComponent.setPreferredSize(new Dimension(280, 0));
 		panelComponent.getChildren().add(TitleComponent.builder()
@@ -55,7 +59,7 @@ public class CgPrepOverlay extends OverlayPanel
 		String state = s.getCurrentState() == null ? "-" : s.getCurrentState().name()
 			+ (s.paused && !"PAUSED".equals(s.getCurrentState().name()) ? " (PAUSED)" : "");
 		long reenter = s.reenterAtMs;
-		String blocked = s.enterBlocked;
+		String blocked = s.enterBlocked != null ? s.enterBlocked : s.chestBlocked ? "the Reward Chest won't open (see chat)" : null;
 		if (s.getCurrentState() == CgState.LOBBY_SETUP && blocked != null)
 		{
 			state += " (stopped: " + blocked + ")";
@@ -90,7 +94,12 @@ public class CgPrepOverlay extends OverlayPanel
 			boolean youPrep = config.autoMode() == CgPrepConfig.AutoMode.BOSS_ONLY && s.getCurrentState() != CgState.LOBBY_SETUP;
 			row("Goal", youPrep ? "You prep (Boss Only)" : goal == null ? "-" : goal.headline());
 			row("Last", shorten(s.lastAction));
-			Needs n = s.needs;
+			// Recomputed here from the last bag reading, so a changed setting shows at once (also
+			// while paused or in the lobby).
+			net.runelite.client.plugins.microbot.cgprep.plan.Ledger l = s.ledger;
+			Needs n = l == null ? s.needs : Needs.goal(l,
+				net.runelite.client.plugins.microbot.cgprep.plan.PrepPlanner.profileNow(l, config.profile()),
+				config.fishTarget(), config.shardBuffer(), config.potionTarget(), s.vialsSmashSetting());
 			row("Missing", n == null ? "-" : n.toString());
 		}
 

@@ -27,6 +27,7 @@ import javax.inject.Inject;
 import java.awt.event.KeyEvent;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -37,10 +38,14 @@ import static net.runelite.api.gameval.VarbitID.*;
 @Slf4j
 public class BlastoiseFurnaceScript extends Script {
     private static final Pattern ITEM_NAME_SUFFIX_PATTERN = Pattern.compile("^(.*?)(?:\\s*\\((\\d+)\\))?$");
-    static final int coalBag = 12019;
+    static final int[] COAL_BAGS = {ItemID.COAL_BAG, ItemID.COAL_BAG_OPEN};
+    static final Integer[] KEEP_ITEMS = {ItemID.COAL_BAG, ItemID.COAL_BAG_OPEN, GAUNTLETS_OF_GOLDSMITHING, ICE_GLOVES, SMITHING_UNIFORM_GLOVES_ICE};
     private static final int MAX_ORE_PER_INTERACTION = 27;
     private static final int MAX_ORE_PER_HYBRID_INTERACTION = 26;
     private static final int MAX_TAKE_ATTEMPTS = 3;
+    static final int CONVEYOR_POLL_MS = 300;
+    static final int CONVEYOR_IDLE_TIMEOUT_MS = 5_000;
+    static final int CONVEYOR_MAX_WALK_MS = 30_000;
     static final int MAX_FAILED_LOOT_CYCLES = 3;
     public static State state = State.BANKING;
     private int failedLootCycles = 0;
@@ -121,14 +126,8 @@ public class BlastoiseFurnaceScript extends Script {
                             sleepUntil(Rs2Bank::isOpen, 20000);
                         }
 
-                        if (config.getBars().isRequiresCoalBag() && !Rs2Inventory.contains(coalBag)) {
-                            if (!Rs2Bank.hasItem(coalBag)) {
-                                Microbot.showMessage("No coal bag found in inventory and bank.");
-                                Microbot.stopPlugin(plugin);
-                                return;
-                            }
-
-                            Rs2Bank.withdrawItem(coalBag);
+                        if (config.getBars().isRequiresCoalBag() && !ensureCoalBag()) {
+                            return;
                         }
 
                         if (config.getBars().isRequiresGoldsmithGloves()) {
@@ -145,7 +144,7 @@ public class BlastoiseFurnaceScript extends Script {
                         } else Rs2Bank.depositAll(GAUNTLETS_OF_GOLDSMITHING);
 
                         if (Rs2Inventory.hasItem("bar")) {
-                            Rs2Bank.depositAllExcept(coalBag, GAUNTLETS_OF_GOLDSMITHING, ICE_GLOVES, SMITHING_UNIFORM_GLOVES_ICE);
+                            Rs2Bank.depositAllExcept(KEEP_ITEMS);
                             if (Rs2Inventory.isFull()) {
                                 // Wait so our player avoids drinking potions with a full inventory
                                 if (!Rs2Inventory.waitForInventoryChanges(1800)) {
@@ -167,7 +166,7 @@ public class BlastoiseFurnaceScript extends Script {
 
                         // Check here if dispenser contains bars. If so we need to clean-up
                         if (dispenserContainsBars()) {
-                            Rs2Bank.depositAllExcept(coalBag, GAUNTLETS_OF_GOLDSMITHING, ICE_GLOVES, SMITHING_UNIFORM_GLOVES_ICE);
+                            Rs2Bank.depositAllExcept(KEEP_ITEMS);
                             handleDispenserLooting();
                             return;
                         } else {
@@ -189,6 +188,22 @@ public class BlastoiseFurnaceScript extends Script {
             }
 
         }, 0, 200, TimeUnit.MILLISECONDS);
+        return true;
+    }
+
+    boolean ensureCoalBag() {
+        if (Rs2Inventory.contains(COAL_BAGS)) {
+            return true;
+        }
+
+        int bankedBag = Arrays.stream(COAL_BAGS).filter(Rs2Bank::hasItem).findFirst().orElse(-1);
+        if (bankedBag == -1) {
+            Microbot.showMessage("No coal bag found in inventory and bank.");
+            Microbot.stopPlugin(plugin);
+            return false;
+        }
+
+        Rs2Bank.withdrawItem(bankedBag);
         return true;
     }
 
@@ -319,7 +334,7 @@ public class BlastoiseFurnaceScript extends Script {
             Rs2Bank.withdrawAll(COAL);
             return;
         }
-        if (!Rs2Inventory.interact(coalBag, "Fill"))
+        if (!Rs2Inventory.interact(COAL_BAGS, "Fill"))
             return;
         depositOre();
     }
@@ -331,14 +346,15 @@ public class BlastoiseFurnaceScript extends Script {
             sleep(500, 1200);
             return;
         }
-        if (!Rs2Inventory.interact(coalBag, "Fill"))
+        if (!Rs2Inventory.interact(COAL_BAGS, "Fill"))
             return;
 
         sleep(500, 1200);
         Rs2Bank.closeBank();
         sleepUntil(() -> !Rs2Bank.isOpen());
-        depositOre();
-        doOreRun(false, false);
+        if (depositOre()) {
+            doOreRun(false, false);
+        }
     }
 
     private void retrieveCoalAndGold() {
@@ -346,14 +362,15 @@ public class BlastoiseFurnaceScript extends Script {
             Rs2Bank.withdrawAll(GOLD_ORE);
             return;
         }
-        if (!Rs2Inventory.interact(coalBag, "Fill"))
+        if (!Rs2Inventory.interact(COAL_BAGS, "Fill"))
             return;
 
         sleep(500, 1200);
         Rs2Bank.closeBank();
         sleepUntil(() -> !Rs2Bank.isOpen());
-        depositOre();
-        doOreRun(true, true);
+        if (depositOre()) {
+            doOreRun(true, true);
+        }
     }
 
     private void retrieveGold() {
@@ -361,8 +378,9 @@ public class BlastoiseFurnaceScript extends Script {
             Rs2Bank.withdrawAll(GOLD_ORE);
             return;
         }
-        depositOre();
-        doOreRun(true, true);
+        if (depositOre()) {
+            doOreRun(true, true);
+        }
     }
 
     private void doOreRun(boolean useIceGloves, boolean waitInventoryChange) {
@@ -534,17 +552,21 @@ public class BlastoiseFurnaceScript extends Script {
         return Rs2Inventory.count("ore") + Rs2Inventory.count("coal");
     }
 
-    private boolean putOreOnConveyorBelt() {
+    boolean putOreOnConveyorBelt() {
         final int oreCount = getInventoryOreCount();
         if (oreCount <= 0) {
-            log.error("No ore in Inventory");
+            log.debug("No ore in Inventory");
             return false;
         }
+        Microbot.status = "Putting ore on conveyor belt";
         if (!Microbot.getRs2TileObjectCache().query().interact(BLAST_FURNACE_CONVEYER_BELT_CLICKABLE, "Put-ore-on")) {
             log.error("Failed to interact with conveyor belt");
             return false;
         }
-        sleepUntil(() -> Rs2Dialogue.isInDialogue() || getInventoryOreCount() < oreCount, 10_000);
+        final AtomicInteger polls = new AtomicInteger();
+        sleepUntilTrue(() -> Rs2Dialogue.isInDialogue() || getInventoryOreCount() < oreCount,
+                () -> polls.incrementAndGet() < CONVEYOR_MAX_WALK_MS / CONVEYOR_POLL_MS && Rs2Player.isMoving(),
+                CONVEYOR_POLL_MS, CONVEYOR_IDLE_TIMEOUT_MS);
         if (Rs2Widget.hasWidget("You must ask the foreman's")) {
             log.info("Need to pay the noob tax");
             if(timerStarted && !timeIsUp){
@@ -554,7 +576,7 @@ public class BlastoiseFurnaceScript extends Script {
             handleTax();
             return putOreOnConveyorBelt();
         }
-        return true;
+        return getInventoryOreCount() < oreCount;
     }
 
     public void setTenMinuteTimer(){
@@ -580,21 +602,40 @@ public class BlastoiseFurnaceScript extends Script {
         timerStarted = true;
     }
 
-    private void depositOre() {
-        putOreOnConveyorBelt();
-        if (config.getBars().isRequiresCoalBag()) {
-            if (Rs2Inventory.interact(coalBag, "Empty")) Rs2Inventory.waitForInventoryChanges(3_000);
-            else log.error("Failed to empty coal bag 1");
-            putOreOnConveyorBelt();
+    boolean depositOre() {
+        final boolean usesCoalBag = config.getBars().isRequiresCoalBag();
+        if (!putOreOnConveyorBelt()) {
+            log.warn(usesCoalBag
+                    ? "Ore did not go onto the conveyor belt. Leaving the coal bag full and trying again next trip."
+                    : "Ore did not go onto the conveyor belt. Trying again next trip.");
+            Microbot.status = "Ore didn't go on the belt, retrying";
+            return false;
         }
-        if (config.getBars().isRequiresCoalBag() &&
+        if (usesCoalBag) {
+            if (!Rs2Inventory.interact(COAL_BAGS, "Empty") || !Rs2Inventory.waitForInventoryChanges(3_000)) {
+                log.warn("Coal bag did not empty. Trying again next trip.");
+                return true;
+            }
+            if (!putOreOnConveyorBelt() && getInventoryOreCount() > 0 && !putOreOnConveyorBelt()) {
+                log.warn("Coal from the coal bag did not go onto the conveyor belt, stopping");
+                Microbot.status = "Coal didn't go on the belt, stopped";
+                Microbot.showMessage("Coal from the coal bag did not go onto the conveyor belt. Put it on the belt or bank it, then start the script again.");
+                Rs2Player.logout();
+                Microbot.stopPlugin(plugin);
+                return false;
+            }
+        }
+        if (usesCoalBag &&
                 (Rs2Inventory.hasItem(SMITHING_UNIFORM_GLOVES_ICE)
                         || Rs2Inventory.hasItem(GAUNTLETS_OF_GOLDSMITHING)
                         || Rs2Inventory.hasItem(ICE_GLOVES))) {
-            if (Rs2Inventory.interact(coalBag, "Empty")) Rs2Inventory.waitForInventoryChanges(3_000);
-            else log.error("Failed to empty coal bag 2");
-            putOreOnConveyorBelt();
+            if (!Rs2Inventory.interact(COAL_BAGS, "Empty")) {
+                log.warn("Coal bag did not empty a second time. Trying again next trip.");
+            } else if (Rs2Inventory.waitForInventoryChanges(3_000)) {
+                putOreOnConveyorBelt();
+            }
         }
+        return true;
     }
 
 
@@ -693,7 +734,7 @@ public class BlastoiseFurnaceScript extends Script {
             if (!Rs2Bank.isOpen()) {
                 Rs2Bank.openBank();
                 sleepUntil(Rs2Bank::isOpen, 5000);
-                Rs2Bank.depositAllExcept(coalBag, GAUNTLETS_OF_GOLDSMITHING, ICE_GLOVES, SMITHING_UNIFORM_GLOVES_ICE);
+                Rs2Bank.depositAllExcept(KEEP_ITEMS);
             }
         }
 
@@ -732,7 +773,7 @@ public class BlastoiseFurnaceScript extends Script {
             if (!Rs2Bank.isOpen()) {
                 Rs2Bank.openBank();
                 sleepUntil(Rs2Bank::isOpen, 5000);
-                Rs2Bank.depositAllExcept(coalBag, GAUNTLETS_OF_GOLDSMITHING, ICE_GLOVES, SMITHING_UNIFORM_GLOVES_ICE);
+                Rs2Bank.depositAllExcept(KEEP_ITEMS);
             }
         } else {
             log.warn("Unexpected coffer dialogue state. delta = {}", delta);

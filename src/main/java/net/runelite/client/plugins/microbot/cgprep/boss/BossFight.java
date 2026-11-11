@@ -57,6 +57,12 @@ public final class BossFight
 	/** Natural: the cursor travels to every target and tabs are opened with their F-keys. */
 	public volatile boolean naturalInput = true;
 	private final HumanInput human = new HumanInput();
+	private int reaimedAtStart;
+	private int stalledAtStart;
+	/** 1.8.2 review: the in-client warning about stuck cursor moves went out this fight. */
+	private boolean warnedStalls;
+	/** Stuck cursor moves in one fight before the player is told (once). */
+	static final int STALL_WARN_AT = 3;
 	private final Humanizer humanizer = new Humanizer(new java.util.Random());
 	private final java.util.Random rnd = new java.util.Random();
 	private InputTiming.Zone cursorZone = InputTiming.Zone.SCENE;
@@ -184,8 +190,11 @@ public final class BossFight
 			brain = new HunllefBrain(brainConfig);
 			exec.reset();
 			humanizer.reset();
+			reaimedAtStart = human.reaimed;
+			stalledAtStart = human.stalled;
 			fightPrepared = false;
 			warnedSlowBow = false;
+			warnedStalls = false;
 			fightTicks = 0;
 			cursorZone = InputTiming.Zone.SCENE;
 		});
@@ -516,6 +525,10 @@ public final class BossFight
 			if (mode != Mode.ON)
 			{
 				lastNote = "DRY RUN";
+				for (Click c : clicks)
+				{
+					brain.sent(c, o.tick);
+				}
 				log.accept("FIGHT", "[dry] " + line);
 				return;
 			}
@@ -543,6 +556,7 @@ public final class BossFight
 				}
 			}
 			send(clicks, plan, o.tick, ht);
+			warnStalls();
 		}
 		catch (InterruptedException e)
 		{
@@ -661,6 +675,7 @@ public final class BossFight
 			if (ok)
 			{
 				exec.sent(c, tick);
+				brain.sent(c, tick);
 				// While running, a person sometimes clicks the tile again (only when nothing else is waiting).
 				if (ht != null && c.type == Click.Type.MOVE && c == clicks.get(clicks.size() - 1) && rnd.nextDouble() < 0.15 && done < 380)
 				{
@@ -899,12 +914,39 @@ public final class BossFight
 		}
 	}
 
+	/**
+	 * 1.8.2 (review): stuck cursor moves are given up quietly; after a few in one fight the player
+	 * is told once, in the chat, what usually causes them.
+	 */
+	private void warnStalls()
+	{
+		int n = human.stalled - stalledAtStart;
+		if (warnedStalls || n < STALL_WARN_AT)
+		{
+			return;
+		}
+		warnedStalls = true;
+		String msg = "Auto Gauntlet: " + n + " mouse moves couldn't finish this fight. Keep your own mouse off the game window while it fights,"
+			+ " and if Stretched Mode is on, try it off.";
+		log.accept("FIGHT", "WARN " + msg);
+		net.runelite.client.plugins.microbot.Microbot.getClientThread().invoke(() ->
+			net.runelite.client.plugins.microbot.Microbot.getClient().addChatMessage(net.runelite.api.ChatMessageType.GAMEMESSAGE, "", "<col=ff0000>" + msg + "</col>", null));
+	}
+
+	/** The fight's last read had us at 0 HP (1.8.2: a death the stats must count). */
+	public boolean sawZeroHp()
+	{
+		FightObs o = lastObs;
+		return o != null && o.hp <= 0;
+	}
+
 	/** End of fight / run: one summary line. */
 	public void summary(String outcome)
 	{
 		FightModel m = model;
 		FightObs o = lastObs;
 		log.accept("FIGHT", "END " + outcome + (o == null ? "" : " hp " + o.hp + " fish " + o.fish + " doses " + o.doses + " boss " + o.bossHp)
-			+ " attacks " + m.attacksTotal + " swings " + m.swings + " style misses " + m.styleMisses + "/" + m.styleChecks);
+			+ " attacks " + m.attacksTotal + " swings " + m.swings + " style misses " + m.styleMisses + "/" + m.styleChecks
+			+ " walk re-aims " + (human.reaimed - reaimedAtStart) + " stuck moves " + (human.stalled - stalledAtStart));
 	}
 }
