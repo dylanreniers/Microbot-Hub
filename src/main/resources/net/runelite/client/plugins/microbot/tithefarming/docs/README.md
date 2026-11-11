@@ -20,8 +20,8 @@ The TitheFarming plugin automates the Tithe Farm minigame in Old School RuneScap
 
 1. **Initialization:** Checks for required items (seeds, watering can) and sets up the initial state.
 2. **Planting Phase:** Moves to each plot and plants seeds according to the configured pattern.
-3. **Watering Phase:** Waters crops at the correct growth stages to ensure maximum yield.
-4. **Harvesting Phase:** Harvests crops when fully grown and deposits them in the sack.
+3. **Watering Phase:** Waters crops in patch order. While planting, it only stops to water when a dry plant is about to grow, waters the dry plants from there to the last planted patch, and goes back to planting. A patch harvested early stays empty until the next round. The overlay keeps showing PLANTING_SEEDS until the lane is full, also while it waters or harvests.
+4. **Harvesting Phase:** Harvests ripe crops in patch order and deposits them in the sack.
 5. **Loop:** Repeats the process for continuous farming runs.
 
 ## Requirements
@@ -32,10 +32,13 @@ The TitheFarming plugin automates the Tithe Farm minigame in Old School RuneScap
 
 ## Configuration
 
-- **Seed Type:** Choose which seed to use (Golovanova, Bologano, or Logavano).
-- **Plot Count:** Set the number of plots to use (typically 5, 10, or 20).
-- **Watering Preferences:** Enable or disable automatic watering.
-- **Deposit Options:** Choose whether to deposit crops automatically.
+- **Tithe farm lanes:** Choose which lane pair to farm (or randomize).
+- **Use 16 plants:** Plant 16 patches instead of the lane's 19-20 by leaving its short extra column empty (fewer dead plants when timing is tight). Applies from the next round.
+- **Store fruit threshold:** How many fruits to hold before depositing in the sack.
+- **Gricoller's can refill threshold:** Percentage at which to refill Gricoller's can.
+- **Sleep timings:** Optional delays after plant / water / harvest (defaults are usually fine).
+- **Enable Antiban:** Optional natural mouse / antiban features.
+- **Debug / Overlay:** Optional debugger and overlay.
 
 ## Usage
 
@@ -48,6 +51,7 @@ The TitheFarming plugin automates the Tithe Farm minigame in Old School RuneScap
 
 - The plugin is designed for efficiency and reliability but may require occasional supervision.
 - Ensure you have enough seeds and a watering can before starting.
+- On full 19-20 patch lanes the script may stop planting to walk back and water the first patches before the lane is full. This keeps them alive. Turn on 'Use 16 plants' to reduce this.
 - Use responsibly and in accordance with game rules.
 
 ---

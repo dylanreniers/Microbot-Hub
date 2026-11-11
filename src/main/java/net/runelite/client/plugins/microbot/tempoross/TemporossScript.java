@@ -2126,12 +2126,20 @@ public class TemporossScript extends Script {
             isFightingFire = false;
             return;
         }
+        List<TemporossNpcSnapshot> ourFires = firesToDouse(sortedFires, workArea, cachedPlayerLocal);
+        if (ourFires.isEmpty()) {
+            isFightingFire = false;
+            return;
+        }
         isFightingFire = true;
-        for (TemporossNpcSnapshot fire : sortedFires) {
-            if(isFilling){
+        if (isFilling) {
+            if (isLoadInProgress(isFilling, Rs2Player.isAnimating(), Rs2Player.isMoving())) {
                 Microbot.log("Filling, skipping fire");
                 return;
             }
+            isFilling = false;
+        }
+        for (TemporossNpcSnapshot fire : ourFires) {
             // Skip only if already dousing THIS specific fire — matched by the snapshot's
             // interacting index, never by holding the live actor on the executor.
             if (cachedInteractingIndex != -1 && cachedInteractingIndex == fire.index) {
@@ -2143,6 +2151,27 @@ public class TemporossScript extends Script {
                 return;
             }
         }
+    }
+
+    static boolean isLoadInProgress(boolean filling, boolean animating, boolean moving) {
+        return filling && (animating || moving);
+    }
+
+    private static final int CONTINUOUS_DOUSE_RANGE = 5 * Perspective.LOCAL_TILE_SIZE;
+
+    static List<TemporossNpcSnapshot> firesToDouse(List<TemporossNpcSnapshot> fires, TemporossWorkArea area,
+                                                   LocalPoint playerLocal) {
+        return fires.stream()
+                .filter(fire -> fire != null
+                        && ((playerLocal != null && fire.localLocation != null
+                                && playerLocal.distanceTo(fire.localLocation) <= CONTINUOUS_DOUSE_RANGE)
+                            || (area != null && area.isNearOurStations(fire.worldLocation))))
+                .collect(Collectors.toList());
+    }
+
+    private static boolean isDousingFire() {
+        int index = cachedInteractingIndex;
+        return index >= 0 && sortedFires.stream().anyMatch(fire -> fire.index == index);
     }
 
     /**
@@ -2405,6 +2434,10 @@ public class TemporossScript extends Script {
                     return;
                 }
 
+                if (isDousingFire() && (Rs2Player.isMoving() || Rs2Player.isAnimating())) {
+                    return;
+                }
+
                 // "Busy" means committed to a live spot: walking to one we just clicked, or
                 // actually ENGAGED with it (interaction). Not the harpoon animation: spots RELOCATE
                 // rather than despawn, so the alive-by-index check stayed true while the spot was
@@ -2581,7 +2614,7 @@ public class TemporossScript extends Script {
 
                 }
 
-                if (isFilling && (Rs2Player.isAnimating() || Rs2Player.isMoving())) {
+                if (isLoadInProgress(isFilling, Rs2Player.isAnimating(), Rs2Player.isMoving())) {
                     break;
                 }
                 if (ammoCrate == null) {
