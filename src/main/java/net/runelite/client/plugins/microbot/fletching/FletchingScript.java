@@ -223,7 +223,7 @@ public class FletchingScript extends Script {
         // Check if the secondary item is available
         if (!Rs2Bank.hasItem(secondaryItemToFletch)) {
             if (fletchingMode == FletchingMode.UNSTRUNG_STRUNG) {
-                if (config.bowStringSpool() && Rs2Inventory.contains("Bow string spool")) {
+                if (config.useBowStringSpool() && Rs2Inventory.contains("Bow string spool")) {
                     Rs2Bank.depositAllExcept("Bow string spool");
                     fletchingMode = FletchingMode.STRUNG;
                     return;
