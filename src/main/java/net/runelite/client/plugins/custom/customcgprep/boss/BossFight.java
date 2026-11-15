@@ -12,7 +12,6 @@ import net.runelite.client.plugins.custom.customcgprep.data.CgIds;
 import net.runelite.client.plugins.custom.customcgprep.data.CgMode;
 import net.runelite.client.plugins.custom.customcgprep.fight.OffensePrayers;
 import net.runelite.client.plugins.microbot.Microbot;
-import net.runelite.client.plugins.microbot.util.input.InputArbiter;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2Prayer;
 import net.runelite.client.plugins.microbot.util.prayer.Rs2PrayerEnum;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
@@ -75,8 +74,6 @@ public final class BossFight
 	public final BrainConfig brainConfig = new BrainConfig();
 	/** Decision log sink: (type, body). */
 	public volatile BiConsumer<String, String> log = (a, b) -> { };
-	/** Set by the script: the user paused / global pause. */
-	public volatile boolean hold;
 
 	// ---- event flags (client thread)
 	private volatile int bossAnim = -1;
@@ -654,17 +651,9 @@ public final class BossFight
 
 	private String holdReason()
 	{
-		if (hold)
-		{
-			return "paused";
-		}
 		if (Microbot.pauseAllScripts.get())
 		{
 			return "Microbot pause-all";
-		}
-		if (InputArbiter.isRealButtonOrKeyDown())
-		{
-			return "you're holding a key/button";
 		}
 		return null;
 	}

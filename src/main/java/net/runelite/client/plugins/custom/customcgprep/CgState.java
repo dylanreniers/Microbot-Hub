@@ -16,8 +16,6 @@ public enum CgState
 	HANDOVER,
 	/** Boss fight in progress (player-driven for now; fight module later). */
 	BOSS,
-	/** Back in the lobby after a run: record result, wait for Continue. */
-	POST_RUN,
-	/** Paused by hotkey or stopped. */
-	PAUSED
+	/** Back in the lobby after a run: record result, go again (loop on) or wait for the plugin to be turned on again. */
+	POST_RUN
 }

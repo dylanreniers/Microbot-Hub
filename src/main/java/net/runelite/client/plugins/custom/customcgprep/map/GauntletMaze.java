@@ -68,6 +68,24 @@ public final class GauntletMaze implements ExplorePlanner.MapView
 	private final Map<String, Node> nodes = new ConcurrentHashMap<>();
 	private final Map<Monster, Sighting> demiBosses = new ConcurrentHashMap<>();
 	private final Map<Monster, Boolean> demiBossKilled = new ConcurrentHashMap<>();
+	/**
+	 * Every live demi-boss seen, by NPC index (1.9.28): {@link #demiBosses} keeps one per kind, the
+	 * nearest to us, so with two bears it switched between them as we walked and a node 6 tiles from
+	 * one was off-limits one second and fine the next (the bot ran back and forth for a grym leaf).
+	 */
+	private final Map<Integer, DemiSeen> demiByIndex = new ConcurrentHashMap<>();
+
+	public static final class DemiSeen
+	{
+		public final Monster mon;
+		public final Sighting at;
+
+		DemiSeen(Monster mon, Sighting at)
+		{
+			this.mon = mon;
+			this.at = at;
+		}
+	}
 
 	private volatile WorldPoint playerRaw;
 	private volatile int roomX = -1;
@@ -195,6 +213,7 @@ public final class GauntletMaze implements ExplorePlanner.MapView
 		nodesDirty = true;
 		lastFoundCount = -1;
 		demiBosses.clear();
+		demiByIndex.clear();
 		demiBossKilled.clear();
 		demiKillRooms.clear();
 		roomX = -1;
@@ -347,7 +366,20 @@ public final class GauntletMaze implements ExplorePlanner.MapView
 			WorldScan.Npc best = null;
 			for (WorldScan.Npc n : scan.npcs)
 			{
-				if (!n.dead && n.raw != null && contains(mon.ids(m), n.id) && (best == null || n.tiles < best.tiles))
+				if (!contains(mon.ids(m), n.id))
+				{
+					continue;
+				}
+				if (n.dead)
+				{
+					demiByIndex.remove(n.index);
+					continue;
+				}
+				if (n.raw != null)
+				{
+					demiByIndex.put(n.index, new DemiSeen(mon, new Sighting(n.raw, now)));
+				}
+				if (n.raw != null && (best == null || n.tiles < best.tiles))
 				{
 					best = n;
 				}
@@ -375,6 +407,8 @@ public final class GauntletMaze implements ExplorePlanner.MapView
 	{
 		demiBossKilled.put(m, true);
 		demiBosses.remove(m);
+		// Another of the kind still alive is put back by the next scan.
+		demiByIndex.values().removeIf(d -> d.mon == m);
 	}
 
 	/** Rooms {x, z} of this run's demi-boss kills, oldest first (1.8.0: where the ring lap starts). */
@@ -796,6 +830,12 @@ public final class GauntletMaze implements ExplorePlanner.MapView
 	public Map<Monster, Sighting> sightings()
 	{
 		return demiBosses;
+	}
+
+	/** Every live demi-boss seen this run, two of a kind each (see {@link #demiByIndex}). */
+	public java.util.Collection<DemiSeen> demiSightings()
+	{
+		return demiByIndex.values();
 	}
 
 	public boolean[] foundRooms()

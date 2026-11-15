@@ -4,15 +4,12 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
-import net.runelite.client.config.Keybind;
 import net.runelite.client.config.Range;
 import net.runelite.client.plugins.custom.customcgprep.boss.BrainConfig;
 import net.runelite.client.plugins.custom.customcgprep.data.CgMode;
 import net.runelite.client.plugins.custom.customcgprep.data.PrepProfile;
 import net.runelite.client.plugins.custom.customcgprep.fight.OffensePrayers;
 
-import java.awt.event.InputEvent;
-import java.awt.event.KeyEvent;
 
 @ConfigGroup(CustomCgPrepConfig.GROUP)
 public interface CustomCgPrepConfig extends Config
@@ -27,9 +24,6 @@ public interface CustomCgPrepConfig extends Config
 
 	@ConfigSection(name = "Prayers", description = "Offensive prayers for prep and the boss", position = 2)
 	String prayerSection = "prayers";
-
-	@ConfigSection(name = "Hotkeys", description = "Pause and continue keys", position = 3)
-	String hotkeySection = "hotkeys";
 
 	@ConfigItem(keyName = "meleePrayer", name = "Melee prayer",
 		description = "Offensive prayer for melee. None turns it off.",
@@ -237,21 +231,6 @@ public interface CustomCgPrepConfig extends Config
 	default boolean notifyOnHandover()
 	{
 		return true;
-	}
-
-	@ConfigItem(keyName = "continueKey", name = "Continue hotkey",
-		description = "Start the next run (when looping is off).",
-		position = 1, section = hotkeySection)
-	default Keybind continueKey()
-	{
-		return new Keybind(KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
-	}
-
-	@ConfigItem(keyName = "pauseKey", name = "Pause hotkey", description = "Pause or resume the bot.",
-		position = 0, section = hotkeySection)
-	default Keybind pauseKey()
-	{
-		return new Keybind(KeyEvent.VK_P, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
 	}
 
 	// ------------------------------------------------------------------ antiban

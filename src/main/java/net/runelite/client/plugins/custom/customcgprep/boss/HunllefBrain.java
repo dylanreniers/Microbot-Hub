@@ -167,11 +167,12 @@ public final class HunllefBrain
 		{
 			return;
 		}
-		// No extra swaps while tornadoes are out (user, 1.9.26): 5:1's swap to the weak weapon and
-		// back took the clicks the dodges needed, and a stack of three hit for 54 (log 11-14 20:15).
-		// Plain switching then: the weapon in hand while it isn't blocked (the T3 if it's the
-		// sceptre), so the only swap is the one the boss's overhead forces.
-		if (m.o.torN > 0)
+		// No sceptre hit while tornadoes are out (user, 1.9.26): the walk to the boss and the swaps
+		// took the clicks the dodges needed, and a stack of three hit for 54 (log 11-14 20:15). The
+		// T3 takes the 6th hit instead (plain switching): the weapon in hand while it isn't blocked,
+		// else the T3. The weak weapon's hit while the boss prays melee needs no walking, so it
+		// still goes on (user, 1.9.27).
+		if (m.o.torN > 0 && m.protects != Style.MELEE)
 		{
 			Style held = m.o.weapon;
 			boolean unblocked = (held == Style.RANGED || held == Style.MAGIC) && held != m.protects;

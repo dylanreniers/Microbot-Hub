@@ -56,12 +56,11 @@ public class CustomCgPrepOverlay extends OverlayPanel
 				panelComponent.getChildren().add(LineComponent.builder().left(line).leftColor(
 					line.startsWith("WARNING") ? Color.RED : Color.WHITE).build());
 			}
-			panelComponent.getChildren().add(LineComponent.builder().left(config.autoLoop() ? "After the run: the bot loots the chest and goes again" : "After the run: " + config.continueKey() + " to go again").build());
+			panelComponent.getChildren().add(LineComponent.builder().left(config.autoLoop() ? "After the run: the bot loots the chest and goes again" : "After the run: turn the plugin off and on to go again").build());
 			return super.render(g);
 		}
 
-		String state = s.getCurrentState() == null ? "-" : s.getCurrentState().name()
-			+ (s.paused && !"PAUSED".equals(s.getCurrentState().name()) ? " (PAUSED)" : "");
+		String state = s.getCurrentState() == null ? "-" : s.getCurrentState().name();
 		long reenter = s.reenterAtMs;
 		String blocked = s.enterBlocked != null ? s.enterBlocked : s.chestBlocked ? "the Reward Chest won't open (see chat)" : null;
 		if (s.getCurrentState() == CgState.LOBBY_SETUP && blocked != null)

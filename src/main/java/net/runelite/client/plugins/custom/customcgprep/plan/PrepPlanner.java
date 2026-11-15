@@ -533,6 +533,11 @@ public final class PrepPlanner
 			{
 				return p;
 			}
+			PrepGoal stash = fishStash(in);
+			if (stash != null)
+			{
+				return stash;
+			}
 		}
 
 		// ---------------------------------------------------------------- the phases (user, 2026-11-12)
@@ -559,14 +564,20 @@ public final class PrepPlanner
 			{
 				if (!maze.inStartRoom())
 				{
+					// The room we're in is raided first (user, 1.9.29): the teleport leaves it behind.
+					PrepGoal raid = raid(in, maze.roomX(), maze.roomZ());
+					if (raid != null)
+					{
+						return raid;
+					}
 					return PrepGoal.teleportHome("phase 1 done: frame + " + fishHave + " fish");
 				}
-				// Phase 1b, at the bowl. More fish wanted than the bag holds alongside the rest
-				// (user: past 16): leave the raw ones on the floor here, picked up on the final trip.
-				if (in.fishTarget > PHASE1_FISH && l.get(Resource.RAW_FISH) > 0)
+				// Phase 1b, at the bowl: the weapon, then the rest of the depot crafts; only then are the
+				// fish phase 2 has no room for left on the floor (fishStash, user 1.9.31: not all of
+				// them). A full bag gets a fish's slot for the weapon.
+				if (l.freeSlots == 0 && l.get(Resource.RAW_FISH) > 0 && !in.droppedRecently.contains(Resource.RAW_FISH))
 				{
-					return PrepGoal.dropSurplus(Resource.RAW_FISH, "phase 1b: fish target " + in.fishTarget
-						+ " > " + PHASE1_FISH + ", " + l.get(Resource.RAW_FISH) + " raw fish onto the floor at home");
+					return PrepGoal.dropSurplus(Resource.RAW_FISH, 1, "phase 1b: room to make the weapon (one raw paddlefish)");
 				}
 				return PrepGoal.craft(GearSlot.STAFF, "phase 1b: make the weapon");
 			}
@@ -1302,6 +1313,35 @@ public final class PrepPlanner
 		}
 		int[] room = m.roomOf(n);
 		return room != null && room[0] == m.roomX() && room[1] == m.roomZ();
+	}
+
+	/** Slots kept free on top of {@link #reservedSlots} when deciding how many fish stay in the bag. */
+	static final int STASH_MARGIN = 1;
+
+	/**
+	 * At home after the depot crafts (user, 1.9.31): leave on the floor only the fish phase 2 has no
+	 * room for, not all of them (dropping and picking up 12-16 took ~20 s). The bag must end phase 2
+	 * holding every fish of the target not on the floor, next to what phase 2 still brings in
+	 * (demi drops, grym, new stacks, dust, loot: {@link #reservedSlots}); the tools still carried
+	 * count as taken, though some go on the way (a little room to spare).
+	 */
+	private PrepGoal fishStash(Inputs in)
+	{
+		Ledger l = in.ledger;
+		int raw = l.get(Resource.RAW_FISH);
+		if (raw == 0 || in.fishTarget <= 0 || in.droppedRecently.contains(Resource.RAW_FISH))
+		{
+			return null;
+		}
+		int inBagAtEnd = Math.max(0, in.fishTarget - in.stashFish);
+		int room = l.freeSlots + raw - reservedSlots(l, in.needs, true) - STASH_MARGIN;
+		int drop = Math.min(raw, inBagAtEnd - room);
+		if (drop <= 0)
+		{
+			return null;
+		}
+		return PrepGoal.dropSurplus(Resource.RAW_FISH, drop, "fish target " + in.fishTarget + ", room for " + Math.max(0, room)
+			+ " in the bag through phase 2: " + drop + " of " + raw + " raw fish onto the floor at home");
 	}
 
 	/** Phase 1 fish (user, 2026-11-12): 16 when a spot gives them, past that they're left at home. */
@@ -2181,6 +2221,12 @@ public final class PrepPlanner
 		Needs n = in.required != null ? in.required : in.needs;
 		int free = l.freeSlots;
 		int wanted = slotsWanted(n);
+		// At home the depot step makes the room (crafts, worn gear, the fish left on the floor,
+		// 1.9.31): a stack fetched from here first would leave before the fish are sorted.
+		if (in.maze.inStartRoom())
+		{
+			return null;
+		}
 		// (Finished tools are dropped as chores on the move, see chore().)
 		if (free >= wanted || free >= 4)
 		{
@@ -2284,7 +2330,7 @@ public final class PrepPlanner
 			}
 			if (l.get(Resource.RAW_FISH) > 0 && !in.droppedRecently.contains(Resource.RAW_FISH))
 			{
-				return PrepGoal.dropSurplus(Resource.RAW_FISH, why + ": room to craft the armour (one raw paddlefish)");
+				return PrepGoal.dropSurplus(Resource.RAW_FISH, 1, why + ": room to craft the armour (one raw paddlefish)");
 			}
 		}
 		if (!roomToCraft && finalTrip && craftsLeft)
@@ -2303,7 +2349,7 @@ public final class PrepPlanner
 			}
 			if (l.get(Resource.RAW_FISH) > 0 && !in.droppedRecently.contains(Resource.RAW_FISH))
 			{
-				return PrepGoal.dropSurplus(Resource.RAW_FISH, why + ": room for the last crafts (one raw paddlefish)");
+				return PrepGoal.dropSurplus(Resource.RAW_FISH, 1, why + ": room for the last crafts (one raw paddlefish)");
 			}
 		}
 		if (roomToCraft && n.craftableNow.contains(GearSlot.STAFF))

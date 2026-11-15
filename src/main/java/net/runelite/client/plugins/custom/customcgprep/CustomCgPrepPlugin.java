@@ -17,7 +17,6 @@ import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.ProjectileMoved;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.UnderDevelopment;
@@ -34,7 +33,6 @@ import net.runelite.client.plugins.custom.customcgprep.stats.RunStats;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.PluginConstants;
 import net.runelite.client.ui.overlay.OverlayManager;
-import net.runelite.client.util.HotkeyListener;
 
 import javax.inject.Inject;
 import java.util.Collections;
@@ -61,7 +59,7 @@ import java.util.WeakHashMap;
 @UnderDevelopment
 public class CustomCgPrepPlugin extends Plugin
 {
-	static final String version = "1.9.26";
+	static final String version = "1.9.31";
 
 	@Inject
 	private CustomCgPrepConfig config;
@@ -71,8 +69,6 @@ public class CustomCgPrepPlugin extends Plugin
 	private CustomCgPrepOverlay overlay;
 	@Inject
 	private OverlayManager overlayManager;
-	@Inject
-	private KeyManager keyManager;
 	@Inject
 	private ConfigManager configManager;
 	@Inject
@@ -86,39 +82,6 @@ public class CustomCgPrepPlugin extends Plugin
 	{
 		return configManager.getConfig(CustomCgPrepConfig.class);
 	}
-
-	private final HotkeyListener pauseListener = new HotkeyListener(() -> config.pauseKey())
-	{
-		@Override
-		public void hotkeyPressed()
-		{
-			script.togglePause();
-			boolean paused = script.paused;
-			boolean dry = config.dryRun();
-			Microbot.log("[Auto Gauntlet] " + (paused ? "paused" : "resumed") + (dry ? " (DRY RUN: no actions)" : ""));
-			String msg = paused ? "<col=ff9040>[Auto Gauntlet]</col> Paused."
-				: dry ? "<col=ff0000>[Auto Gauntlet] Resumed in DRY RUN: it will plan but NOT click. Turn off 'Dry run (plan only)'.</col>"
-				: "<col=ff9040>[Auto Gauntlet]</col> Resumed (live).";
-			Microbot.getClientThread().invokeLater(() ->
-			{
-				Microbot.getClient().addChatMessage(net.runelite.api.ChatMessageType.GAMEMESSAGE, "", msg, null);
-			});
-		}
-	};
-
-	private final HotkeyListener continueListener = new HotkeyListener(() -> config.continueKey())
-	{
-		@Override
-		public void hotkeyPressed()
-		{
-			script.requestContinue();
-			Microbot.getClientThread().invokeLater(() ->
-			{
-				Microbot.getClient().addChatMessage(net.runelite.api.ChatMessageType.GAMEMESSAGE, "", "<col=ff9040>[Auto Gauntlet]</col> Next run requested: it starts when you're in the Gauntlet lobby.", null);
-			});
-			Microbot.log("[Auto Gauntlet] continue requested");
-		}
-	};
 
 	private void migratePotionSetting()
 	{
@@ -178,8 +141,6 @@ public class CustomCgPrepPlugin extends Plugin
 		overlayManager.add(overlay);
 		bossOverlay = new BossFightOverlay(client, () -> script.boss, () -> config.showOverlay() && config.bossOverlay());
 		overlayManager.add(bossOverlay);
-		keyManager.registerKeyListener(pauseListener);
-		keyManager.registerKeyListener(continueListener);
 		// Decision log (setting "Decision log"): the "Log folder" setting, else .runelite/cg-prep.
 		if (config.decisionLog())
 		{
@@ -208,8 +169,6 @@ public class CustomCgPrepPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
-		keyManager.unregisterKeyListener(pauseListener);
-		keyManager.unregisterKeyListener(continueListener);
 		overlayManager.remove(overlay);
 		if (bossOverlay != null)
 		{

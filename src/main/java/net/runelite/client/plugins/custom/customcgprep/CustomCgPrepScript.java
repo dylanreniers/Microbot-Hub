@@ -93,8 +93,7 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 	volatile String lastAction = "-";
 	volatile int runsCompleted;
 
-	// Control flags (hotkeys)
-	volatile boolean paused;
+	/** Start a run with the loop off: set when the plugin is turned on. */
 	volatile boolean continueRequested;
 	/** Outside the Gauntlet and its lobby objects (entrance) are in the scene. */
 	volatile boolean inLobby;
@@ -166,11 +165,13 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 		PrepGoal g = goal;
 		Monster fighting = g != null && g.type == PrepGoal.Type.FIGHT ? g.monster : null;
 		List<WorldPoint> around = new ArrayList<>();
-		for (java.util.Map.Entry<Monster, GauntletMaze.Sighting> e : maze.sightings().entrySet())
+		// Each one seen, not just the nearest of each kind (1.9.28): with two bears the nearest one
+		// switched as we walked and the plan flipped with it. A dead one is dropped when seen dying.
+		for (GauntletMaze.DemiSeen d : maze.demiSightings())
 		{
-			if (e.getKey() != fighting && !maze.isKilled(e.getKey()) && now - e.getValue().atMs < 120_000)
+			if (d.mon != fighting && now - d.at.atMs < 120_000)
 			{
-				around.add(e.getValue().raw);
+				around.add(d.at.raw);
 			}
 		}
 		if (around.isEmpty())
@@ -221,6 +222,8 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 	}
 
 	private Boolean savedCantReachDetection;
+	/** Microbot's "your input takes over" pause, as it was before we switched it off (restored on stop). */
+	private Boolean savedArbiterDisabled;
 
 	public boolean run()
 	{
@@ -229,6 +232,15 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 			savedCantReachDetection = Microbot.isCantReachTargetDetectionEnabled;
 		}
 		Microbot.isCantReachTargetDetectionEnabled = false;
+		// No pause when it looks like you're using the mouse or keyboard (user, 1.9.30): a press whose
+		// release never arrived left a key "held", and the boss fight stood still for 15 s.
+		if (savedArbiterDisabled == null)
+		{
+			savedArbiterDisabled = net.runelite.client.plugins.microbot.util.input.InputArbiter.isDisabled();
+		}
+		net.runelite.client.plugins.microbot.util.input.InputArbiter.setDisabled(true);
+		// Turning the plugin on starts a run (the Continue hotkey's job, gone in 1.9.30).
+		continueRequested = true;
 		breakGate.arm();
 		gather = new GatherAction(nav);
 		weaver = new Weaver();
@@ -295,7 +307,7 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 					return;
 				}
 				// On start: zoom all the way out with the mouse wheel (user, 1.2.0).
-				if (!zoomedOut && !paused && !config.dryRun() && System.currentTimeMillis() >= zoomRetryAtMs)
+				if (!zoomedOut && !config.dryRun() && System.currentTimeMillis() >= zoomRetryAtMs)
 				{
 					try
 					{
@@ -326,7 +338,7 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 					{
 						chaining = false;
 					}
-					if (paused || !mayAct())
+					if (!mayAct())
 					{
 						break;
 					}
@@ -369,7 +381,7 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 		}
 		RunStats rs = stats;
 		boolean died = rs != null && (rs.diedThisRun() || deathsAtRunStart >= 0 && rs.setupDeaths() + rs.bossDeaths() > deathsAtRunStart);
-		String next = !config.autoLoop() ? " Press " + config.continueKey() + " for the next run." : bossOnly() ? " Next run starting now: prep it yourself." : "";
+		String next = !config.autoLoop() ? " Turn the plugin off and on for the next run." : bossOnly() ? " Next run starting now: prep it yourself." : "";
 		// 1.8.2: only a boss fight that ended alive is a kill (leaving during prep isn't).
 		String msg = (died ? "Auto Gauntlet: you died." : from == CgState.BOSS ? "Auto Gauntlet: Hunllef killed!"
 			: "Auto Gauntlet: left the Gauntlet before the boss fight.") + next;
@@ -397,7 +409,7 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 	private void stuckWatchdog()
 	{
 		long now = System.currentTimeMillis();
-		if (getCurrentState() != CgState.PREP || paused || config.dryRun() || bossOnly() || (brewChain != null && brewChain.active()))
+		if (getCurrentState() != CgState.PREP || config.dryRun() || bossOnly() || (brewChain != null && brewChain.active()))
 		{
 			wdProgressMs = now;
 			return;
@@ -521,7 +533,7 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 		}
 		// The rest of the pile back to back (1.9.13): once we stand on it each fish takes a tick, and
 		// going round the loop per fish made it ~3 ticks each (12 fish in 21 s).
-		for (int i = 0; i < 27 && !paused && super.run() && Rs2Inventory.emptySlotCount() > 0; i++)
+		for (int i = 0; i < 27 && super.run() && Rs2Inventory.emptySlotCount() > 0; i++)
 		{
 			net.runelite.client.plugins.microbot.api.tileitem.models.Rs2TileItemModel next = Microbot.getRs2TileItemCache().query().withId(CgIds.RAW_PADDLEFISH).toList().stream()
 				.filter(it -> it.getWorldLocation() != null && it.getWorldLocation().distanceTo2D(at) <= 2)
@@ -1067,8 +1079,7 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 			lootNeeds = in.gather != null ? in.gather : n;
 			// Also while the stash is going down (1.9.13: the first fish was looted straight back up,
 			// before observe saw it on the floor).
-			boolean stashing = config.fishTarget() > PrepPlanner.PHASE1_FISH
-				&& (stashFish > 0 || System.currentTimeMillis() - dropSentMs.getOrDefault(Resource.RAW_FISH, 0L) < 5000);
+			boolean stashing = stashFish > 0 || System.currentTimeMillis() - dropSentMs.getOrDefault(Resource.RAW_FISH, 0L) < 5000;
 			if (stashing && maze.inStartRoom())
 			{
 				lootNeeds = lootNeeds.withCap(Resource.RAW_FISH, 0); // the fish left at home stay there until the final trip
@@ -1131,16 +1142,6 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 	{
 		List<Transition<CgState>> t = new ArrayList<>();
 
-		// Pause from anywhere (highest priority), resume back to OUTSIDE (re-derives from there).
-		for (CgState s : CgState.values())
-		{
-			if (s != CgState.PAUSED)
-			{
-				t.add(Transition.<CgState>from(s).when(() -> paused, "paused").because("Pause hotkey").goTo(CgState.PAUSED));
-			}
-		}
-		t.add(Transition.<CgState>from(CgState.PAUSED).when(() -> !paused, "!paused").because("Resumed").goTo(CgState.OUTSIDE));
-
 		// Boss started: always wins over prep/handover (forced teleport at 0:00 included).
 		t.add(Transition.<CgState>from(CgState.PREP).when(() -> bossStarted, "bossStarted").because("In the boss room").goTo(CgState.BOSS));
 		t.add(Transition.<CgState>from(CgState.HANDOVER).when(() -> bossStarted, "bossStarted").because("Player entered the boss room").goTo(CgState.BOSS));
@@ -1160,12 +1161,12 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 		t.add(Transition.<CgState>from(CgState.LOBBY_SETUP).when(() -> inGauntlet, "inGauntlet").because("Entered").goTo(CgState.PREP));
 		t.add(Transition.<CgState>from(CgState.OUTSIDE).when(() -> !inGauntlet && config.autoLobby(), "autoLobby").because("Auto lobby on").goTo(CgState.LOBBY_SETUP));
 		t.add(Transition.<CgState>from(CgState.OUTSIDE).when(() -> !inGauntlet && config.autoLoop() && inLobby, "autoLoop&&inLobby").because("In the Gauntlet lobby, loop on").goTo(CgState.LOBBY_SETUP));
-		// Continue hotkey with the loop off (1.5.2): one run: loot the chest if a reward waits, then enter.
-		t.add(Transition.<CgState>from(CgState.OUTSIDE).when(() -> !inGauntlet && continueRequested && inLobby, "continueRequested&&inLobby").because("Continue hotkey").goTo(CgState.LOBBY_SETUP));
+		// Loop off (1.5.2): one run per start of the plugin: loot the chest if a reward waits, then enter.
+		t.add(Transition.<CgState>from(CgState.OUTSIDE).when(() -> !inGauntlet && continueRequested && inLobby, "continueRequested&&inLobby").because("Plugin started").goTo(CgState.LOBBY_SETUP));
 		t.add(Transition.<CgState>from(CgState.LOBBY_SETUP).when(() -> !config.autoLobby() && !config.autoLoop() && !continueRequested, "!autoLobby&&!autoLoop&&!continue").because("Auto lobby and loop off").goTo(CgState.OUTSIDE));
 
 		// After a run.
-		t.add(Transition.<CgState>from(CgState.POST_RUN).when(() -> !inGauntlet && continueRequested && !config.dryRun(), "continueRequested").because("Continue hotkey: loot the chest and go again").goTo(CgState.LOBBY_SETUP));
+		t.add(Transition.<CgState>from(CgState.POST_RUN).when(() -> !inGauntlet && continueRequested && !config.dryRun(), "continueRequested").because("Plugin started: loot the chest and go again").goTo(CgState.LOBBY_SETUP));
 		t.add(Transition.<CgState>from(CgState.POST_RUN).when(() -> !inGauntlet && config.autoLoop() && !config.dryRun(), "autoLoop").because("Run over: loot the chest and go again").goTo(CgState.LOBBY_SETUP));
 		t.add(Transition.<CgState>from(CgState.POST_RUN).when(() -> inGauntlet, "inGauntlet").because("Player started another run").goTo(CgState.PREP));
 		return t;
@@ -1234,7 +1235,7 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 			continueRequested = false; // that run has started
 		}
 		// Boss Only: the player's prayers during their own prep are left alone (1.4.0).
-		if (((to == CgState.PAUSED && from != CgState.BOSS) || to == CgState.HANDOVER) && !config.dryRun() && !(bossOnly() && from != CgState.BOSS))
+		if (to == CgState.HANDOVER && !config.dryRun() && !(bossOnly() && from != CgState.BOSS))
 		{
 			// Script thread (step() runs here), never the client thread: toggling prayers clicks.
 			Rs2Prayer.disableAllPrayers();
@@ -1290,7 +1291,7 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 				{
 					lastOutsideLogMs = System.currentTimeMillis();
 					WorldPoint wp = net.runelite.client.plugins.microbot.util.player.Rs2Player.getWorldLocation();
-					String why = !config.autoLoop() ? "loop off: press " + config.continueKey() + " to start a run"
+					String why = !config.autoLoop() ? "loop off: turn the plugin off and on to start a run"
 						: !inLobby ? "walk to the Gauntlet lobby" : "waiting";
 					pl("OUTSIDE", why + " | inLobby=" + inLobby + " autoLoop=" + config.autoLoop()
 						+ " at " + (wp == null ? "?" : wp.getX() + "," + wp.getY() + "," + wp.getPlane() + " region " + wp.getRegionID()));
@@ -1315,7 +1316,6 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 				}
 				break;
 			case BOSS:
-			case PAUSED:
 			default:
 				// No input from this loop. BOSS: the fight (if on) runs on its own per-tick thread (boss.BossFight).
 				break;
@@ -1648,13 +1648,15 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 					return ActionResult.DONE;
 				}
 				// Every one in a single pass, slot by slot like a player dropping a row (1.9.13): one
-				// drop per loop cost a full observe + plan each, ~1.2 s a fish.
+				// drop per loop cost a full observe + plan each, ~1.2 s a fish. Only as many as the goal
+				// says (1.9.31: "one raw paddlefish" for a craft's slot dropped them all).
 				java.util.List<net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel> all = Rs2Inventory.items(it -> it != null && it.getId() == item)
+					.limit(g.count < 0 ? Long.MAX_VALUE : g.count)
 					.collect(java.util.stream.Collectors.toList());
 				boolean sent = false;
 				for (net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel it : all)
 				{
-					if (paused || !super.run())
+					if (!super.run())
 					{
 						break;
 					}
@@ -2589,7 +2591,7 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 	private void blockChest()
 	{
 		String msg = "Auto Gauntlet: the Reward Chest didn't open after " + CHEST_MAX_TRIES + " tries, so it stopped here to keep your loot."
-			+ " Open it yourself (or make room in your bag), then press " + config.continueKey() + " to go again.";
+			+ " Open it yourself (or make room in your bag), then turn the plugin off and on to go again.";
 		chestBlocked = true;
 		continueRequested = false;
 		reenterAtMs = -1;
@@ -2603,9 +2605,8 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 	{
 		boolean corrupted = mode() == CgMode.CORRUPTED;
 		String msg = corrupted
-			? "Auto Gauntlet: tried " + ENTER_GIVE_UP + " times and couldn't get into the Corrupted Gauntlet, so it stopped. If you haven't finished a normal Gauntlet yet, do that first (it unlocks Corrupted) or set Gauntlet to Normal. Then press "
-				+ config.continueKey() + " to try again."
-			: "Auto Gauntlet: can't enter the Gauntlet (" + ENTER_GIVE_UP + " tries). Check you can go in by hand, then press " + config.continueKey() + " to try again.";
+			? "Auto Gauntlet: tried " + ENTER_GIVE_UP + " times and couldn't get into the Corrupted Gauntlet, so it stopped. If you haven't finished a normal Gauntlet yet, do that first (it unlocks Corrupted) or set Gauntlet to Normal. Then turn the plugin off and on to try again."
+			: "Auto Gauntlet: can't enter the Gauntlet (" + ENTER_GIVE_UP + " tries). Check you can go in by hand, then turn the plugin off and on to try again.";
 		enterBlocked = corrupted ? "can't enter Corrupted (see chat)" : "can't enter the Gauntlet (see chat)";
 		enterBlockedMode = mode();
 		continueRequested = false;
@@ -2720,31 +2721,6 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 
 	// ------------------------------------------------------------------ control
 
-	public void togglePause()
-	{
-		paused = !paused;
-		if (paused)
-		{
-			// The weave and the potion chain run on their own threads: stop them too (review).
-			Weaver w = weaver;
-			if (w != null)
-			{
-				w.disarm();
-			}
-			BrewChain bc = brewChain;
-			if (bc != null)
-			{
-				bc.stop();
-			}
-		}
-	}
-
-	public void requestContinue()
-	{
-		continueRequested = true;
-		pl("LOBBY", "Continue hotkey: " + (inGauntlet ? "already in a run" : inLobby ? "starting a run" : "not in the Gauntlet lobby yet; starts when you're there"));
-	}
-
 	/** Tick-exact attack weaving while gathering (fed by the plugin's StatChanged / GameTick). */
 	volatile Weaver weaver;
 	/** The whole potion chain, one item-on-item per tick (fed by the plugin's GameTick). */
@@ -2840,7 +2816,7 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 	 */
 	public void onGameTick()
 	{
-		if (!inGauntlet || bossStarted || paused || config.dryRun() || bossOnly() || getCurrentState() != CgState.PREP)
+		if (!inGauntlet || bossStarted || config.dryRun() || bossOnly() || getCurrentState() != CgState.PREP)
 		{
 			return;
 		}
@@ -2936,7 +2912,6 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 		boss.brainConfig.eatBelowSoft = config.bossEatBelow() + 12;
 		boss.brainConfig.drinkBelow = config.bossDrinkBelow();
 		boss.brainConfig.fiveToOne = config.fiveToOne();
-		boss.hold = paused;
 		boss.log = this::pl;
 		OffensePrayers.melee = config.meleePrayer();
 		OffensePrayers.ranged = config.rangedPrayer();
@@ -2973,6 +2948,11 @@ public class CustomCgPrepScript extends StateMachineScript<CgState>
 		{
 			Microbot.isCantReachTargetDetectionEnabled = savedCantReachDetection;
 			savedCantReachDetection = null;
+		}
+		if (savedArbiterDisabled != null)
+		{
+			net.runelite.client.plugins.microbot.util.input.InputArbiter.setDisabled(savedArbiterDisabled);
+			savedArbiterDisabled = null;
 		}
 		antiban.stop();
 		handover.clear();

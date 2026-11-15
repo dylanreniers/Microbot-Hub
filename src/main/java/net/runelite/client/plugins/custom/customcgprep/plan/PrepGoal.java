@@ -54,6 +54,8 @@ public final class PrepGoal
 	public boolean finalTrip;
 	/** RETURN_TO_START only: use the teleport crystal now, whatever the distance. */
 	public boolean teleportNow;
+	/** DROP_SURPLUS only: how many to drop (-1 = all of them). */
+	public int count = -1;
 	/**
 	 * An inventory chore (crush the spike, drop a finished tool, decant, a brew step) to do right
 	 * after this goal's next walking click, while running (user, 0.3.15). Null = none.
@@ -125,6 +127,13 @@ public final class PrepGoal
 	public static PrepGoal dropSurplus(Resource r, String why)
 	{
 		return new PrepGoal(Type.DROP_SURPLUS, r, null, null, null, why);
+	}
+
+	public static PrepGoal dropSurplus(Resource r, int count, String why)
+	{
+		PrepGoal g = dropSurplus(r, why);
+		g.count = count;
+		return g;
 	}
 
 	public static PrepGoal dropTool(Resource gathers, String why)
