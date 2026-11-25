@@ -17,7 +17,7 @@ public class DroZulrahDescriptorTest
     }
 
     @Test public void runtimeLogReportsThePublishedPluginVersion() {
-        assertEquals("1.10.20", descriptor.version());
+        assertEquals("1.10.22", descriptor.version());
         assertEquals(descriptor.version(), DroZulrahScript.BUILD);
     }
 

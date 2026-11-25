@@ -43,8 +43,9 @@ import java.util.function.Supplier;
     name = PluginConstants.DRO + "Efficient Walker",
     description = "Efficient Microbot webwalker",
     tags = {"walking", "pathfinding", "microbot"},
+    authors = {"droplugins"},
     enabledByDefault = PluginConstants.DEFAULT_ENABLED,
-    version = "1.12.69",
+    version = "1.12.71",
     iconUrl = "https://chsami.github.io/Microbot-Hub/EfficientWalkerPlugin/assets/icon.png",
     cardUrl = "https://chsami.github.io/Microbot-Hub/EfficientWalkerPlugin/assets/card.png",
     isExternal = PluginConstants.IS_EXTERNAL

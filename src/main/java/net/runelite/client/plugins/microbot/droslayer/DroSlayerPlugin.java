@@ -32,7 +32,7 @@ import java.awt.*;
         name = PluginConstants.DRO + "AIO Slayer",
         description = "Gets a task from any Slayer master, travels there with [Dro] Efficient Walker, fights with the matching gear, prayers and cannon, banks for supplies and returns for the next task. Krystilia Wilderness tasks are supported. Requires [Dro] Efficient Walker from the Microbot Hub.",
         tags = {"dro", "slayer", "aio", "combat", "task", "efficientwalker", "microbot"},
-        authors = {"Big L", "Dro"},
+        authors = {"droplugins"},
         version = DroSlayerPlugin.version,
         minClientVersion = "2.6.55",
         iconUrl = "https://chsami.github.io/Microbot-Hub/DroSlayerPlugin/assets/icon.png",
@@ -43,7 +43,7 @@ import java.awt.*;
 @Slf4j
 public class DroSlayerPlugin extends Plugin {
 
-    public static final String version = "1.3.97";
+    public static final String version = "1.3.103";
 
     @Inject
     private DroSlayerConfig config;
@@ -260,6 +260,9 @@ public class DroSlayerPlugin extends Plugin {
         String message = net.runelite.client.util.Text.removeTags(event.getMessage()).toLowerCase(java.util.Locale.ROOT);
         slayerScript.onWildernessWeaponMessage(message);
         slayerScript.onLootMessage(message);
+        if (message.contains("reach that")) {
+            slayerScript.onUnreachableMessage();
+        }
         if (message.contains("enough space to set up") || message.contains("cannot set up a cannon here")) {
             slayerScript.onCannonPlacementRejected();
         }

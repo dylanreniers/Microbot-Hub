@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.2.65]
+
+### Fixed
+- **Salvaging stuck on inventory cleanup**: The script now only cleans up your inventory before salvaging when an item's full name is on your Drop items list, the same way it drops items. Before, a list entry like plank also matched items such as Sawmill coupon (wood plank), which it never drops, so it repeated the cleanup every tick and never salvaged.
+
+---
+
+## [2.2.64]
+
+### Fixed
+- **Barracuda Trials boat stuck**: With Auto Navigate on, the script now notices when the boat has not got closer to the next waypoint for about 9 seconds, for example when it sits against a rock with the heading already pointing at the waypoint. It posts a chat line saying the boat looks stuck, lowers and raises the sails, turns away from the obstacle for a few ticks and then heads for the nearest waypoint ahead. After 3 failed tries in a row it stops and tells you in chat that the boat is stuck and your trial is still running, so you can steer it free and turn the plugin on again, instead of idling until you stop it.
+
+---
+
+## [2.2.62]
+
+### Fixed
+- **Full inventory at sea**: The script only uses a salvaging station on your own boat. On a boat without one it now drops the items in your Drop items list instead of trying to walk or teleport to the port salvaging station. If nothing in your inventory is on that list, it waits: the overlay shows Status: Waiting in orange and the log shows one message telling you to add the exact salvage names (e.g. Small salvage) to Drop items, turn on Use Cargo Hold if it is off, or build a salvaging station. The port salvaging station is no longer used, even when docked next to it; build a station on your boat to process salvage.
+
+---
+
 ## [2.2.61]
 
 ### Fixed
